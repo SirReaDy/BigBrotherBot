@@ -1,0 +1,81 @@
+"""Typed configuration schema.
+
+Replaces the legacy dual XML/INI parsers + the ``MainConfig`` proxy + the stringly-typed,
+late ``analyze()`` validation. Config is a Pydantic model: parsed from YAML, validated up front,
+so a bad value fails at load with a clear message instead of raising deep inside startup.
+"""
+
+from __future__ import annotations
+
+from pydantic import BaseModel, Field
+
+
+class BotConfig(BaseModel):
+    name: str = "b3"
+    prefix: str = "^2(b3)^7:"  # in-game message prefix (game color codes allowed)
+    # IANA name (e.g. Europe/Chisinau). Schedules are evaluated in this zone.
+    time_zone: str = "UTC"
+    log_level: str = "INFO"
+    # Game chat line limit; longer replies are word-wrapped across several lines.
+    line_length: int = 90
+    # Prepended to each continuation line of a wrapped message (engines reset colour per line).
+    line_color_prefix: str = ""
+    # SQLAlchemy URL. sqlite:///path, mysql+pymysql://..., postgresql+psycopg://...
+    database: str = "sqlite:///b3.sqlite"
+    # Where `b3 plugin install` puts git-installed plugins (@b3/@conf/@home tokens allowed).
+    # Defaults *next to this config*, so plugins installed for this server stay this server's.
+    plugins_dir: str = "@conf/plugins"
+    # Optional pool shared by every bot on the machine — install a plugin once with
+    # `b3 plugin install --shared`, then enable it in whichever servers' `plugins:` list want it.
+    # The classic bot's `external_dir`, which defaulted to one shared `@b3/extplugins`.
+    shared_plugins_dir: str | None = None
+    # Which server this bot speaks for, recorded on every penalty it issues. Only meaningful when
+    # several bots share one database: without it nothing in the table says *where* a ban came from,
+    # so a multi-server dashboard cannot attribute one and an operator cannot tell two servers'
+    # history apart. Empty means "not stated", which is what every pre-existing row reads as.
+    # NOTE it is attribution, not scoping: a shared database still enforces every ban on every
+    # server, which is the reason for sharing one in the first place.
+    server_id: str = ""
+    # Minimum level to broadcast a reply with the @ / & prefixes (classic default: 9).
+    loud_level: int = 9
+    # Minimum level for the silent `/` prefix — the classic `hidecmd_level`.
+    silent_level: int = 80
+
+
+class ServerConfig(BaseModel):
+    game: str = "cod4"  # parser id
+    rcon_password: str = ""
+    host: str = "127.0.0.1"
+    port: int = 28960
+    # Local path, or a URL to tail a hosted server's log remotely:
+    #   ftp://user:pass@host/games_mp.log   ftps://…   sftp://…   http(s)://…
+    game_log: str = "games_mp.log"
+    # Text encoding of the game log / RCON (CoD engines are typically latin-1).
+    encoding: str = "latin-1"
+    rcon_timeout: float = 0.8
+    # -- remote game_log only (ignored for a local path) --
+    # Seconds between polls. Each poll is a round trip, so don't set this too low.
+    log_poll_interval: float = 2.0
+    # Network timeout for a single FTP/SFTP/HTTP operation.
+    log_timeout: float = 10.0
+    # If the log grew by more than this since the last poll (first poll, or a rotation), skip
+    # ahead to the last N bytes instead of replaying the gap. 0 reads every byte.
+    log_max_gap: int = 20480
+
+
+class PluginEntry(BaseModel):
+    # Identity: what requires_plugins / load_after refer to. Resolved to b3.plugins.<name> unless
+    # `module` says otherwise ("pkg.mod" or "pkg.mod:ClassName" — used by installed plugins).
+    name: str = Field(min_length=1)
+    module: str | None = None
+    config: str | None = None  # path to the plugin's own config file (optional)
+    # Loaded but left inert (no commands, no handlers); can be enabled at runtime.
+    disabled: bool = False
+
+
+class Config(BaseModel):
+    bot: BotConfig = Field(default_factory=BotConfig)
+    server: ServerConfig = Field(default_factory=ServerConfig)
+    plugins: list[PluginEntry] = Field(default_factory=list)
+    # Overrides for any of b3.core.messages.DEFAULT_MESSAGES — the modern [messages] section.
+    messages: dict[str, str] = Field(default_factory=dict)
