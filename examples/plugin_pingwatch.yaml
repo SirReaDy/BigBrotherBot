@@ -1,0 +1,6 @@
+# pingwatch — removes players whose connection is spoiling the game.
+settings:
+  interval: 30           # seconds between checks
+  max_ping: 500
+  max_ping_duration: 90  # how long they must stay over the limit first
+  kick_level: 20         # at or above this level, nobody is kicked for ping

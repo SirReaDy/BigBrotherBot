@@ -1,0 +1,28 @@
+# censor — bad language in chat and in player names.
+settings:
+  max_level: 40      # players above this level are never checked
+  ignore_length: 3   # text this short is skipped entirely
+
+# Used by any entry that does not name its own penalty.
+default_penalty:
+  penalty: warning   # warning | kick | tempban | ban
+  reason: "^7watch your language"
+  duration: 1h       # how long a `warning` lives, or a `tempban` lasts
+
+# `word` matches on word boundaries (so "ass" does not fire on "class");
+# `regexp` is used as-is. Either may carry its own penalty/reason/duration.
+badwords:
+  - word: ass
+  - name: shit
+    regexp: '[s$]h[i!1*]+t\b'
+  - name: fuck
+    regexp: 'f[uo0*]+ck'
+    penalty: tempban
+    duration: 2h
+    reason: "^7that language is not welcome here"
+
+# Names are matched anywhere in the nick — "xXcheaterXx" has no word boundaries.
+badnames:
+  - word: cheater
+    penalty: kick
+    reason: "^7pick a different name"

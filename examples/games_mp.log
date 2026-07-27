@@ -1,0 +1,8 @@
+  0:00 InitGame: \g_gametype\dm\mapname\mp_crash\sv_maxclients\32
+  0:12 J;aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa;1;Admin
+  0:14 J;bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb;2;Bob
+  0:20 K;bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb;2;allies;Bob;aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa;1;axis;Admin;mp5_mp;100;MOD_RIFLE_BULLET;chest
+  0:25 say;x;1;Admin;!iamgod
+  0:30 say;x;1;Admin;hello everyone
+  0:35 say;x;1;Admin;!ban Bob cheating
+  0:40 Q;bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb;2;Bob

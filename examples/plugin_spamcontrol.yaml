@@ -1,0 +1,5 @@
+# spamcontrol — scores chat and warns whoever floods it.
+settings:
+  max_spamins: 10    # points at which the player is warned
+  falloff_rate: 6.5  # seconds per point of decay
+  mod_level: 20      # at or above this level, chat is never scored

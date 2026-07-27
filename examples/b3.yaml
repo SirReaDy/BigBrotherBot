@@ -1,0 +1,43 @@
+# Example B3 2.0 configuration (CoD4).
+bot:
+  name: b3
+  prefix: "^2(b3)^7:"
+  database: "sqlite:///b3.sqlite"
+  # plugins_dir: "@conf/plugins"   # default: next to this file, so plugins are per install
+  # loud_level: 9      # minimum level to broadcast a reply with @ or &
+  # silent_level: 80   # minimum level for the silent / prefix
+  # Only needed when several bots share one database: it is written on every penalty this bot
+  # issues, so the table can say *which* server banned somebody. Enforcement is unaffected —
+  # a shared database still applies every ban on every server.
+  # server_id: "cod4_1"
+
+server:
+  game: cod4
+  rcon_password: "changeme"
+  host: 127.0.0.1
+  port: 28960
+  # A local path, or a URL to tail a hosted server's log:
+  #   ftp://user:pass@host/games_mp.log   ftps://…   sftp://…   http(s)://…
+  # (percent-encode any @ or : in the credentials; sftp needs `pip install b3ng[sftp]`)
+  game_log: "games_mp.log"
+  encoding: latin-1
+  # Remote logs only:
+  # log_poll_interval: 2.0   # seconds between polls
+  # log_timeout: 10.0        # per-operation network timeout
+  # log_max_gap: 20480       # skip ahead instead of replaying a bigger jump than this
+
+# Plugins are loaded from this list, in dependency order (requires_plugins / load_after).
+#   name:     plugin identity; resolved to b3.plugins.<name> unless `module` says otherwise
+#   module:   optional "pkg.mod" or "pkg.mod:ClassName" — for plugins installed outside the tree
+#   config:   optional path to the plugin's own YAML config (@b3 / @conf / @home tokens work)
+#   disabled: load it but leave it inert (no commands, no event handlers)
+plugins:
+  - name: admin
+    config: "@conf/plugin_admin.yaml"   # optional: rules, spam messages, reason keywords
+  # Bundled plugins, ported from the classic bot. Delete the ones you do not want.
+  - name: censor
+    config: "@conf/plugin_censor.yaml"
+  - name: spamcontrol
+    config: "@conf/plugin_spamcontrol.yaml"
+  - name: pingwatch
+    config: "@conf/plugin_pingwatch.yaml"

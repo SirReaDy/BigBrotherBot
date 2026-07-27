@@ -1,0 +1,66 @@
+# Optional configuration for the bundled `admin` plugin.
+# Point at it from the main config:
+#
+#   plugins:
+#     - name: admin
+#       config: "@conf/plugin_admin.yaml"
+#
+# Every section is optional. With no file at all the commands still work; you just get no rules,
+# no spam messages and no reason keywords.
+
+settings:
+  # How long `!ban` bans for. 14d is the classic default: `!ban` is TEMPORARY and `!permban` is
+  # the permanent one. Set 0 if you would rather `!ban` meant forever.
+  ban_duration: 14d
+  # The level `!admins` lists from.
+  admins_level: 20
+  # Below this level a reason is compulsory on !kick/!ban/!tempban/!spank and the bulk commands.
+  # 100 (the classic default) means everyone except a superadmin must say why. 0 = never required.
+  noreason_level: 100
+  # Below long_tempban_level, `!tempban` is capped at long_tempban_max_duration — so a junior
+  # admin cannot hand out a ten-year "temporary" ban.
+  long_tempban_level: 80
+  long_tempban_max_duration: 3h
+  # Announce to everyone when somebody registers with `!register`.
+  announce_registration: true
+
+# What happens as a player collects warnings. Warnings count towards this however they were
+# issued — by `!warn` or by another plugin calling the console directly.
+warn:
+  delay: 15               # seconds before the same player can be warned again
+  alert_at: 3             # this many warnings announces "you are about to be banned"
+  grace: 25               # ...and gives an admin this long to `!clear` them first
+  kick_at: 5              # this many bans immediately, with no alert
+  tempban_at: 6           # above this many, use the flat duration below instead of the sum
+  tempban_duration: 1d
+  max_duration: 1d        # ceiling on a ban computed from the warnings themselves
+  duration_divider: 30    # total warning minutes / this = how long the ban lasts
+  pm_global: false        # true: tell the player privately instead of announcing to everyone
+
+# Canned messages for `!spam <keyword>`. Keys named rule1..rule20 are ALSO what `!rules` says,
+# in order — the same convention the classic bot used.
+spamages:
+  rule1: "^3Rule #1: ^7no racism of any kind"
+  rule2: "^3Rule #2: ^7no clan stacking — split evenly between the teams"
+  rule3: "^3Rule #3: ^7no arguing with admins"
+  rule4: "^3Rule #4: ^7no abusive language"
+  vent: "^3Voice chat: ^7vent.example.com ^3password ^2hunter2"
+  forum: "^3Our forums: ^7www.example.com"
+
+# Shortcuts for penalty reasons. Typing a single word as the reason on `!warn`, `!kick`, `!ban`,
+# `!tempban`, `!spank` (or any of the bulk commands) expands it through this table.
+#
+#   "<duration>, <text>"   the text, and how long a warning of this kind lives
+#   "<text>"               just the text
+#   "/other"               whatever `other` means
+#   "/spam#rule2"          the spamages entry `rule2`
+warn_reasons:
+  lang: "3h, ^7watch your language"
+  cuss: "/lang"
+  racism: "/spam#rule1"
+  stack: "/spam#rule2"
+  argue: "/spam#rule3"
+  camp: "1h, ^7stop camping"
+  tk: "1d, ^7stop team killing"
+  afk: "5m, ^7you appear to be away from your keyboard"
+  spawnfire: "3h, ^7do not fire at spawn"
