@@ -1,0 +1,28 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.sqlite
+*.db
+.coverage
+htmlcov/
+
+# --- a deployed bot's own files (examples/ keeps the committed templates) ---
+/b3.yaml
+/plugin_*.yaml
+/plugins/
+
+# --- internal working documents, not published ---
+# The architecture rationale, the parity audit against classic B3, and the working list of what is
+# left to build. They are how this project is planned and they stay ours; README.md is the public
+# document and is written to stand on its own without them.
+/DESIGN.md
+/PARITY.md
+/TODO.md

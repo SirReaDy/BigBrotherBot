@@ -1,0 +1,78 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "b3ng"
+version = "2.0.0a0"
+description = "Big Brother Bot (B3) 2.0 — modern, typed, async game-server admin bot"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "GPL-2.0-or-later" }
+authors = [{ name = "B3 project" }]
+
+# Core runtime dependencies. Kept minimal for the v1 (CoD4 + admin) scope.
+dependencies = [
+    "SQLAlchemy>=2.0,<3.0",
+    "alembic>=1.13,<2.0",
+    "pydantic>=2.6,<3.0",
+    "pydantic-settings>=2.2,<3.0",
+    "PyYAML>=6.0,<7.0",
+    # Round-trip YAML: `b3 plugin install` edits the operator's hand-written config in place, so it
+    # must preserve comments and key order (PyYAML cannot).
+    "ruamel.yaml>=0.18",
+    # IANA time-zone database for bot.time_zone / schedules. Windows ships no zoneinfo data at all,
+    # and many slim Linux containers omit it too.
+    "tzdata>=2024.1",
+]
+
+[project.optional-dependencies]
+# Web dashboard + REST/WebSocket API (v2 layer, not required for the core bot).
+api = ["fastapi>=0.110", "uvicorn[standard]>=0.29", "pyjwt>=2.8"]
+# MySQL / PostgreSQL backends (SQLite needs nothing extra).
+mysql = ["PyMySQL>=1.1"]
+postgres = ["psycopg[binary]>=3.1"]
+# Tailing a hosted server's game log over sftp://. ftp/ftps/http need nothing extra (stdlib).
+sftp = ["paramiko>=3.4"]
+# Test + dev tooling.
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "ruff>=0.4",
+    "mypy>=1.9",
+    # Type stubs for the libraries the bot reads config and remote logs with. Without these,
+    # `mypy --strict` cannot see into them and reports every call site as untyped.
+    "types-PyYAML>=6.0",
+    "types-paramiko>=3.4",
+]
+
+[project.scripts]
+b3 = "b3.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+# `mypy --strict src` passes. Install the dev extra first — the stubs above are part of the check,
+# not optional extras: without them yaml and paramiko come back untyped.
+
+# The legacy importer is exempt, and this is the one place worth being explicit about why. It reads
+# rows out of *somebody else's* fifteen-year-old database, whose columns differ between B3 versions
+# and MySQL/SQLite dumps: every value arrives as `Any` and the module's whole job is to coerce it.
+# Annotating that faithfully would mean asserting a shape the data does not actually promise, which
+# is worse than saying so here. It is also run once, by hand, with `b3 import-db`.
+[[tool.mypy.overrides]]
+module = "b3.legacy.importer"
+disallow_untyped_defs = false
+disallow_untyped_calls = false
+disallow_incomplete_defs = false
