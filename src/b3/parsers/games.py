@@ -7,6 +7,8 @@ new parser and an entry here.
 
 from __future__ import annotations
 
+import difflib
+
 from b3.core.clients import ClientManager
 from b3.parsers.base import Parser
 from b3.parsers.battleye import profiles as be_profiles
@@ -50,8 +52,53 @@ PROFILES: dict[str, GameProfile] = {
     **fb_profiles.ALL,
 }
 
-#: What an unknown `server.game` falls back to.
-DEFAULT = cod_profiles.COD4
+class UnknownGameError(ValueError):
+    """`server.game` names a title nothing here can read."""
+
+
+def suggest(game: str) -> list[str]:
+    """Title ids that look like a misspelling of ``game``; empty when nothing is close.
+
+    Ratio first, then prefixes, because the two catch different mistakes and the prefix half is not
+    optional: ``bf3_typo`` is only 0.55 similar to ``bf3`` — under difflib's cutoff — while sharing
+    the whole of it, which is exactly the suffixed-name typo an operator makes.
+    """
+    wanted = game.lower()
+    found = difflib.get_close_matches(wanted, sorted(PROFILES), n=3)
+    if len(wanted) >= 2:  # one character, or none, is a prefix of far too much to be a hint
+        found += [
+            title
+            for title in sorted(PROFILES)
+            if title not in found and (title.startswith(wanted) or wanted.startswith(title))
+        ]
+    return found[:3]
+
+
+def profile_for(game: str) -> GameProfile:
+    """The profile for a ``server.game`` id, or raise.
+
+    There used to be a ``DEFAULT`` here and an unrecognised id quietly got the CoD4 parser:
+    ``game: bf3_typo`` ran ``CodParser`` against a Battlefield server, where every line fails to
+    match and the only symptom is a bot that never reports anything. A guess that cannot be right
+    is worse than a refusal, so this raises and names the near miss.
+    """
+    profile = PROFILES.get(game)
+    if profile is not None:
+        return profile
+    near = suggest(game)
+    did_you_mean = f" — did you mean {' or '.join(repr(n) for n in near)}?" if near else ""
+    raise UnknownGameError(
+        f"unknown game {game!r}{did_you_mean}\n"
+        f"`b3 games` lists all {len(PROFILES)} titles this bot reads"
+    )
+
+
+def by_family() -> dict[str, list[str]]:
+    """Title ids grouped by engine family — what `b3 games` prints and completion reads."""
+    grouped: dict[str, list[str]] = {}
+    for name, profile in PROFILES.items():
+        grouped.setdefault(profile.family, []).append(name)
+    return {family: sorted(ids) for family, ids in sorted(grouped.items())}
 
 
 def parser_for(profile: GameProfile, clients: ClientManager | None = None) -> Parser:

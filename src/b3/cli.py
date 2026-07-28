@@ -80,12 +80,12 @@ def _connect(config: Config) -> Connection:
     """
     from b3.net.logsource import create_log_source
     from b3.net.rcon import Rcon, UdpRconTransport, dialect_for
-    from b3.parsers.games import PUSH_FAMILIES
-    from b3.runtime.bot import PROFILES
+    from b3.parsers.games import PUSH_FAMILIES, profile_for
 
-    profile = PROFILES.get(config.server.game)
+    # Raises UnknownGameError on a typo, which main() reports; nothing has connected yet.
+    profile = profile_for(config.server.game)
 
-    if profile is not None and profile.family in PUSH_FAMILIES:
+    if profile.family in PUSH_FAMILIES:
         # An engine that pushes its events: one object is both halves. Which one it is remains the
         # profile's business, not the loop's.
         pushers: dict[str, Callable[[Config], PushClient]] = {
@@ -110,7 +110,7 @@ def _connect(config: Config) -> Connection:
         password=config.server.rcon_password,
         encoding=config.server.encoding,
         # Black Ops frames its packets differently; every other title speaks plain Quake3.
-        dialect=dialect_for(profile.rcon_dialect if profile else "quake3"),
+        dialect=dialect_for(profile.rcon_dialect),
     )
     source = create_log_source(
         config.server.game_log,
@@ -194,6 +194,8 @@ async def _run_replay(
 
 
 def main(argv: list[str] | None = None) -> int:
+    from b3.parsers.games import PROFILES, UnknownGameError
+
     parser = argparse.ArgumentParser(prog="b3", description="Big Brother Bot 2.0")
     parser.add_argument("-c", "--config", default="b3.yaml", help="path to the YAML config")
     parser.add_argument("-v", "--verbose", action="store_true")
@@ -203,7 +205,15 @@ def main(argv: list[str] | None = None) -> int:
     init = sub.add_parser("init", help="create a bot instance directory for one game server")
     init.add_argument("directory", help="where the instance lives, e.g. /srv/cod4_1/b3")
     init.add_argument("--name", default="b3", help="instance name, used in logs and the unit file")
-    init.add_argument("--game", default="cod4", help="parser id (default: cod4)")
+    # `choices` so a typo is refused here, with the valid set printed, instead of reaching a config
+    # file. `metavar` keeps 29 ids out of the usage line; argparse still lists them on an error.
+    init.add_argument(
+        "--game",
+        default="cod4",
+        choices=sorted(PROFILES),
+        metavar="GAME",
+        help="parser id (default: cod4); see `b3 games`",
+    )
     init.add_argument("--host", default="127.0.0.1", help="game server address")
     init.add_argument("--port", type=int, default=28960, help="game server RCON port")
     init.add_argument("--rcon-password", default="", help="RCON password")
@@ -214,6 +224,8 @@ def main(argv: list[str] | None = None) -> int:
     init.add_argument("--service-user", default="b3", help="user the systemd unit runs as")
     init.add_argument("--force", action="store_true", help="overwrite an existing config")
     sub.add_parser("doctor", help="check this install before starting it for the first time")
+    sub.add_parser("games", help="list the game titles this bot can read")
+    sub.add_parser("plugins", help="list every plugin available here, and which this server runs")
     replay = sub.add_parser("replay", help="replay a recorded log file offline")
     replay.add_argument("logfile", help="path to a game log to replay")
 
@@ -276,25 +288,35 @@ def main(argv: list[str] | None = None) -> int:
         level=logging.DEBUG if args.verbose else logging.INFO,
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
-    # `init` is the command you run when there is no config yet, so it must not need one.
+    # `init` is the command you run when there is no config yet, and `games` is pure reference —
+    # neither must need a config to work.
     if args.cmd == "init":
         return _run_init(args)
+    if args.cmd == "games":
+        return _run_games()
 
     config = load_config(args.config)
     conf_dir = Path(args.config).resolve().parent  # base for @conf tokens in plugin config paths
 
-    if args.cmd == "doctor":
-        return _run_doctor(config, conf_dir)
-    if args.cmd == "run":
-        return asyncio.run(_run_live(config, conf_dir, args.config))
-    elif args.cmd == "replay":
-        asyncio.run(_run_replay(config, args.logfile, conf_dir, args.config))
-    elif args.cmd == "db":
-        _run_db(config, args.action, args.revision)
-    elif args.cmd == "import-db":
-        _run_import(config, args.source_url)
-    elif args.cmd == "plugin":
-        return _run_plugin(config, args, Path(args.config), conf_dir)
+    try:
+        if args.cmd == "doctor":
+            return _run_doctor(config, conf_dir)
+        if args.cmd == "run":
+            return asyncio.run(_run_live(config, conf_dir, args.config))
+        elif args.cmd == "replay":
+            asyncio.run(_run_replay(config, args.logfile, conf_dir, args.config))
+        elif args.cmd == "plugins":
+            return _run_plugins(config, conf_dir)
+        elif args.cmd == "db":
+            _run_db(config, args.action, args.revision)
+        elif args.cmd == "import-db":
+            _run_import(config, args.source_url)
+        elif args.cmd == "plugin":
+            return _run_plugin(config, args, Path(args.config), conf_dir)
+    except UnknownGameError as exc:
+        # A one-line refusal beats a traceback: this is a typo in their config, not a crash.
+        logging.error("%s", exc)
+        return 1
     return 0
 
 
@@ -334,6 +356,64 @@ def _run_init(args: argparse.Namespace) -> int:
     print(f"\nnext:\n  b3 -c {spec.directory / 'b3.yaml'} run")
     if not args.rcon_password:
         print("  (set server.rcon_password first — it is empty)")
+    return 0
+
+
+def _run_games() -> int:
+    """`b3 games` — every valid `server.game`, grouped by the engine that reads it.
+
+    Needs no config on purpose: it answers "what may I write in the config?", which is a question
+    asked before there is one.
+    """
+    from b3.parsers.games import PROFILES, PUSH_FAMILIES, by_family
+
+    grouped = by_family()
+    width = max(len(family) for family in grouped)
+    for family, titles in grouped.items():
+        # Whether the operator has to point us at a game log is the one thing a family decides for
+        # them, so it belongs in the listing rather than only in the README.
+        source = "events over rcon" if family in PUSH_FAMILIES else "reads a game log"
+        print(f"{family:<{width}}  {source:<16}  {'  '.join(titles)}")
+    print(f"\n{len(PROFILES)} titles. Set one as `server.game` in the config, or `b3 init --game`.")
+    return 0
+
+
+def _run_plugins(config: Config, conf_dir: Path | None) -> int:
+    """`b3 plugins` — the three places a plugin can come from, and what this server runs.
+
+    `b3 plugin list` covers the installed pools only; this is the whole set, which is what an
+    operator needs to know what a name in the config may refer to.
+    """
+    import pkgutil
+
+    import b3.plugins
+
+    from b3.core import plugininstall as pi
+    from b3.core.pluginmgr import BUILTIN_PACKAGE
+
+    bundled = sorted(m.name for m in pkgutil.iter_modules(b3.plugins.__path__))
+    print(f"bundled ({BUILTIN_PACKAGE}, no install needed):")
+    print(f"  {'  '.join(bundled) if bundled else '(none)'}")
+
+    pools = [("this server", pi.installed_plugins_dir(config.bot.plugins_dir, conf_dir))]
+    if config.bot.shared_plugins_dir:
+        shared = pi.installed_plugins_dir(config.bot.shared_plugins_dir, conf_dir)
+        if shared != pools[0][1]:
+            pools.append(("shared pool", shared))
+    for label, directory in pools:
+        records = pi.read_lockfile(directory)
+        print(f"\ninstalled, {label} ({directory}):")
+        if not records:
+            print("  (none)")
+        for rec in sorted(records.values(), key=lambda r: r.name):
+            print(f"  {rec.name:<20} {rec.version:<10} {rec.ref}")
+
+    print("\nenabled in this config:")
+    if not config.plugins:
+        print("  (none)")
+    for entry in config.plugins:
+        note = "  [disabled: loaded but inert]" if entry.disabled else ""
+        print(f"  {entry.name:<20} {entry.module or f'{BUILTIN_PACKAGE}.{entry.name}'}{note}")
     return 0
 
 

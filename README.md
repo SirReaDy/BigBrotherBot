@@ -39,7 +39,7 @@ straight answers when something is misconfigured.
 
 **Where it stands today.** All 59 classic admin commands at the classic levels, 29 of the classic bot's
 36 game titles across five engine families, and every core service the old bot had — plus remote log
-tailing, per-server deployment and pre-flight checks it never had. 921 tests, `mypy --strict` clean.
+tailing, per-server deployment and pre-flight checks it never had. 939 tests, `mypy --strict` clean.
 
 ## What was deleted, and what was rebuilt
 
@@ -87,7 +87,7 @@ ported, then a web API and a dashboard over several servers at once.
 
 ```bash
 python -m pip install -e ".[dev]"
-pytest                                            # 921 tests
+pytest                                            # 939 tests
 cd examples && python -m b3.cli -c b3.yaml replay games_mp.log   # offline replay demo
 ```
 
@@ -111,9 +111,15 @@ Installed as `b3`; equivalently `python -m b3.cli`.
 | `b3 -c b3.yaml doctor` | Check this install before starting it: RCON, game log, database, plugins |
 | `b3 -c b3.yaml run` | Connect to the server, tail the game log (locally or [over the network](#tailing-a-hosted-servers-log)), and run until stopped |
 | `b3 -c b3.yaml replay <logfile>` | Replay a recorded log offline — no server, no RCON. The test/demo harness |
+| `b3 games` | Every valid `server.game`, grouped by engine, marking which need no game log. Needs no config |
+| `b3 -c b3.yaml plugins` | Every plugin available here — bundled, installed for this server, installed in the shared pool — and which ones this config runs |
 
 `init` flags: `--name`, `--game`, `--host`, `--port`, `--rcon-password`, `--game-log`, `--database`,
 `--shared-plugins-dir`, `--service` (write a systemd unit), `--service-user`, `--force`.
+
+`--game` only accepts a title the bot actually reads, and so does the config: an unrecognised
+`server.game` stops the bot at startup with the near match named (`unknown game 'bf3_typo' — did you
+mean 'bf3'?`) rather than falling back to a parser that would silently match nothing.
 
 ### Database
 

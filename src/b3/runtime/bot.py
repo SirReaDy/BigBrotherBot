@@ -111,7 +111,8 @@ class Bot:
         #: Where the config was loaded from, so `!reconfig` can re-read it. Set by the CLI.
         self.config_path: Path | None = None
 
-        self.profile = PROFILES.get(config.server.game, games.DEFAULT)
+        # Raises on an unknown title rather than guessing one — see games.profile_for.
+        self.profile = games.profile_for(config.server.game)
         self.parser = games.parser_for(self.profile, self.clients)
         self.game = Game()
         self._rcon = rcon

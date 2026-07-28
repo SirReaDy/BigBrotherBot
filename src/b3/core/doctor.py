@@ -67,16 +67,16 @@ def run_checks(
 
 
 def _check_server(config: Config) -> Check:
+    from b3.parsers.games import suggest
     from b3.runtime.bot import PROFILES
 
     game = config.server.game
     if game not in PROFILES:
-        return Check(
-            "game",
-            Status.FAIL,
-            f"no parser for {game!r}",
-            f"known games: {', '.join(sorted(PROFILES))}",
-        )
+        near = suggest(game)
+        hint = f"known games: {', '.join(sorted(PROFILES))}"
+        if near:
+            hint = f"did you mean {' or '.join(repr(n) for n in near)}? ({hint})"
+        return Check("game", Status.FAIL, f"no parser for {game!r}", hint)
     return Check("game", Status.OK, f"{game}, server {config.server.host}:{config.server.port}")
 
 
