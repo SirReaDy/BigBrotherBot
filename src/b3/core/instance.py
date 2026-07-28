@@ -41,6 +41,9 @@ class InstanceSpec:
     game_log: str = "games_mp.log"
     database: str = "sqlite:///b3.sqlite"
     shared_plugins_dir: str | None = None
+    #: Altitude only: the file the game server reads commands from. Left empty, it is guessed from
+    #: the game log's directory, which is where a real install puts it.
+    command_file: str = ""
 
 
 CONFIG_TEMPLATE = """\
@@ -58,19 +61,19 @@ bot:
   log_level: INFO
   # Any SQLAlchemy URL. Point several servers at one MySQL/Postgres URL to share bans, admin
   # levels and player history between them; keep them separate to keep the servers independent.
-  database: "{database}"
+  database: {database}
   # Where `b3 plugin install` puts plugins for THIS server.
   plugins_dir: "@conf/plugins"
 {shared_line}
 server:
   game: {game}
-  rcon_password: "{rcon_password}"
+  rcon_password: {rcon_password}
   host: {host}
   port: {port}
   # A local path, or a URL if the bot does not run on the game server's own box:
   #   ftp://user:pass@host/games_mp.log   ftps://…   sftp://…   http(s)://…
-  game_log: "{game_log}"
-  encoding: latin-1
+  game_log: {game_log}
+{command_file_line}  encoding: {encoding}
 
 # Which plugins this server runs. `b3 plugin install` appends to this list for you.
 plugins:
@@ -104,6 +107,46 @@ WantedBy=multi-user.target
 """
 
 
+def _yaml_quote(value: str) -> str:
+    """Quote a value for YAML in the one string form that has no escape sequences.
+
+    This is not tidiness. The template used to interpolate paths and passwords into **double**-quoted
+    scalars, where a backslash starts an escape — so `b3 init --game-log C:\\Users\\b3\\log.txt` wrote a
+    config whose very next line PyYAML refused to read (`\\U` is the start of a unicode escape), and the
+    operator's first command after a successful setup was a traceback. Single-quoted YAML has exactly
+    one rule: a literal `'` is written `''`.
+    """
+    return "'" + value.replace("'", "''") + "'"
+
+
+def _needs_command_file(game: str) -> bool:
+    """Whether this title is commanded by writing to a file rather than over a socket."""
+    from b3.parsers.games import FILE_RCON_FAMILIES, PROFILES
+
+    profile = PROFILES.get(game)
+    return profile is not None and profile.family in FILE_RCON_FAMILIES
+
+
+def _command_file_line(spec: InstanceSpec) -> str:
+    """The `command_file:` line for the games that need one, and nothing for the rest.
+
+    Guessed from the game log's own directory when the operator did not say, because that is where an
+    Altitude install keeps it and a wrong-but-obvious path is easier to correct than a missing
+    setting nobody knew about. `b3 doctor` checks it either way.
+    """
+    if not _needs_command_file(spec.game):
+        return ""
+    path = spec.command_file
+    if not path:
+        log_path = Path(spec.game_log)
+        path = str(log_path.parent / "command.txt") if log_path.parent != Path() else "command.txt"
+    return (
+        "  # This game has no rcon port: the bot drives the server by appending to this file, which\n"
+        "  # the server reads. It must be the one the server is configured to watch.\n"
+        f"  command_file: {_yaml_quote(path)}\n"
+    )
+
+
 def create_instance(
     spec: InstanceSpec,
     *,
@@ -128,7 +171,9 @@ def create_instance(
     (directory / "plugins").mkdir(exist_ok=True)
 
     shared_line = (
-        f'  shared_plugins_dir: "{spec.shared_plugins_dir}"\n' if spec.shared_plugins_dir else ""
+        f"  shared_plugins_dir: {_yaml_quote(spec.shared_plugins_dir)}\n"
+        if spec.shared_plugins_dir
+        else ""
     )
     config_path.write_text(
         CONFIG_TEMPLATE.format(
@@ -136,11 +181,16 @@ def create_instance(
             game=spec.game,
             host=spec.host,
             port=spec.port,
-            rcon_password=spec.rcon_password,
-            game_log=spec.game_log,
-            database=spec.database,
+            # Quoted, not because these are pretty, but because a Windows path or a password with a
+            # backslash or a quote in it used to produce an unloadable config. See _yaml_quote.
+            rcon_password=_yaml_quote(spec.rcon_password),
+            game_log=_yaml_quote(spec.game_log),
+            database=_yaml_quote(spec.database),
             config_path=config_path,
             shared_line=shared_line,
+            command_file_line=_command_file_line(spec),
+            # Altitude's log is JSON, which is UTF-8 by definition; the CoD engines are latin-1.
+            encoding="utf-8" if _needs_command_file(spec.game) else "latin-1",
         ),
         encoding="utf-8",
     )

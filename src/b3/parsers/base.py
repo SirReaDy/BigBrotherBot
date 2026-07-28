@@ -28,6 +28,11 @@ class Parser(ABC):
         # NB: use an explicit None check — an empty ClientManager is falsy (__len__ == 0),
         # so `clients or ClientManager()` would wrongly discard a shared-but-empty manager.
         self.clients = clients if clients is not None else ClientManager()
+        #: The game server's own port, or 0 for "not stated". Only an engine whose log carries
+        #: several servers' traffic needs it — Altitude writes every server on the machine into one
+        #: file, and a line from a neighbour must not be acted on. Set by `games.parser_for` after
+        #: construction, so a family that does not care never has to accept the argument.
+        self.port = 0
         self._router = LineRouter.from_instance(self)
 
     def parse_line(self, line: str) -> list[Event]:

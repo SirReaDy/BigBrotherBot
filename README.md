@@ -37,9 +37,9 @@ servers. What they sit on is all new:
 migrations instead of manual `ALTER TABLE`, plugins that install by name and pin to a version, and
 straight answers when something is misconfigured.
 
-**Where it stands today.** All 59 classic admin commands at the classic levels, 29 of the classic bot's
-36 game titles across five engine families, and every core service the old bot had — plus remote log
-tailing, per-server deployment and pre-flight checks it never had. 939 tests, `mypy --strict` clean.
+**Where it stands today.** All 59 classic admin commands at the classic levels, 30 of the classic bot's
+36 game titles across six engine families, and every core service the old bot had — plus remote log
+tailing, per-server deployment and pre-flight checks it never had. 1,018 tests, `mypy --strict` clean.
 
 ## What was deleted, and what was rebuilt
 
@@ -87,7 +87,7 @@ ported, then a web API and a dashboard over several servers at once.
 
 ```bash
 python -m pip install -e ".[dev]"
-pytest                                            # 939 tests
+pytest                                            # 1,018 tests
 cd examples && python -m b3.cli -c b3.yaml replay games_mp.log   # offline replay demo
 ```
 
@@ -114,8 +114,9 @@ Installed as `b3`; equivalently `python -m b3.cli`.
 | `b3 games` | Every valid `server.game`, grouped by engine, marking which need no game log. Needs no config |
 | `b3 -c b3.yaml plugins` | Every plugin available here — bundled, installed for this server, installed in the shared pool — and which ones this config runs |
 
-`init` flags: `--name`, `--game`, `--host`, `--port`, `--rcon-password`, `--game-log`, `--database`,
-`--shared-plugins-dir`, `--service` (write a systemd unit), `--service-user`, `--force`.
+`init` flags: `--name`, `--game`, `--host`, `--port`, `--rcon-password`, `--game-log`,
+`--command-file` (Altitude only), `--database`, `--shared-plugins-dir`, `--service` (write a systemd
+unit), `--service-user`, `--force`.
 
 `--game` only accepts a title the bot actually reads, and so does the config: an unrecognised
 `server.game` stops the bot at startup with the near match named (`unknown game 'bf3_typo' — did you
@@ -654,7 +655,8 @@ messages:
 
 ### Supported games
 
-Four engine families, twenty-nine titles. Set `server.game` to one of them:
+Six engine families, thirty titles — `b3 games` prints the list on any install. Set `server.game` to
+one of them:
 
 | Family | `server.game` |
 |---|---|
@@ -665,6 +667,7 @@ Four engine families, twenty-nine titles. Set `server.game` to one of them:
 | **Quake 3 — Urban Terror** | `iourt41` `iourt42` `iourt43` |
 | **Quake 3 — Enemy Territory** | `et` `etpro` |
 | **Quake 3 — Soldier of Fortune 2** | `sof2` `sof2pm` |
+| **Altitude** | `altitude` |
 
 A family is one parser; the titles in it are data — GUID length, ban verbs, the shape of the status
 table. Adding a title to a family is a few lines; adding a family is a parser.
@@ -674,8 +677,8 @@ on every line; a Quake3 log states it **once**, in an infostring when the player
 every later line is a bare slot number. Quake3 chat lines carry a *name* rather than a slot, so a
 player the bot never saw connect produces no event rather than a nameless one.
 
-The last three rows are the shared Quake3 grammar **plus** that title's own lines, read by a
-subclass — a title never loses a line by gaining a family of its own:
+The three Urban Terror / ET / SoF2 rows are the shared Quake3 grammar **plus** that title's own
+lines, read by a subclass — a title never loses a line by gaining a family of its own:
 
 - **Urban Terror** — `Hit:` (non-fatal hits with a hit location, which is what makes team-damage
   policing possible), `Radio:`, flags, bomb mode and the voting lines. A hit line carries no damage
@@ -754,6 +757,42 @@ Arma server with nobody on it is silent too.
 `!unban` does reach the server: BattlEye's `removeBan` takes a ban-list row number rather than a
 player id, so the bot reads the ban list, matches the GUID, removes that row, and re-reads to confirm.
 If it cannot confirm, it says so rather than reporting a success it did not verify.
+
+### Altitude
+
+The odd one out: Altitude has **no admin port at all**. The server writes a log of JSON events, and it
+*reads* commands from a second file — so that file is the bot's RCON, and `server.command_file` is not
+optional.
+
+```yaml
+server:
+  game: altitude
+  port: 27276                        # the game server's port: it identifies whose lines are whose
+  game_log: "…/servers/log.txt"      # one JSON object per line
+  command_file: "…/servers/command.txt"   # the file the server reads commands from
+  encoding: utf-8                    # its log is JSON, so utf-8 rather than the CoD default
+```
+
+- **`server.rcon_password` is not used.** Write access to the command file is the authorisation. `b3
+  doctor` checks that access by really writing, rather than trusting permission bits.
+- **`server.port` matters even though nothing connects to it.** One Altitude installation runs several
+  servers through *one* log and *one* command file, so every line carries a port: the bot ignores log
+  lines from its neighbours and stamps its own commands so only its own server runs them.
+- **Nothing can be asked of the server.** There is no reply channel, so the player list, the current
+  map and everything else come from the log. `!maprotate` has no verb behind it on this engine and says
+  so instead of quietly doing nothing; `!map <name>` works.
+
+What you get: identity from the player's `vaporId` — which arrives *with* the connection, so a banned
+player is recognised before they fly rather than on their first spawn — permanent and timed bans that
+live in the server's own ban list, `!unban` in one command, and the game's own team colours, votes,
+ball goals, powerups and end-of-round stats as events.
+
+One behaviour is worth knowing because it is a safety measure rather than a convenience: **the bot
+empties the command file when it starts and when it stops.** An Altitude server never truncates that
+file — it remembers how far it has read — so anything left in it is executed again the next time the
+server starts. A leftover `kick` or ban from a previous run would otherwise land on whoever holds that
+name later. Bans are recorded in the bot's own database regardless, and re-applied on reconnect, so
+nothing is lost by discarding the file.
 
 ### Which CoD4 are you running?
 

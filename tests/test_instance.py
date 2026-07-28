@@ -38,6 +38,39 @@ def test_init_writes_a_config_that_actually_loads(tmp_path):
     assert [p.name for p in config.plugins] == ["admin"]
 
 
+def test_init_writes_a_config_that_loads_on_windows_too(tmp_path):
+    """The bug this pins: paths went into *double*-quoted YAML, where a backslash starts an escape.
+
+    `--game-log C:\\Users\\b3\\log.txt` produced a config whose next line PyYAML refused to read — `\\U`
+    is the start of a unicode escape — so an operator's first command after a successful setup was a
+    traceback. Found by running `b3 init` on Windows with an absolute path, which no test did.
+    """
+    create_instance(
+        InstanceSpec(
+            directory=tmp_path / "b3",
+            game_log=r"C:\Users\b3\Altitude\servers\log.txt",
+            database=r"sqlite:///C:\Users\b3\b3.sqlite",
+            shared_plugins_dir=r"C:\Users\b3\shared",
+        )
+    )
+
+    config = load_config(str(tmp_path / "b3" / "b3.yaml"))
+    assert config.server.game_log == r"C:\Users\b3\Altitude\servers\log.txt"
+    assert config.bot.shared_plugins_dir == r"C:\Users\b3\shared"
+    assert config.bot.database.endswith(r"C:\Users\b3\b3.sqlite")
+
+
+@pytest.mark.parametrize(
+    "password",
+    [r"back\slash", 'has"a"quote', "has'a'apostrophe", r"^1colour\tab", "trailing\\"],
+)
+def test_an_awkward_rcon_password_survives_the_round_trip(tmp_path, password):
+    """A password is whatever the server's config says, including characters YAML cares about. One
+    that broke the file used to mean a bot that would not start and no clue why."""
+    create_instance(InstanceSpec(directory=tmp_path / "b3", rcon_password=password))
+    assert load_config(str(tmp_path / "b3" / "b3.yaml")).server.rcon_password == password
+
+
 def test_init_creates_the_plugins_directory(tmp_path):
     create_instance(InstanceSpec(directory=tmp_path / "b3"))
     assert (tmp_path / "b3" / "plugins").is_dir()
@@ -132,6 +165,22 @@ def test_the_cli_reports_a_refusal_instead_of_raising(tmp_path, monkeypatch, cap
     with caplog.at_level("ERROR"):
         assert main(["init", "srv"]) == 1
     assert "already exists" in caplog.text
+
+
+def test_a_missing_game_log_is_reported_rather_than_raised(tmp_path, monkeypatch, caplog):
+    """The commonest first-run failure there is. `b3 run` used to answer it with a traceback out of
+    `source.open()` — which also sat outside the try/finally, so nothing built by `_connect` was
+    closed on the way out."""
+    monkeypatch.chdir(tmp_path)
+    main(["init", "srv", "--rcon-password", "x"])  # the game log it names does not exist
+    config_path = tmp_path / "srv" / "b3.yaml"
+
+    with caplog.at_level("ERROR"):
+        assert main(["-c", str(config_path), "run"]) == 1
+
+    assert "cannot read" in caplog.text
+    assert "doctor" in caplog.text  # and it says where to get the whole picture
+    assert "Traceback" not in caplog.text
 
 
 def test_a_scaffolded_instance_runs(tmp_path, monkeypatch):

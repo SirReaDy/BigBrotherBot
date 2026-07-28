@@ -128,6 +128,28 @@ def test_game_uptime_is_zero_before_the_first_map():
     assert Game().map_uptime(1000.0) == 0.0
 
 
+def test_game_reads_the_servers_name_and_size_out_of_any_cvar_dump():
+    """The classic bot set these from inside half a dozen parsers, and left them unset in the rest.
+    Reading them wherever cvars arrive means no parser has to remember to."""
+    game = Game()
+    game.start_map({"mapname": "mp_crash", "sv_hostname": "^1My Server", "sv_maxclients": "32"}, 1.0)
+
+    assert game.hostname == "^1My Server"
+    assert game.max_players == 32
+
+    game.update_cvars({"sv_maxclients": "24"})
+    assert game.max_players == 24
+    assert game.hostname == "^1My Server"  # not in this dump, so not forgotten
+
+
+def test_a_nonsense_player_limit_keeps_the_last_good_one():
+    """A cvar is whatever the operator typed into the server's config."""
+    game = Game()
+    game.update_cvars({"sv_maxclients": "32"})
+    game.update_cvars({"sv_maxclients": "thirty-two"})
+    assert game.max_players == 32
+
+
 @pytest.mark.asyncio
 async def test_initgame_updates_the_bots_game_state(tmp_path):
     bot = _bot(tmp_path)

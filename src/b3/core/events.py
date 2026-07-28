@@ -83,6 +83,11 @@ class EventType(Enum):
     GAME_ROUND_START = auto()
     GAME_ROUND_END = auto()
     GAME_MAP_CHANGE = auto()
+    #: The server stated its own name and player limit. The classic bot set `game.sv_hostname` and
+    #: `sv_maxclients` from inside half a dozen parsers, so the concept is shared even though only
+    #: Altitude currently announces it on a line of its own — every other family here reports the
+    #: same two values as cvars, which `Game` now reads from a cvar dump.
+    SERVER_INFO = auto()
     GAME_WARMUP = auto()
     GAME_EXIT = auto()
     # Game-level objective outcomes, as opposed to something a player did (those are CLIENT_ACTION

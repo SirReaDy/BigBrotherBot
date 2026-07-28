@@ -42,6 +42,12 @@ class Game:
     map_name: str = ""
     gametype: str = ""
     rounds: int = 0
+    #: What the server calls itself, and how many players it will hold. The classic bot kept these as
+    #: ``sv_hostname``/``sv_maxclients`` and set them from inside each parser; here they are read out
+    #: of any cvar dump that carries them, or from a ``SERVER_INFO`` event on an engine that
+    #: announces them instead (Altitude's ``serverInit``).
+    hostname: str = ""
+    max_players: int = 0
     #: Epoch seconds when the current map / round started; None until the first one is seen.
     map_start: float | None = None
     round_start: float | None = None
@@ -50,12 +56,32 @@ class Game:
 
     def start_map(self, cvars: dict[str, str], now: float) -> None:
         """Record a new map from the cvar dump on an ``InitGame`` line."""
-        self.cvars.update(cvars)
+        self.update_cvars(cvars)
         self.map_name = cvars.get("mapname", self.map_name)
         self.gametype = cvars.get("g_gametype", self.gametype)
         self.map_start = now
         self.round_start = now
         self.rounds = 1
+
+    def update_cvars(self, cvars: dict[str, str]) -> None:
+        """Merge freshly-read cvars, keeping the named fields above in step with them.
+
+        Everything the bot learns about the server arrives as cvars on most engines, so reading the
+        two interesting ones here means no parser has to remember to — which is how they ended up
+        being set in six different places in the classic bot, and unset in the rest.
+        """
+        self.cvars.update(cvars)
+        hostname = cvars.get("sv_hostname", "")
+        if hostname:
+            self.hostname = hostname
+        limit = cvars.get("sv_maxclients", "")
+        if limit:
+            try:
+                self.max_players = int(limit)
+            except ValueError:
+                # A cvar is whatever the operator typed. Keeping the last good value beats crashing
+                # the line that happened to carry a bad one.
+                pass
 
     def start_round(self, now: float) -> None:
         self.rounds += 1

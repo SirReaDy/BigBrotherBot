@@ -190,6 +190,16 @@ def _check_game_log(config: Config) -> Check:
 
 def _check_rcon(config: Config, rcon_factory: "Callable[[], RconClient] | None" = None) -> Check:
     """Ask the server for its status. Distinguishes 'not answering' from 'wrong password'."""
+    from b3.net.rcon import Rcon, RconError, UdpRconTransport
+    from b3.parsers.games import FILE_RCON_FAMILIES, PROFILES, PUSH_FAMILIES
+
+    profile = PROFILES.get(config.server.game)
+    if rcon_factory is None and profile is not None and profile.family in FILE_RCON_FAMILIES:
+        # Checked before the password, because this family has no password: write access to the
+        # command file *is* the authorisation, and warning about an empty rcon_password on a game
+        # that has no rcon port would be advice to go and set a setting that does nothing.
+        return _check_command_file(config)
+
     if not config.server.rcon_password:
         return Check(
             "rcon",
@@ -198,10 +208,6 @@ def _check_rcon(config: Config, rcon_factory: "Callable[[], RconClient] | None" 
             "the bot can read the log but cannot kick, ban or reply in game",
         )
 
-    from b3.net.rcon import Rcon, RconError, UdpRconTransport
-    from b3.parsers.games import PROFILES, PUSH_FAMILIES
-
-    profile = PROFILES.get(config.server.game)
     if rcon_factory is None and profile is not None and profile.family in PUSH_FAMILIES:
         if profile.family == "frostbite":
             return _check_frostbite_rcon(config)
@@ -255,6 +261,56 @@ def _check_rcon(config: Config, rcon_factory: "Callable[[], RconClient] | None" 
         )
     players = max(0, len([ln for ln in reply.splitlines() if ln.strip()]) - 3)
     return Check("rcon", Status.OK, f"answered; roughly {players} player(s) connected")
+
+
+def _check_command_file(config: Config) -> Check:
+    """Altitude: can we write to the file the game server reads its commands from?
+
+    Reported under the name "rcon" because that is the job it does, and because an operator reading
+    the report wants one row that answers "can the bot act on this server?".
+
+    Writability is tested by actually appending and truncating, not by looking at permission bits: on
+    Windows an ACL can refuse a write that `os.access` says is fine, and this check exists precisely
+    so nobody discovers that from a kick that did nothing.
+    """
+    spec = config.server.command_file
+    if not spec:
+        return Check(
+            "rcon",
+            Status.FAIL,
+            f"a {config.server.game} server is commanded through a file, and none is configured",
+            "set server.command_file to the command.txt the game server reads "
+            "(next to its log), or the bot can watch but never act",
+        )
+    path = Path(spec)
+    if not path.parent.is_dir():
+        return Check(
+            "rcon",
+            Status.FAIL,
+            f"{path.parent} does not exist",
+            "server.command_file must be inside the game server's own directory",
+        )
+    try:
+        with path.open("a", encoding="utf-8"):
+            pass
+        existing = path.stat().st_size
+    except OSError as exc:
+        return Check(
+            "rcon",
+            Status.FAIL,
+            f"{path} is not writable: {exc}",
+            "the bot's user needs write access; this file is how it kicks, bans and talks",
+        )
+    if existing:
+        # Not a failure: the bot empties it on startup precisely so these never run again. Saying so
+        # is still worth a line, because it means the last run did not stop cleanly.
+        return Check(
+            "rcon",
+            Status.WARN,
+            f"{path} is writable, and holds {existing} byte(s) from a previous run",
+            "the bot empties it on startup so the game server cannot replay old commands",
+        )
+    return Check("rcon", Status.OK, f"{path} is writable (this game has no rcon port)")
 
 
 def _check_battleye_rcon(config: Config) -> Check:

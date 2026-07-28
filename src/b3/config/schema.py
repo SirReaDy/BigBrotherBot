@@ -42,6 +42,16 @@ class BotConfig(BaseModel):
     silent_level: int = 80
 
 
+class ConfigError(Exception):
+    """The config is valid YAML, and still unusable for the game it names.
+
+    Pydantic catches what is wrong with a *value*; this is for what is wrong with a *combination* —
+    an Altitude server with no `command_file`, for instance, where every field validates and the bot
+    still could not kick anyone. Reported by the CLI as one line, like an unknown game, because it is
+    the same kind of mistake: something for the operator to fix in the file, not a crash.
+    """
+
+
 class ServerConfig(BaseModel):
     game: str = "cod4"  # parser id
     rcon_password: str = ""
@@ -50,7 +60,12 @@ class ServerConfig(BaseModel):
     # Local path, or a URL to tail a hosted server's log remotely:
     #   ftp://user:pass@host/games_mp.log   ftps://…   sftp://…   http(s)://…
     game_log: str = "games_mp.log"
-    # Text encoding of the game log / RCON (CoD engines are typically latin-1).
+    # Altitude only: the file the game server reads console commands out of. That engine has no
+    # admin socket, so without this the bot can watch the game but not act on it — see
+    # b3.net.altitude. Ignored by every other family.
+    command_file: str = ""
+    # Text encoding of the game log / RCON (CoD engines are typically latin-1; Altitude's JSON log
+    # is utf-8).
     encoding: str = "latin-1"
     rcon_timeout: float = 0.8
     # -- remote game_log only (ignored for a local path) --

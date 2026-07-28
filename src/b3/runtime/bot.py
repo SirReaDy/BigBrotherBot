@@ -29,7 +29,7 @@ from b3.core.game import Game, PlayerInfo
 from b3.core.messages import Messages
 from b3.core.plugin import Plugin
 from b3.core.scheduler import Scheduler
-from b3.core.util import format_time, sanitize_rcon_value
+from b3.core.util import as_int, format_time, sanitize_rcon_value
 from b3.domain.client import Alias, Client, IpAlias, NEVER_EXPIRES, Penalty, PenaltyType
 from b3.parsers import games
 from b3.parsers.cod import status as status_parser
@@ -113,7 +113,7 @@ class Bot:
 
         # Raises on an unknown title rather than guessing one — see games.profile_for.
         self.profile = games.profile_for(config.server.game)
-        self.parser = games.parser_for(self.profile, self.clients)
+        self.parser = games.parser_for(self.profile, self.clients, config.server.port)
         self.game = Game()
         self._rcon = rcon
         self._processor = CommandProcessor(
@@ -133,6 +133,7 @@ class Bot:
         self.bus.subscribe(EventType.CLIENT_JOIN, self._on_join)
         self.bus.subscribe(EventType.CLIENT_DISCONNECT, self._on_disconnect)
         self.bus.subscribe(EventType.GAME_ROUND_START, self._on_round_start)
+        self.bus.subscribe(EventType.SERVER_INFO, self._on_server_info)
         for evt in _SAY_EVENTS:
             self.bus.subscribe(evt, self._on_say)
 
@@ -216,8 +217,22 @@ class Bot:
             if previous:
                 self.bus.publish_soon(Event(EventType.GAME_MAP_CHANGE, data=new_map))
         else:
-            self.game.cvars.update(cvars)
+            self.game.update_cvars(cvars)
             self.game.start_round(now)
+
+    def _on_server_info(self, event: Event) -> None:
+        """The server said what it is called and how many players it holds.
+
+        Altitude announces this on its own line; every other family here reports the same two values
+        as cvars, which :meth:`Game.update_cvars` picks up. Before this the event was published and
+        nothing listened, so the values were parsed and thrown away.
+        """
+        name = str(event.data or "")
+        if name:
+            self.game.hostname = name
+        limit = as_int(event.extra.get("max_players"), 0)
+        if limit:
+            self.game.max_players = limit
 
     def _schedule_auth(self, client: Client) -> None:
         """Start the status-poll auth for a client, if we can (needs RCON and a running loop)."""
@@ -398,11 +413,19 @@ class Bot:
             self._write(self.profile.say_template % sanitize_rcon_value(line, None))
 
     def tell(self, client: Client, text: str) -> None:
-        """Message one player, split across as many lines as the game's chat limit needs."""
+        """Message one player, split across as many lines as the game's chat limit needs.
+
+        The name is offered as well as the slot because engines disagree about which addresses a
+        player: Altitude's `serverWhisper` takes the name, and it has no verb that takes a slot.
+        """
         for line in self.messages.wrap(text):
             self._write(
                 self.profile.tell_template
-                % {"cid": client.cid, "text": sanitize_rcon_value(line, None)}
+                % {
+                    "cid": client.cid,
+                    "name": sanitize_rcon_value(client.name),
+                    "text": sanitize_rcon_value(line, None),
+                }
             )
 
     def say_big(self, text: str) -> None:
@@ -436,6 +459,19 @@ class Bot:
         own_reader = getattr(self._rcon, "get_players", None)
         if own_reader is not None:
             return list(own_reader())
+        if not self.profile.status_command:
+            # This engine cannot be asked at all — Altitude's "rcon" is a file the server reads, and
+            # nothing ever answers. Sending the query anyway would append a bogus command to that
+            # file; answering "nobody is connected" would be worse, because `_reconcile` would then
+            # drop every player the log told us about. The parser keeps the roster instead.
+            parser_reader = getattr(self.parser, "get_players", None)
+            if parser_reader is not None:
+                return list(parser_reader())
+            return [
+                PlayerInfo(cid=c.cid, name=c.name, guid=c.guid, ip=c.ip)
+                for c in self.clients.connected()
+                if c.cid is not None
+            ]
         # Cached briefly by Rcon.get_status, so an auth poll and a `!status` in the same second
         # cost one round trip.
         get_status = getattr(self._rcon, "get_status", None)
@@ -453,7 +489,7 @@ class Bot:
             return None
         value = status_parser.parse_cvar(name, self._ask(name))
         if value is not None:
-            self.game.cvars[name] = value
+            self.game.update_cvars({name: value})
         return value
 
     def set_cvar(self, name: str, value: str) -> None:
@@ -462,7 +498,9 @@ class Bot:
         self.game.cvars[name] = value
 
     def get_map(self) -> str | None:
-        if self._rcon is None:
+        if self._rcon is None or not self.profile.status_command:
+            # Nothing to ask (see `get_players`), so the answer is what the log last said — which on
+            # Altitude is accurate: it announces every map change.
             return self.game.map_name or None
         get_status = getattr(self._rcon, "get_status", None)
         raw = get_status() if get_status else self._ask(self.profile.status_command)
@@ -494,6 +532,14 @@ class Bot:
         self._send(self.profile.map_template % sanitize_rcon_value(name))
 
     def rotate_map(self) -> None:
+        if not self.profile.rotate_command:
+            # No verb for it on this engine. Said out loud, because the alternative is an admin
+            # typing `!maprotate`, being told nothing, and assuming it worked.
+            log.warning(
+                "%s has no map-rotation command; skip to a named map with !map instead",
+                self.profile.name,
+            )
+            return
         self._send(self.profile.rotate_command)
 
     def sync(self) -> list[Client]:

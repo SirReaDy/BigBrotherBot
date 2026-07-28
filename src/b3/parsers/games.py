@@ -10,6 +10,8 @@ from __future__ import annotations
 import difflib
 
 from b3.core.clients import ClientManager
+from b3.parsers.altitude import profiles as alt_profiles
+from b3.parsers.altitude.parser import AltParser
 from b3.parsers.base import Parser
 from b3.parsers.battleye import profiles as be_profiles
 from b3.parsers.battleye.parser import BeParser
@@ -38,18 +40,26 @@ FAMILIES: dict[str, type[Parser]] = {
     "battleye": BeParser,
     # Frostbite goes further: its events are not even text. See b3.net.frostbite.
     "frostbite": FbParser,
+    # Altitude has no admin socket at all: it writes a JSON log and reads commands out of a file.
+    # See b3.net.altitude.
+    "altitude": AltParser,
 }
 
 #: Families whose events arrive over the RCON connection instead of a log file, so `server.game_log`
 #: is meaningless for them and the CLI builds one object to serve as both.
 PUSH_FAMILIES = frozenset({"battleye", "frostbite"})
 
-#: `server.game` -> profile. Four engine families, twenty-nine titles.
+#: Families the bot commands by appending to a file the game server reads, instead of over a socket.
+#: They need `server.command_file` set, and there is no reply to anything they are sent.
+FILE_RCON_FAMILIES = frozenset({"altitude"})
+
+#: `server.game` -> profile. Six engine families, thirty titles.
 PROFILES: dict[str, GameProfile] = {
     **cod_profiles.ALL,
     **q3_profiles.ALL,
     **be_profiles.ALL,
     **fb_profiles.ALL,
+    **alt_profiles.ALL,
 }
 
 class UnknownGameError(ValueError):
@@ -101,9 +111,18 @@ def by_family() -> dict[str, list[str]]:
     return {family: sorted(ids) for family, ids in sorted(grouped.items())}
 
 
-def parser_for(profile: GameProfile, clients: ClientManager | None = None) -> Parser:
-    """Build the parser this profile's family needs."""
+def parser_for(
+    profile: GameProfile, clients: ClientManager | None = None, port: int = 0
+) -> Parser:
+    """Build the parser this profile's family needs.
+
+    ``port`` is set on the parser afterwards rather than passed in, so that the one family that
+    needs it (see :attr:`b3.parsers.base.Parser.port`) does not change the constructor every other
+    family is built through.
+    """
     family = FAMILIES.get(profile.family)
     if family is None:  # pragma: no cover - only reachable from a hand-written profile
         raise ValueError(f"{profile.name}: no parser for engine family {profile.family!r}")
-    return family(profile, clients)
+    parser = family(profile, clients)
+    parser.port = port
+    return parser

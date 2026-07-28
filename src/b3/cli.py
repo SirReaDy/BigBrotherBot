@@ -80,10 +80,30 @@ def _connect(config: Config) -> Connection:
     """
     from b3.net.logsource import create_log_source
     from b3.net.rcon import Rcon, UdpRconTransport, dialect_for
-    from b3.parsers.games import PUSH_FAMILIES, profile_for
+    from b3.parsers.games import FILE_RCON_FAMILIES, PUSH_FAMILIES, profile_for
 
     # Raises UnknownGameError on a typo, which main() reports; nothing has connected yet.
     profile = profile_for(config.server.game)
+
+    if profile.family in FILE_RCON_FAMILIES:
+        # A third shape: the events come from a log like most games, but commands are *appended to a
+        # file* the game server reads rather than sent over a socket. Altitude has no admin port.
+        return Connection(
+            rcon=_command_file_client(config),
+            source=create_log_source(
+                config.server.game_log,
+                # utf-8 regardless of `server.encoding`, which defaults to latin-1 for the CoD
+                # engines. This log is JSON, and JSON is UTF-8 by definition — reading it as
+                # latin-1 does not fail, it just quietly mangles every non-ASCII player name. The
+                # source decodes with errors="replace", so a stray byte still costs one character
+                # rather than the line.
+                encoding="utf-8",
+                poll_interval=config.server.log_poll_interval,
+                timeout=config.server.log_timeout,
+                max_gap=config.server.log_max_gap,
+            ),
+            description=f"{config.server.game_log} (commands -> {config.server.command_file})",
+        )
 
     if profile.family in PUSH_FAMILIES:
         # An engine that pushes its events: one object is both halves. Which one it is remains the
@@ -122,6 +142,29 @@ def _connect(config: Config) -> Connection:
     return Connection(rcon=rcon, source=source, description=config.server.game_log)
 
 
+def _command_file_client(config: Config) -> RconClient:
+    """The Altitude "rcon": a file the game server reads commands out of.
+
+    Refuses to build without ``server.command_file``. The classic parser died here too, and it is the
+    right call: every admin command — every kick, ban and reply — would otherwise be written nowhere
+    and report success. A bot that cannot act is not a working bot, and finding out from a player is
+    the expensive way.
+    """
+    from b3.config.schema import ConfigError
+    from b3.net.altitude import AltitudeCommandFile
+
+    if not config.server.command_file:
+        raise ConfigError(
+            f"{config.server.game} is commanded through a file, so server.command_file must be set "
+            "(it is the command.txt the game server reads; see `b3 doctor`)"
+        )
+    client = AltitudeCommandFile(
+        config.server.command_file, port=config.server.port, encoding="utf-8"
+    )
+    client.open()
+    return client
+
+
 def _battleye_client(config: Config) -> PushClient:
     from b3.net.battleye import BattleyeClient
 
@@ -150,7 +193,25 @@ async def _run_live(config: Config, conf_dir: Path | None = None, config_path: s
     bot = build_bot(config, rcon=rcon, conf_dir=conf_dir)
     bot.config_path = Path(config_path) if config_path else None  # so `!reconfig` can re-read it
 
-    source.open()
+    from b3.net.logsource import LogSourceError
+
+    try:
+        source.open()
+    except (OSError, LogSourceError) as exc:
+        # The commonest first-run failure of all: a game log that is not where the config says. It
+        # used to be a traceback — and because this open sat outside the block below, whatever
+        # `_connect` had already built was never closed either.
+        logging.error("cannot read %s: %s", connection.description, exc)
+        logging.error(
+            "-> check server.game_log, then run `b3 -c %s doctor` for the whole picture",
+            config_path or "b3.yaml",
+        )
+        try:
+            rcon.close()  # closes the source too on an engine where they are one object
+        except Exception:  # noqa: BLE001 - nothing useful to do while giving up
+            pass
+        return 1
+
     logging.info("b3 running; reading %s", connection.description)
     next_poll = 0.0
     try:
@@ -194,6 +255,7 @@ async def _run_replay(
 
 
 def main(argv: list[str] | None = None) -> int:
+    from b3.config.schema import ConfigError
     from b3.parsers.games import PROFILES, UnknownGameError
 
     parser = argparse.ArgumentParser(prog="b3", description="Big Brother Bot 2.0")
@@ -218,6 +280,12 @@ def main(argv: list[str] | None = None) -> int:
     init.add_argument("--port", type=int, default=28960, help="game server RCON port")
     init.add_argument("--rcon-password", default="", help="RCON password")
     init.add_argument("--game-log", default="games_mp.log", help="path or ftp/sftp/http URL")
+    init.add_argument(
+        "--command-file",
+        default="",
+        help="altitude only: the file the game server reads commands from "
+        "(default: command.txt beside the game log)",
+    )
     init.add_argument("--database", default="sqlite:///b3.sqlite", help="SQLAlchemy URL")
     init.add_argument("--shared-plugins-dir", help='plugin pool shared with other instances')
     init.add_argument("--service", action="store_true", help="also write a systemd unit file")
@@ -313,8 +381,8 @@ def main(argv: list[str] | None = None) -> int:
             _run_import(config, args.source_url)
         elif args.cmd == "plugin":
             return _run_plugin(config, args, Path(args.config), conf_dir)
-    except UnknownGameError as exc:
-        # A one-line refusal beats a traceback: this is a typo in their config, not a crash.
+    except (UnknownGameError, ConfigError) as exc:
+        # A one-line refusal beats a traceback: these are mistakes in their config, not crashes.
         logging.error("%s", exc)
         return 1
     return 0
@@ -336,6 +404,7 @@ def _run_init(args: argparse.Namespace) -> int:
         game_log=args.game_log,
         database=args.database,
         shared_plugins_dir=args.shared_plugins_dir,
+        command_file=args.command_file,
     )
     template = Path(__file__).resolve().parent.parent.parent / "examples" / "plugin_admin.yaml"
     try:
@@ -351,10 +420,15 @@ def _run_init(args: argparse.Namespace) -> int:
         logging.error("%s", exc)
         return 1
 
+    from b3.core.instance import _needs_command_file
+
     for path in written:
         print(f"wrote {path}")
     print(f"\nnext:\n  b3 -c {spec.directory / 'b3.yaml'} run")
-    if not args.rcon_password:
+    if _needs_command_file(spec.game):
+        # This family has no rcon password to set, and one path it cannot work without.
+        print(f"  (check server.command_file — {spec.game} is driven by writing to that file)")
+    elif not args.rcon_password:
         print("  (set server.rcon_password first — it is empty)")
     return 0
 
@@ -365,15 +439,21 @@ def _run_games() -> int:
     Needs no config on purpose: it answers "what may I write in the config?", which is a question
     asked before there is one.
     """
-    from b3.parsers.games import PROFILES, PUSH_FAMILIES, by_family
+    from b3.parsers.games import FILE_RCON_FAMILIES, PROFILES, PUSH_FAMILIES, by_family
 
     grouped = by_family()
     width = max(len(family) for family in grouped)
     for family, titles in grouped.items():
-        # Whether the operator has to point us at a game log is the one thing a family decides for
-        # them, so it belongs in the listing rather than only in the README.
-        source = "events over rcon" if family in PUSH_FAMILIES else "reads a game log"
-        print(f"{family:<{width}}  {source:<16}  {'  '.join(titles)}")
+        # What the operator has to configure is the one thing a family decides for them, so it belongs
+        # in the listing rather than only in the README: a log to point at, an rcon port that carries
+        # the events instead, or a log *and* a command file for an engine with no rcon at all.
+        if family in PUSH_FAMILIES:
+            source = "events over rcon"
+        elif family in FILE_RCON_FAMILIES:
+            source = "log + command file"
+        else:
+            source = "reads a game log"
+        print(f"{family:<{width}}  {source:<18}  {'  '.join(titles)}")
     print(f"\n{len(PROFILES)} titles. Set one as `server.game` in the config, or `b3 init --game`.")
     return 0
 
