@@ -62,6 +62,19 @@ class RconClient(Protocol):
     def close(self) -> None: ...
 
 
+def _line_length(config: Config, profile: GameProfile) -> int:
+    """How long a chat line may be: the configured length, capped by the engine's own limit.
+
+    The smaller wins, because the two mean different things. `bot.line_length` is a preference — an
+    operator asking for shorter lines than the game would show. `GameProfile.line_length` is a fact
+    about the engine: past it, the game does not display the rest. A config value cannot lift that,
+    and letting it try is how most of every reply goes missing on Plutonium.
+    """
+    if not profile.line_length:
+        return config.bot.line_length
+    return min(config.bot.line_length, profile.line_length)
+
+
 def _resolve_timezone(name: str) -> tzinfo | None:
     """Resolve an IANA zone name; fall back to local time with a warning if it is unknown.
 
@@ -93,13 +106,17 @@ class Bot:
     ) -> None:
         self.config = config
         self.clock: Clock = clock or SystemClock()
+        # The title is resolved first, before anything is built or opened: it raises on an unknown
+        # one (see games.profile_for), and doing it here means a typo no longer creates an empty
+        # database on its way to the error.
+        self.profile = games.profile_for(config.server.game)
         self.bus = EventBus()
         self.clients = ClientManager()
         self.command_registry = CommandRegistry()
         self.storage = storage or SqlAlchemyStorage(config.bot.database, clock=self.clock)
         self.messages = Messages(
             config.messages,
-            line_length=config.bot.line_length,
+            line_length=_line_length(config, self.profile),
             color_prefix=config.bot.line_color_prefix,
         )
         self.tz = _resolve_timezone(config.bot.time_zone)
@@ -110,9 +127,11 @@ class Bot:
         self.paused_until: float = 0.0
         #: Where the config was loaded from, so `!reconfig` can re-read it. Set by the CLI.
         self.config_path: Path | None = None
+        #: Which of the profile's status commands last produced players — see `_read_status`.
+        self._status_command = ""
+        #: A status reply we could not read is worth one warning, not one per poll.
+        self._warned_about_status = False
 
-        # Raises on an unknown title rather than guessing one — see games.profile_for.
-        self.profile = games.profile_for(config.server.game)
         self.parser = games.parser_for(self.profile, self.clients, config.server.port)
         self.game = Game()
         self._rcon = rcon
@@ -459,7 +478,7 @@ class Bot:
         own_reader = getattr(self._rcon, "get_players", None)
         if own_reader is not None:
             return list(own_reader())
-        if not self.profile.status_command:
+        if not self.profile.status_commands:
             # This engine cannot be asked at all — Altitude's "rcon" is a file the server reads, and
             # nothing ever answers. Sending the query anyway would append a bogus command to that
             # file; answering "nobody is connected" would be worse, because `_reconcile` would then
@@ -472,14 +491,59 @@ class Bot:
                 for c in self.clients.connected()
                 if c.cid is not None
             ]
-        # Cached briefly by Rcon.get_status, so an auth poll and a `!status` in the same second
-        # cost one round trip.
-        get_status = getattr(self._rcon, "get_status", None)
-        raw = get_status() if get_status else self._rcon.command(self.profile.status_command)
-        _, players = status_parser.parse_status(
-            raw, self.profile.status_patterns, self.profile.identity_field
-        )
-        return players
+        return self._read_status()[1]
+
+    def _read_status(self) -> tuple[str, list[PlayerInfo]]:
+        """Ask the server for its status table, and parse it. Returns ``(map name, players)``.
+
+        A title may have more than one way to ask — see
+        :attr:`b3.parsers.profile.GameProfile.status_commands`. CoD4X is why: a server running the
+        `b3hide` mod answers `b3status` with the full table and leaves hidden players out of `status`
+        entirely, while a server without the mod does not know `b3status` at all. They are tried in
+        order until one yields players, and the winner is remembered so an ordinary server pays for
+        the first attempt once rather than on every five-minute sync. If the winner later stops
+        answering the search starts again, which is what makes loading the mod mid-life work.
+
+        The map name is taken from the first reply that carries one, independently of the players: an
+        empty server has a map but no rows, and `!map` still has to work on it.
+        """
+        if self._rcon is None:
+            return "", []
+        commands = self.profile.status_commands
+        if self._status_command in commands:
+            commands = (
+                self._status_command,
+                *(c for c in commands if c != self._status_command),
+            )
+        map_name = ""
+        unreadable: list[str] = []
+        for command in commands:
+            # Cached briefly by Rcon.get_status, so an auth poll and a `!status` in the same second
+            # cost one round trip. Keyed by command, so a fallback is not served the first reply.
+            get_status = getattr(self._rcon, "get_status", None)
+            raw = get_status(command) if get_status else self._rcon.command(command)
+            found_map, players = status_parser.parse_status(
+                raw, self.profile.status_patterns, self.profile.identity_field
+            )
+            map_name = map_name or found_map
+            if players:
+                self._status_command = command
+                return map_name, players
+            unreadable.extend(status_parser.unparsed_rows(raw, self.profile.status_patterns))
+        self._status_command = ""
+        if unreadable and not self._warned_about_status:
+            # An empty server and a table shape we cannot read look identical from here, and they
+            # want opposite responses. Saying which it is beats guessing at a looser pattern: a
+            # pattern that is *almost* right reads the id column as part of the player's name.
+            self._warned_about_status = True
+            log.warning(
+                "%s: the server answered with %d row(s) this bot cannot read, so it sees nobody. "
+                "The first is: %s",
+                self.profile.name,
+                len(unreadable),
+                unreadable[0],
+            )
+        return map_name, []
 
     def get_cvar(self, name: str) -> str | None:
         if self._rcon is None or not name:
@@ -487,26 +551,28 @@ class Bot:
             # command — its *keepalive* — which never gets a reply, so the caller would stall for the
             # whole rcon timeout and then be told the server is broken.
             return None
-        value = status_parser.parse_cvar(name, self._ask(name))
+        asked = self.profile.get_cvar_template % {"name": sanitize_rcon_value(name)}
+        value = status_parser.parse_cvar(name, self._ask(asked))
         if value is not None:
             self.game.update_cvars({name: value})
         return value
 
     def set_cvar(self, name: str, value: str) -> None:
-        # The value is wrapped in quotes here, so a quote inside it would close them early.
-        self._send(f'set {sanitize_rcon_value(name)} "{sanitize_rcon_value(value)}"')
-        self.game.cvars[name] = value
+        # The template quotes the value, so a quote inside it would close the quoting early — hence
+        # the sanitising, which strips them. The verb comes from the profile because Black Ops does
+        # not accept a plain `set` over rcon (see GameProfile.set_template).
+        self._send(
+            self.profile.set_template
+            % {"name": sanitize_rcon_value(name), "value": sanitize_rcon_value(value)}
+        )
+        self.game.update_cvars({name: value})
 
     def get_map(self) -> str | None:
-        if self._rcon is None or not self.profile.status_command:
+        if self._rcon is None or not self.profile.status_commands:
             # Nothing to ask (see `get_players`), so the answer is what the log last said — which on
             # Altitude is accurate: it announces every map change.
             return self.game.map_name or None
-        get_status = getattr(self._rcon, "get_status", None)
-        raw = get_status() if get_status else self._ask(self.profile.status_command)
-        map_name, _ = status_parser.parse_status(
-            raw, self.profile.status_patterns, self.profile.identity_field
-        )
+        map_name, _ = self._read_status()
         if map_name:
             self.game.map_name = map_name
         return map_name or None
@@ -571,7 +637,13 @@ class Bot:
                     self._drop_client(client)
                     client = None
             if client is None:
-                client = Client(cid=info.cid, name=info.name, guid=info.guid, ip=info.ip)
+                # An AI player takes a slot and appears in this table like anyone else. It must not
+                # be given an identity: every bot on the server reports the same guid, so they would
+                # all end up sharing one database row — with one level and one ban history between
+                # them. The log path drops it too (CodParser._valid_guid), and this is the other way
+                # a client can be created.
+                guid = "" if self.profile.is_bot_guid(info.guid) else info.guid
+                client = Client(cid=info.cid, name=info.name, guid=guid, ip=info.ip)
                 self.clients.add(client)
                 log.info("sync: adopting player %s in slot %s", info.name, info.cid)
                 self._authenticate(client)
@@ -630,7 +702,7 @@ class Bot:
         self.config = config
         self.messages = Messages(
             config.messages,
-            line_length=config.bot.line_length,
+            line_length=_line_length(config, self.profile),
             color_prefix=config.bot.line_color_prefix,
         )
         self.tz = _resolve_timezone(config.bot.time_zone)
@@ -693,6 +765,29 @@ class Bot:
             "seconds": minutes * 60,
         }
 
+    def _expressible(self, template: str, client: Client) -> bool:
+        """Whether ``template`` can actually be filled in for this client.
+
+        The case that matters: a ban verb keyed on the player's **guid** — CoD4X's `unban <guid>`,
+        Frostbite's `banList.add guid <id>`, Altitude's `addBan <vaporId>` — and a client the engine
+        has not identified. Substituting the empty string sends a syntactically valid command with a
+        missing argument, which the server either rejects or, worse, applies to nothing while
+        answering as though it worked. Removing them now with the kick verb is honest: the penalty is
+        still recorded, so it reads back in `!lastbans`, and the log says why it cannot be enforced
+        when they return.
+        """
+        if "%(guid)s" not in template or client.guid:
+            return True
+        log.warning(
+            "%s: %s has no guid the server recognises, so %r cannot be sent — kicking instead. "
+            "The penalty is recorded, but it cannot be re-applied when they reconnect, because "
+            "there is no id to match them by",
+            self.profile.name,
+            client.name or client.cid,
+            template.split(" ", 1)[0],
+        )
+        return False
+
     def kick(self, client: Client, reason: str = "", admin: Client | None = None) -> None:
         self._record_penalty(PenaltyType.KICK, client, admin, reason, 0, NEVER_EXPIRES)
         self.bus.publish_soon(Event(EventType.CLIENT_KICK, client=client, data=reason))
@@ -701,7 +796,14 @@ class Bot:
     def ban(self, client: Client, reason: str = "", admin: Client | None = None) -> None:
         self._record_penalty(PenaltyType.BAN, client, admin, reason, 0, NEVER_EXPIRES)
         self.bus.publish_soon(Event(EventType.CLIENT_BAN, client=client, data=reason))
-        self._send(self.profile.ban_template % self._penalty_values(client, reason))
+        self._send_ban(client, reason)
+
+    def _send_ban(self, client: Client, reason: str) -> None:
+        """Send the ban verb — or the kick verb, when the ban cannot be expressed for this client."""
+        template = self.profile.ban_template
+        if not self._expressible(template, client):
+            template = self.profile.kick_template
+        self._send(template % self._penalty_values(client, reason))
 
     def tempban(
         self, client: Client, minutes: int, reason: str = "", admin: Client | None = None
@@ -719,7 +821,10 @@ class Bot:
         """
         template = self.profile.tempban_template
         if template is None:
-            self._send(self.profile.ban_template % self._penalty_values(client, reason))
+            self._send_ban(client, reason)
+            return
+        if not self._expressible(template, client):
+            self._send(self.profile.kick_template % self._penalty_values(client, reason))
             return
         capped = minutes
         if self.profile.tempban_max_minutes and minutes > self.profile.tempban_max_minutes:
@@ -766,6 +871,17 @@ class Bot:
                     return
                 # It said so itself, and in more detail than this could; do not repeat it.
                 return
+            if self.profile.ban_template == self.profile.kick_template:
+                # This engine has no ban verb at all — a "ban" here was only ever a kick, and the
+                # record just lifted was the entire enforcement. Nothing is left half-done, so there
+                # is nothing to warn about; the warning below would send an operator looking for a
+                # server-side ban list that does not exist.
+                log.info(
+                    "%s has no server-side ban list; %s is unbanned and will not be kicked again",
+                    self.profile.name,
+                    client.name,
+                )
+                return
             # Our record is lifted either way, so the bot will not re-apply the ban — but the server
             # keeps its own entry, and saying so is the whole point: silently doing half the job is
             # how a player stays banned by a server nobody remembers banning them on.
@@ -775,6 +891,10 @@ class Bot:
                 self.profile.name,
                 client.name,
             )
+            return
+        if not self._expressible(self.profile.unban_template, client):
+            # Nothing to send: this engine lifts a ban by id and we have none. Our own record is
+            # already lifted above, which is what stops the bot re-applying it.
             return
         self._send(self.profile.unban_template % self._penalty_values(client, reason))
 

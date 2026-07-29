@@ -19,12 +19,16 @@ What each title changes:
 * **cod6** (Modern Warfare 2) and **cod8** (Modern Warfare 3) — 16-character alphanumeric GUIDs, a
   shorter status table, and no working ban verb: `banclient` is accepted and ignored, so a ban is a
   kick the bot re-applies on every reconnect.
-* **cod7** (Black Ops) — 5-character GUIDs, quoted reasons, and its own RCON framing
-  (:class:`b3.net.rcon.Cod7Dialect`).
+* **cod7** (Black Ops) — 5-character GUIDs, quoted reasons, its own RCON framing
+  (:class:`b3.net.rcon.Cod7Dialect`), and the only title that will not take a plain `set`.
+* **plutoiw5** / **plutot6** — Modern Warfare 3 and **Black Ops 2** on the Plutonium client, which is
+  what the modern CoD scene runs. Black Ops 2 is a title the classic bot never supported at all.
 
 Every CoD server is asked for `g_logsync` on connect. Without it the engine buffers its log file
 and the bot reacts late or not at all — the classic bot set it on every startup for this reason,
-and its absence looks like "the bot is broken" rather than "the log is buffered".
+and its absence looks like "the bot is broken" rather than "the log is buffered". Black Ops needs
+that same request phrased its own way; getting it wrong there is silent, which is why the profile
+carries the verb rather than the runtime assuming one.
 """
 
 from __future__ import annotations
@@ -32,7 +36,14 @@ from __future__ import annotations
 from dataclasses import replace
 
 from b3.parsers.cod.profile import GameProfile
-from b3.parsers.cod.status import COD4GR_PLAYER_LINE_RE, COD4X_PATTERNS, COD6_PLAYER_LINE_RE
+from b3.parsers.cod.status import (
+    COD4GR_PLAYER_LINE_RE,
+    COD4X_PATTERNS,
+    COD6_PLAYER_LINE_RE,
+    COD7_PLAYER_LINE_RE,
+    PLUTO_IW5_PLAYER_LINE_RE,
+    PLUTO_T6_PLAYER_LINE_RE,
+)
 
 #: Unbuffered game logging. The engine's own cvar; 3 is append-unbuffered, which is what a tailing
 #: bot needs. cod2 (and cod5, which inherited it) only understand 1.
@@ -70,6 +81,12 @@ COD4X = GameProfile(
     teams=_IW_TEAMS,
     non_teamkill_weapons=_NOT_TEAMKILL,
     startup_commands=("g_logsync 3", "sv_usesteam64id 1"),
+    # `b3status` first. A CoD4X server running the `b3hide` mod — which is how admins hide, and what
+    # B3 on CoD4X is usually deployed with — leaves hidden players out of its `status` reply
+    # altogether, and answers `b3status` with the full table. A server without the mod does not know
+    # the command, so `status` follows as the fallback. Trying the fullest answer first is the only
+    # way to serve both, since nothing in the reply says which kind of server this is.
+    status_commands=("b3status", "status"),
     status_patterns=COD4X_PATTERNS,
     # The status table carries a per-session guid *and* a Steam64 id. Keying on the guid would
     # create a new player record — losing their level and their bans — on every reconnect.
@@ -79,6 +96,9 @@ COD4X = GameProfile(
     tempban_template="tempban %(cid)s %(minutes)sm %(reason)s",
     tempban_max_minutes=MAX_TEMPBAN_MINUTES,
     unban_template="unban %(guid)s",
+    # 126, not the default 128: the reference fork cuts the reason there, and its changelog records
+    # it as the server's own limit rather than a matter of taste.
+    max_reason_length=126,
 )
 
 COD4GR = GameProfile(
@@ -133,13 +153,79 @@ COD7 = GameProfile(
     kick_template='clientkick %(cid)s "%(reason)s"',
     ban_template="banclient %(cid)s",
     unban_template='unbanuser "%(target)s"',
-    startup_commands=LOGSYNC,
+    # `setadmindvar`, not a bare assignment. Black Ops refuses a plain `set` over rcon, and this
+    # title was ported as data without noticing — so `g_logsync` was never applied and the engine
+    # went on buffering its log, which is the failure this whole line exists to prevent. The second
+    # command matters just as much: with timestamps in seconds the log line prefix stops being
+    # `mm:ss`, the parser's timestamp stripper does not match it, and then *no line parses at all*.
+    startup_commands=(
+        "setadmindvar g_logsync 3",
+        "setadmindvar g_logTimeStampInSeconds 0",
+    ),
+    set_template='setadmindvar %(name)s "%(value)s"',
+    status_patterns=(COD7_PLAYER_LINE_RE,),
     rcon_dialect="cod7",  # Black Ops frames its RCON packets differently; see b3.net.rcon
+)
+
+#: Plutonium — the client the modern Call of Duty scene runs, and the same kind of addition `cod4x`
+#: was: titles the classic bot never had.
+#:
+#: **The verbs and table shapes here come from IW4M-Admin, not from a B3 fork.** The B3 parsers for
+#: these titles (`xerxes-at/b3-parser-plutonium`, 2018) had IW5's kick verb wrong and its status
+#: columns in the wrong order; IW4M-Admin is the tool this scene actually uses and its parsers are
+#: maintained — they were ported from JavaScript to C# in June 2026 — so they are the better source.
+#:
+#: **Neither title has a ban verb**, and that is a finding rather than an omission: IW4M-Admin maps
+#: `Ban` *and* `TempBan` to the kick verb on both, its history records `tempbanclient` being *removed*
+#: from the sibling TeknoMW3 parser, and Plutonium's own admin script keeps bans in its own JSON file
+#: and enforces them by kicking. So a ban here is a kick, re-applied from our database on reconnect —
+#: the same position MW2/MW3 are in.
+PLUTOIW5 = GameProfile(
+    name="plutoiw5",
+    # A guid is 15+ characters here (IW4M accepts 8-32), and an AI's is either a long shared prefix or
+    # the literal form `bot<N>`. Both are named, because both are long enough to pass a length check.
+    guid_min_length=15,
+    bot_guid_prefixes=("FFFFFFFF000B07", "bot"),
+    # The engine stops displaying a chat line after 43 characters. Not a preference: past it the
+    # text is simply not shown.
+    line_length=43,
+    teams=_IW_TEAMS,
+    non_teamkill_weapons=_NOT_TEAMKILL,
+    # `clientkick`, not `dropclient` — that one belongs to TeknoMW3, a different Modern Warfare 3
+    # stack, and sending it here would kick nobody.
+    kick_template='clientkick %(cid)s "%(reason)s"',
+    ban_template='clientkick %(cid)s "%(reason)s"',
+    # Nothing to lift: the ban above never reached a server-side ban list, so our own record is the
+    # whole of it. Declared inexpressible rather than sending an `unban` this engine does not know.
+    unban_template=None,
+    # This title alone wants `get <name>`; its reply is `name is "value"`, which `parse_cvar` accepts.
+    get_cvar_template="get %(name)s",
+    status_patterns=(PLUTO_IW5_PLAYER_LINE_RE,),
+    startup_commands=LOGSYNC,
+)
+
+PLUTOT6 = GameProfile(
+    name="plutot6",
+    # Black Ops 2 guids really are that short — the B3 reference parser patches the client class to
+    # allow a single character, which is the kind of thing a profile field exists to avoid.
+    guid_min_length=1,
+    # Exactly "0", not a prefix: as a prefix this would swallow every real guid starting with a zero.
+    # The status table also states it outright in a `bot` column, which parse_status honours.
+    bot_guids=frozenset({"0"}),
+    line_length=72,
+    teams=_IW_TEAMS,
+    non_teamkill_weapons=_NOT_TEAMKILL,
+    kick_template='clientkick_for_reason %(cid)s "%(reason)s"',
+    ban_template='clientkick_for_reason %(cid)s "%(reason)s"',
+    unban_template=None,  # as above: the ban is a kick, so there is nothing server-side to lift
+    status_patterns=(PLUTO_T6_PLAYER_LINE_RE,),
+    startup_commands=LOGSYNC,
 )
 
 #: Every title we can parse, by the id used in `server.game`.
 ALL: dict[str, GameProfile] = {
-    p.name: p for p in (COD2, COD4, COD4X, COD4GR, COD5, COD6, COD7, COD8)
+    p.name: p
+    for p in (COD2, COD4, COD4X, COD4GR, COD5, COD6, COD7, COD8, PLUTOIW5, PLUTOT6)
 }
 
 __all__ = [
@@ -152,10 +238,7 @@ __all__ = [
     "COD6",
     "COD7",
     "COD8",
+    "PLUTOIW5",
+    "PLUTOT6",
     "TREYARCH_ACTIONS",
 ]
-
-# Gaps in this file's coverage are tracked as work, with a proposed fix each, in TODO.md §1:
-# cod5's actor-damage lines (§1.2), cod4x + b3hide changing the status table (§1.1), and cod7's
-# missing log service (§1.5). They are listed there rather than described here, because a
-# limitation in a comment is one nobody ever picks up.

@@ -39,8 +39,14 @@ PLAYER_LINE_RE = re.compile(
 )
 
 #: ``"sv_maxclients" is: "16^7" default: "8^7"`` — and the terser variants some titles print.
+#:
+#: The quotes around the name and the colon after `is` are both **optional**, because Plutonium
+#: answers ``sv_maxclients is "18"`` with neither. Widening this rather than giving those titles their
+#: own pattern is safe: `is` plus a quoted value is still required, so nothing else in a reply matches
+#: — and the alternative was a cvar read that silently returned None on two whole titles.
 CVAR_RE = re.compile(
-    r'^"(?P<cvar>[a-z0-9_.]+)"\s+is:\s*"(?P<value>.*?)(?:\^7)?"', re.IGNORECASE | re.MULTILINE
+    r'^"?(?P<cvar>[a-z0-9_.]+)"?\s+is:?\s*"(?P<value>.*?)(?:\^7)?"',
+    re.IGNORECASE | re.MULTILINE,
 )
 
 #: Map names inside an ``sv_mapRotation`` value: ``gametype dm map mp_crash map mp_vacant``.
@@ -116,20 +122,94 @@ def _parse_rows(text: str, row_re: re.Pattern[str], identity: str) -> list[Playe
             # server without an auth mod has no persistent id at all). Never None: everything
             # downstream compares and lowercases this.
             chosen = (groups.get("guid") or "").strip()
+        if (groups.get("bot") or "").strip() == "1":
+            # Some tables say outright that a row is an AI player — the modern Call of Duty platforms
+            # have a `bot` column, which beats every guid convention for telling. It is applied *after*
+            # the fallback above, and that order is the whole point: the fallback would otherwise put
+            # the bot's guid straight back, and every AI that ever played would end up sharing one
+            # database row, with a single level and ban history between them.
+            chosen = ""
         players.append(
             PlayerInfo(
                 cid=match["slot"],
                 name=match["name"].strip(),
                 guid=chosen,
                 steam_id=steam if steam not in ("", "0") else "",
-                ip=match["ip"],
-                port=int(match["port"]),
-                ping=int(groups.get("ping") or 0),
+                ip=groups.get("ip") or "",
+                # Every one of these is read defensively, because a row can legitimately omit them:
+                # a Plutonium table prints `localhost` with no port for a listen server, and an
+                # empty ping column for a bot. `int("")` would raise, and one such row would take
+                # down the whole player list — including the ninety-nine players who parsed.
+                port=_as_int(groups.get("port")),
+                ping=_ping(groups.get("ping")),
                 # Not every engine reports a score: BattlEye's player table has no such column.
-                score=int(groups.get("score") or 0),
+                score=_as_int(groups.get("score")),
             )
         )
     return players
+
+
+def _as_int(value: str | None, default: int = 0) -> int:
+    try:
+        return int(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return default
+
+
+#: What a bot's ping is reported as, once the engine's placeholder is translated. 999 is the
+#: convention the Plutonium parsers use, and it reads correctly everywhere a ping is compared:
+#: ping-watching plugins kick on *high* pings, and an AI player has no connection to measure.
+BOT_PING = 999
+
+
+def _ping(value: str | None) -> int:
+    """A ping column, which is not always a number.
+
+    An AI player's ping is a placeholder — dashes on some builds, letters on others (IW4M-Admin's
+    Plutonium IW5 pattern allows `[A-Z]+` there), and blank on Plutonium T6. Read as 0 those look
+    like the best connection on the server, which is backwards for anything watching for high pings;
+    refused outright, the row does not parse and the bot cannot see the player at all.
+    """
+    if value is None:
+        return 0
+    text = value.strip()
+    if not text:
+        return 0
+    try:
+        # Signed, because a number is a measurement whatever its sign: an Arma server reports **-1**
+        # for a player who is still in the lobby, and turning that into a bot's ping would lose the
+        # one thing it says about them. Only a *non-numeric* column is a placeholder.
+        return int(text)
+    except ValueError:
+        return BOT_PING  # dashes, or a word
+
+
+#: What a status *data* row looks like before anyone tries to read its columns: a slot, a score and a
+#: ping. Loose on purpose — it exists only to tell "this reply had rows we could not read" apart from
+#: "this reply had no rows", which are the same thing to :func:`parse_status` and very different
+#: things to an operator.
+DATA_ROW_RE = re.compile(r"^\s*[0-9]+\s+-?[0-9]+\s+[0-9]+\s+\S")
+
+
+def unparsed_rows(
+    text: str, patterns: re.Pattern[str] | Sequence[re.Pattern[str]] | None = None
+) -> list[str]:
+    """Lines that look like player rows and matched none of the engine's row patterns.
+
+    A caller that got no players out of a non-empty reply cannot otherwise tell an empty server from
+    a table shape this bot does not know — and those want opposite responses. The second is worth
+    saying out loud: it used to be answered by guessing at a looser pattern, and a guess that is
+    almost right silently reads the id column as part of the player's name.
+    """
+    candidates = _candidates(patterns)
+    rows = []
+    for raw in text.splitlines():
+        line = raw.strip()
+        if not DATA_ROW_RE.match(line):
+            continue
+        if not any(row_re.match(line) for row_re in candidates):
+            rows.append(line)
+    return rows
 
 
 def parse_cvar(name: str, reply: str) -> str | None:

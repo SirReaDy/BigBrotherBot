@@ -31,6 +31,39 @@ class GameProfile:
     # which prevents authenticating a player on a bad id. cod4 = 32-hex.
     guid_min_length: int = 32
 
+    # GUIDs that identify an AI player rather than a person. They must not be authenticated: every
+    # bot on the server shares one, so a single database row would accumulate all of them, with one
+    # shared level and one shared ban history.
+    #
+    # Two fields because the two engines that need this say it differently, and guessing either way
+    # is wrong. Plutonium T6's bot guid is exactly "0", so an exact match is what is meant — treating
+    # it as a prefix would swallow every real guid that happens to start with a zero. Plutonium IW5
+    # gives its bots a long shared *prefix* and a varying tail, which no exact list could cover.
+    bot_guids: frozenset[str] = field(default_factory=frozenset)
+    bot_guid_prefixes: tuple[str, ...] = ()
+
+    def is_bot_guid(self, guid: str) -> bool:
+        """Whether ``guid`` belongs to an AI player rather than a person.
+
+        A method on the profile rather than a check in one parser, because clients arrive by **two**
+        routes: the game log, and the server's own status table read by
+        :meth:`b3.runtime.bot.Bot.sync`. Filtering only the first still lets every bot on a Plutonium
+        T6 server share one database row, since its bot guid ("0") is long enough to pass that
+        title's length check.
+        """
+        if not guid:
+            return False
+        if guid in self.bot_guids:
+            return True
+        return bool(self.bot_guid_prefixes) and guid.startswith(self.bot_guid_prefixes)
+
+    # Longest chat line this engine will show, when the engine imposes one. 0 means it does not, and
+    # `bot.line_length` from the config decides alone. Where both apply the **smaller wins**: a
+    # config value cannot lift an engine's limit, it can only ask for shorter lines. Plutonium is why
+    # this exists — IW5 truncates at 43 characters and T6 at 72, so the 90-character default would
+    # silently cut half of every reply off.
+    line_length: int = 0
+
     # Map raw log team tokens to canonical team names.
     teams: dict[str, str] = field(
         default_factory=lambda: {"allies": "blue", "axis": "red", "world": "world"}
@@ -71,6 +104,14 @@ class GameProfile:
     tempban_max_minutes: int = 0  # 0 = no engine-imposed ceiling
     # Big centre-screen text. None means the engine has no such verb, so it falls back to `say`.
     saybig_template: str | None = None
+    # Setting a server variable. Black Ops (cod7) is the reason this is not hardcoded: it refuses a
+    # plain `set` from rcon and wants `setadmindvar`, so every cvar the bot tried to set on it —
+    # including the one that stops the game log being buffered — was quietly rejected.
+    set_template: str = 'set %(name)s "%(value)s"'
+    # *Reading* one. Sending the bare name is the Quake3 convention and what almost everything here
+    # takes; Plutonium IW5 wants `get <name>` instead (IW4M-Admin's parser sends exactly that), and
+    # answers with `name is "value"` rather than the quoted-and-colonned Quake3 form.
+    get_cvar_template: str = "%(name)s"
 
     # Longest reason this engine will accept in a command. Frostbite *rejects* a command whose
     # reason runs past 80 characters, so on those titles this is the difference between a ban and no
@@ -85,7 +126,16 @@ class GameProfile:
     rcon_dialect: str = "quake3"
 
     # Server queries and map control.
-    status_command: str = "status"
+    #
+    # More than one command is allowed, tried in order until one answers with players — the same
+    # shape as `status_patterns` below, and for a related reason. A CoD4X server running the
+    # `b3hide` mod strips hidden admins out of its `status` reply and answers **`b3status`** with the
+    # full table instead; a server without the mod does not know that command at all. Asking for the
+    # fullest answer first and falling back is the only way to serve both without being told which
+    # one this is. An **empty tuple means the engine cannot be asked at all** (Altitude commands the
+    # server by writing to a file and nothing ever replies), which is what stops the runtime sending
+    # a question that would be appended to that file as a bogus command.
+    status_commands: tuple[str, ...] = ("status",)
     # Row formats of the `status` reply, when they differ from the stock Infinity-Ward table.
     # Several candidates are allowed because a *mod* can change the table's shape on a game we
     # already support — CoD4X with `b3hide` is the case that prompted this. They are tried in

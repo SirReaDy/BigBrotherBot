@@ -100,33 +100,159 @@ def test_the_optional_lastmsg_column_is_tolerated():
     assert players[0].ip == "192.0.2.44"
 
 
-def test_a_table_with_no_id_columns_still_yields_its_players(tmp_path):
-    """`b3hide` strips the id columns; the profile's fallback shape catches that server.
+#: CoD4X with `sv_usesteam64id` off — one numeric id column, no Steam64 one. A live configuration:
+#: it is what `kristiandz/ebc-b3` parses against its own CoD4X 1.8 server.
+COD4X_NO_STEAM_STATUS = (
+    "map: mp_crash\n"
+    "num score ping guid     name             lastmsg address               qport rate\n"
+    "--- ----- ---- -------- ---------------- ------- --------------------- ----- -----\n"
+    "  0    12   47   123456 ^1Admin^7             50 192.0.2.44:28960      12345 25000\n"
+    "  2    -1  102   987654 Bob the Builder       20 198.51.100.88:28961   12346 25000\n"
+)
 
-    The point of a *tuple* of patterns: an empty player list from a server with 20 people on it is
-    the worst possible failure, because nothing gets authenticated and no penalty can be applied,
-    and the symptom ("the bot ignores everyone") points nowhere near the status table.
+
+def test_a_server_not_reporting_steam64_ids_still_yields_identities():
+    """The bug this pins, found by reading a fork that runs CoD4X without `sv_usesteam64id`.
+
+    With only the strict Steam64 shape and a loose catch-all behind it, these rows parsed with the id
+    absorbed into the player's *name* — `name='123456 ^1Admin^7'`, no guid at all. So nobody
+    authenticated, `!status` showed nonsense, and `sync` wrote those names into the database as
+    aliases. Not parsing the row would have been better; parsing it properly is better still.
     """
-    hidden = (
-        "map: mp_crash\n"
-        "num score ping name            address\n"
-        "--- ----- ---- --------------- --------------------\n"
-        "  0    12   47 Admin           192.0.2.44:28960\n"
-        "  2    -1  102 Bob the Builder 198.51.100.88:28961\n"
+    _map, players = sp.parse_status(
+        COD4X_NO_STEAM_STATUS, COD4X.status_patterns, COD4X.identity_field
     )
-    _map, players = sp.parse_status(hidden, COD4X.status_patterns, COD4X.identity_field)
 
     assert [p.cid for p in players] == ["0", "2"]
-    assert [p.name for p in players] == ["Admin", "Bob the Builder"]
+    assert [p.name for p in players] == ["^1Admin^7", "Bob the Builder"]
+    assert [p.guid for p in players] == ["123456", "987654"]  # the id column, not part of the name
     assert [p.ip for p in players] == ["192.0.2.44", "198.51.100.88"]
-    assert players[0].guid == ""  # no id column to read: exactly like a guidless Quake3 server
+    assert players[0].steam_id == ""  # and no Steam id is claimed that the server never sent
 
 
 def test_the_strict_shape_wins_while_it_still_matches():
-    """Ordering is the whole contract: the loose fallback must not touch a normal server."""
+    """Ordering is the whole contract: the no-steam shape must not touch a steam64 server."""
     _map, players = sp.parse_status(COD4X_STATUS, COD4X.status_patterns, COD4X.identity_field)
 
-    assert [p.guid for p in players] == [STEAM_ADMIN, STEAM_BOB]  # not "" from the fallback
+    assert [p.guid for p in players] == [STEAM_ADMIN, STEAM_BOB]  # the steam column, not the guid
+
+
+def test_a_shape_we_cannot_read_is_reported_rather_than_guessed_at():
+    """There used to be a loose catch-all here for the table `b3hide` produces, and its shape was
+    *inferred* — which is the problem: a pattern that is almost right reads the id column as part of
+    the name. A row we cannot read now yields no player and is named in the log instead."""
+    unknown = (
+        "map: mp_crash\n"
+        "num score ping something-new  name\n"
+        "--- ----- ---- -------------- ----\n"
+        "  0    12   47 ??             Admin\n"
+    )
+    _map, players = sp.parse_status(unknown, COD4X.status_patterns, COD4X.identity_field)
+    assert players == []
+
+    rows = sp.unparsed_rows(unknown, COD4X.status_patterns)
+    assert rows == ["0    12   47 ??             Admin"]
+
+
+def test_an_empty_server_is_not_confused_with_an_unreadable_one():
+    """The two want opposite responses, and they look identical from the player list alone."""
+    empty = (
+        "map: mp_crash\n"
+        "num score ping guid     name             lastmsg address               qport rate\n"
+        "--- ----- ---- -------- ---------------- ------- --------------------- ----- -----\n"
+    )
+    assert sp.parse_status(empty, COD4X.status_patterns, COD4X.identity_field)[1] == []
+    assert sp.unparsed_rows(empty, COD4X.status_patterns) == []
+
+
+# -- asking the right question: b3status, then status ----------------------------------------
+
+
+def test_b3status_is_asked_first_because_b3hide_strips_the_status_table(tmp_path):
+    """A CoD4X server running `b3hide` — the usual deployment — leaves hidden admins out of `status`
+    and answers `b3status` with the whole table. Asking the fullest question first is the only way to
+    serve both kinds of server, since nothing in the reply says which one this is."""
+    rcon = ScriptedRcon({"b3status": COD4X_STATUS})
+    bot = _bot(tmp_path, rcon=rcon, forget_startup=True)
+
+    players = bot.get_players()
+
+    assert [p.guid for p in players] == [STEAM_ADMIN, STEAM_BOB]
+    assert rcon.commands == ["b3status"]  # and `status` was never needed
+    bot.storage.close()
+
+
+def test_a_server_without_the_mod_falls_back_to_status(tmp_path):
+    """`b3status` is unknown there, so the reply is empty or an error -- neither is a player list."""
+    rcon = ScriptedRcon({"b3status": "unknown command\n", "status": COD4X_STATUS})
+    bot = _bot(tmp_path, rcon=rcon, forget_startup=True)
+
+    players = bot.get_players()
+
+    assert [p.guid for p in players] == [STEAM_ADMIN, STEAM_BOB]
+    assert rcon.commands == ["b3status", "status"]
+    bot.storage.close()
+
+
+def test_the_command_that_worked_is_remembered(tmp_path):
+    """Otherwise an ordinary server pays for a doomed `b3status` on every five-minute sync."""
+    rcon = ScriptedRcon({"status": COD4X_STATUS})
+    bot = _bot(tmp_path, rcon=rcon, forget_startup=True)
+
+    bot.get_players()
+    rcon.commands.clear()
+    bot.get_players()
+
+    assert rcon.commands == ["status"]  # not b3status again
+    bot.storage.close()
+
+
+def test_the_search_starts_again_if_the_remembered_command_stops_answering(tmp_path):
+    """Which is what makes loading `b3hide` on a running server work without restarting the bot.
+
+    Recovery happens inside the *same* call: the remembered command is only a reordering, so when it
+    answers nothing the others are still tried before giving up. A server whose admins have just
+    become hidden therefore never reports an empty player list even once.
+    """
+    rcon = ScriptedRcon({"status": COD4X_STATUS})
+    bot = _bot(tmp_path, rcon=rcon, forget_startup=True)
+    bot.get_players()
+
+    rcon.replies = {"b3status": COD4X_STATUS}  # the mod is loaded; plain status now hides everyone
+    rcon.commands.clear()
+
+    assert len(bot.get_players()) == 2
+    assert rcon.commands == ["status", "b3status"]  # the remembered one first, then the search
+    rcon.commands.clear()
+    assert len(bot.get_players()) == 2
+    assert rcon.commands == ["b3status"]  # and the new winner is what gets remembered
+    bot.storage.close()
+
+
+def test_a_reply_we_cannot_read_is_reported_once(tmp_path, caplog):
+    """An empty server and an unreadable table are the same thing to the parser, and very different
+    things to the operator -- who otherwise sees a bot that silently ignores everybody."""
+    rcon = ScriptedRcon(
+        {"b3status": "map: mp_crash\n  0    12   47 ?? Admin\n", "status": "map: mp_crash\n"}
+    )
+    bot = _bot(tmp_path, rcon=rcon, forget_startup=True)
+
+    with caplog.at_level("WARNING"):
+        assert bot.get_players() == []
+        bot.get_players()
+
+    assert caplog.text.count("cannot read") == 1  # once, not once per poll
+    assert "Admin" in caplog.text  # and it shows the row, so the shape can be added
+    bot.storage.close()
+
+
+def test_the_map_still_comes_back_from_an_empty_server(tmp_path):
+    """No rows to parse, but `!map` has to work: the map line is read independently of the players."""
+    rcon = ScriptedRcon({"b3status": "map: mp_crash\n", "status": "map: mp_crash\n"})
+    bot = _bot(tmp_path, rcon=rcon, forget_startup=True)
+
+    assert bot.get_map() == "mp_crash"
+    bot.storage.close()
 
 
 def test_the_stock_table_is_unaffected():
@@ -344,13 +470,53 @@ def test_every_cod_title_is_configurable_and_keeps_its_guid_length(tmp_path, gam
     assert bot.profile.guid_min_length == guid_len
 
 
-@pytest.mark.parametrize("game", ["cod2", "cod4", "cod4gr", "cod4x", "cod5", "cod6", "cod7", "cod8"])
+@pytest.mark.parametrize(
+    "game",
+    ["cod2", "cod4", "cod4gr", "cod4x", "cod5", "cod6", "cod7", "cod8", "plutoiw5", "plutot6"],
+)
 @pytest.mark.asyncio
 async def test_every_title_forces_unbuffered_logging(tmp_path, game):
-    """Without g_logsync the engine buffers its log and the bot reacts late, or not at all."""
+    """Without g_logsync the engine buffers its log and the bot reacts late, or not at all.
+
+    Asserted on the *cvar*, not on the start of the line, because one title does not accept a bare
+    assignment — and the earlier version of this test passed cod7 while the command it sent was one
+    Black Ops rejects outright.
+    """
     rcon = ScriptedRcon()
     _bot(tmp_path, game=game, rcon=rcon)
-    assert any(c.startswith("g_logsync") for c in rcon.commands)
+    assert any("g_logsync" in c for c in rcon.commands), rcon.commands
+
+
+@pytest.mark.asyncio
+async def test_black_ops_asks_the_only_way_it_accepts(tmp_path):
+    """Black Ops refuses a plain `set` over rcon: cvars need `setadmindvar`.
+
+    Two commands, and both matter. Without the first the engine buffers its log, which is the failure
+    every other title's `g_logsync` prevents. Without the second the log's timestamps can be printed
+    in seconds instead of `mm:ss` — and then the parser's timestamp stripper does not match the
+    prefix, so **no line parses at all**.
+    """
+    rcon = ScriptedRcon()
+    bot = _bot(tmp_path, game="cod7", rcon=rcon)
+
+    assert rcon.commands == [
+        "setadmindvar g_logsync 3",
+        "setadmindvar g_logTimeStampInSeconds 0",
+    ]
+
+    rcon.commands.clear()
+    bot.set_cvar("sv_hostname", "My Server")
+    assert rcon.commands == ['setadmindvar sv_hostname "My Server"']
+    bot.storage.close()
+
+
+@pytest.mark.asyncio
+async def test_every_other_title_still_uses_a_plain_set(tmp_path):
+    rcon = ScriptedRcon()
+    bot = _bot(tmp_path, game="cod4", rcon=rcon, forget_startup=True)
+    bot.set_cvar("sv_hostname", "My Server")
+    assert rcon.commands == ['set sv_hostname "My Server"']
+    bot.storage.close()
 
 
 @pytest.mark.parametrize("game", ["cod2", "cod4", "cod5", "cod6", "cod7", "cod8"])

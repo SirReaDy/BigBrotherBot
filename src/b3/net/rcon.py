@@ -233,7 +233,8 @@ class Rcon:
         self._max_retries = max(1, max_retries)
         self._retry_delay = retry_delay
         self._status_cache_ttl = status_cache_ttl
-        self._status_cache: tuple[float, str] | None = None
+        # Keyed by the command asked, because a title may have more than one way to ask.
+        self._status_cache: dict[str, tuple[float, str]] = {}
 
     # -- low level ---------------------------------------------------------
 
@@ -292,19 +293,25 @@ class Rcon:
     def set_cvar(self, name: str, value: str) -> str:
         return self.command(f'set {name} "{value}"')
 
-    def get_status(self, *, force: bool = False) -> str:
-        """Return the ``status`` reply, cached for ``status_cache_ttl`` seconds.
+    def get_status(self, command: str = "status", *, force: bool = False) -> str:
+        """Return a status reply, cached for ``status_cache_ttl`` seconds.
 
         Many callers ask for the player list in quick succession; the cache prevents a burst
         of identical queries from hammering the server (legacy behaviour, capped short).
+
+        ``command`` is a parameter because not every title answers the same question: a CoD4X server
+        with the `b3hide` mod hides admins from `status` and answers `b3status` with the whole table
+        (see :attr:`b3.parsers.profile.GameProfile.status_commands`). The cache is keyed by command,
+        so falling back from one to the other does not serve the first one's reply for the second.
         """
         now = self._clock.now()
-        if not force and self._status_cache is not None:
-            cached_at, value = self._status_cache
+        cached = self._status_cache.get(command)
+        if not force and cached is not None:
+            cached_at, value = cached
             if now - cached_at < self._status_cache_ttl:
                 return value
-        value = self.command("status")
-        self._status_cache = (now, value)
+        value = self.command(command)
+        self._status_cache[command] = (now, value)
         return value
 
     def close(self) -> None:

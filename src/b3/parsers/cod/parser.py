@@ -74,12 +74,19 @@ class CodParser(Parser):
         return self.profile.teams.get(raw, raw)
 
     def _valid_guid(self, guid: str) -> str:
-        """Reject partial/garbage GUIDs (shorter than the profile's minimum).
+        """Reject partial/garbage GUIDs (shorter than the profile's minimum) and AI players.
 
         Says so the first time, because the silent version of this is miserable to diagnose: a
         server whose GUIDs are the wrong shape for the configured profile authenticates *nobody*,
         and every symptom of that ("admins have no level", "bans do nothing") points elsewhere.
+
+        A **bot's** guid is dropped without a word, which is not the same thing: it is expected, and
+        the AI still becomes a client — it occupies a slot and turns up in kills and chat. What it
+        must not have is an identity, because every bot on the server shares one, and one database
+        row would end up holding all of them with a single level and ban history between them.
         """
+        if self.profile.is_bot_guid(guid):
+            return ""
         if len(guid) >= self.profile.guid_min_length:
             return guid
         if guid and not self._warned_about_guids:
@@ -107,7 +114,11 @@ class CodParser(Parser):
     @handles(
         r"^K;(?P<vguid>[^;]*);(?P<vcid>-?\d+);(?P<vteam>[a-z]*);(?P<vname>[^;]*);"
         r"(?P<aguid>[^;]*);(?P<acid>-?\d+);(?P<ateam>[a-z]*);(?P<aname>[^;]*);"
-        r"(?P<weapon>[^;]*);(?P<damage>\d*);(?P<mod>[^;]*);(?P<hitloc>[^;]*)$"
+        # `[\d.]*`, not `\d*`: the damage figure carries decimals on some engines (Plutonium T6
+        # writes them on kill lines, and the CoD damage line below has always had them). An integer
+        # pattern here does not mis-read those lines, it fails to match them at all — and an
+        # unmatched log line is indistinguishable from a line the server never wrote.
+        r"(?P<weapon>[^;]*);(?P<damage>[\d.]*);(?P<mod>[^;]*);(?P<hitloc>[^;]*)$"
     )
     def on_kill(self, m: "re.Match[str]") -> Event:
         vcid, acid = m["vcid"], m["acid"]
@@ -119,7 +130,7 @@ class CodParser(Parser):
         weapon = m["weapon"]
         kill = KillData(
             weapon=weapon,
-            damage=int(m["damage"] or 0),
+            damage=int(float(m["damage"] or 0)),  # some engines write these with decimals
             hit_location=m["hitloc"],
             means_of_death=m["mod"],
         )

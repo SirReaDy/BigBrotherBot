@@ -58,7 +58,7 @@ _BASE = GameProfile(
     startup_commands=(),
     # There is no log file and no status table: `admin.listPlayers` returns a structured block, read
     # by the client itself (b3.parsers.frostbite.status).
-    status_command="admin.listPlayers all",
+    status_commands=("admin.listPlayers all",),
     map_template='admin.runNextRound "%s"',
     rotate_command="mapList.runNextRound",
     rotation_cvar="",  # the map list is a command, not a cvar

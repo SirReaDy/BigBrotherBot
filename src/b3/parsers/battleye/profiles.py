@@ -41,7 +41,7 @@ _BASE = GameProfile(
     # doing by hand.
     unban_template=None,
     # There is no log file: the RCON socket is the event stream (b3.net.battleye).
-    status_command="players",
+    status_commands=("players",),
     status_patterns=PATTERNS,
     # Arma has no in-game map vote or rotation cvar; missions are changed with `#mission`.
     map_template="#mission %s",

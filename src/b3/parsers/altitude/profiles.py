@@ -65,7 +65,7 @@ ALTITUDE = GameProfile(
     tempban_max_minutes=0,  # no known ceiling
     unban_template="removeBan %(guid)s",
     # Nothing can be asked of this engine. Empty is load-bearing -- see the module docstring.
-    status_command="",
+    status_commands=(),
     status_patterns=(),
     rotation_cvar="",
     map_template="changeMap %s",
