@@ -89,6 +89,18 @@ class FbParser(Parser):
         event = handler(words[1:])
         return [event] if event is not None else []
 
+    def handler_for(self, line: str) -> str | None:
+        """Which handler would read this event — see :meth:`b3.parsers.base.Parser.handler_for`.
+
+        Overridden because this family dispatches on ``words[0]`` rather than through the regex
+        router.
+        """
+        words = self._decode(line)
+        if not words:
+            return None
+        handler = self._handlers.get(words[0])
+        return None if handler is None else handler.__name__
+
     @staticmethod
     def _decode(line: str) -> list[str]:
         line = line.strip()

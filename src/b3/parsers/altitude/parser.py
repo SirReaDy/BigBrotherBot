@@ -145,6 +145,18 @@ class AltParser(Parser):
             return [result]
         return list(result)
 
+    def handler_for(self, line: str) -> str | None:
+        """Which handler would read this line — see :meth:`b3.parsers.base.Parser.handler_for`.
+
+        Overridden for the same reason `parse_line` is: this family dispatches on a JSON field, not
+        through the regex router.
+        """
+        event = self._decode(line)
+        if event is None or not self._is_ours(event):
+            return None
+        handler = self._handlers.get(str(event.get("type") or ""))
+        return None if handler is None else handler.__name__
+
     @staticmethod
     def _decode(line: str) -> dict[str, Any] | None:
         line = line.strip()

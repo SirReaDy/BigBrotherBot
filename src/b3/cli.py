@@ -256,6 +256,7 @@ async def _run_replay(
 
 def main(argv: list[str] | None = None) -> int:
     from b3.config.schema import ConfigError
+    from b3.core.probe import DEFAULT_LINES
     from b3.parsers.games import PROFILES, UnknownGameError
 
     parser = argparse.ArgumentParser(prog="b3", description="Big Brother Bot 2.0")
@@ -292,6 +293,24 @@ def main(argv: list[str] | None = None) -> int:
     init.add_argument("--service-user", default="b3", help="user the systemd unit runs as")
     init.add_argument("--force", action="store_true", help="overwrite an existing config")
     sub.add_parser("doctor", help="check this install before starting it for the first time")
+    probe = sub.add_parser(
+        "probe",
+        help="show what this server actually says, and which of our assumptions fit it (read-only)",
+    )
+    probe.add_argument(
+        "--lines",
+        type=int,
+        default=DEFAULT_LINES,
+        help=f"how many log lines to check (default: {DEFAULT_LINES})",
+    )
+    probe.add_argument(
+        "--cvar", default="sv_maxclients", help="which cvar to try reading (default: sv_maxclients)"
+    )
+    probe.add_argument(
+        "--redact",
+        action="store_true",
+        help="mask addresses and ids, for pasting the output somewhere public",
+    )
     sub.add_parser("games", help="list the game titles this bot can read")
     sub.add_parser("plugins", help="list every plugin available here, and which this server runs")
     replay = sub.add_parser("replay", help="replay a recorded log file offline")
@@ -369,6 +388,8 @@ def main(argv: list[str] | None = None) -> int:
     try:
         if args.cmd == "doctor":
             return _run_doctor(config, conf_dir)
+        if args.cmd == "probe":
+            return _run_probe(config, conf_dir, args.lines, args.cvar, args.redact)
         if args.cmd == "run":
             return asyncio.run(_run_live(config, conf_dir, args.config))
         elif args.cmd == "replay":
@@ -494,6 +515,24 @@ def _run_plugins(config: Config, conf_dir: Path | None) -> int:
     for entry in config.plugins:
         note = "  [disabled: loaded but inert]" if entry.disabled else ""
         print(f"  {entry.name:<20} {entry.module or f'{BUILTIN_PACKAGE}.{entry.name}'}{note}")
+    return 0
+
+
+def _run_probe(
+    config: Config, conf_dir: Path | None, lines: int, cvar: str, hide: bool
+) -> int:
+    """`b3 probe` — the raw truth about this server, for pasting back to whoever asked.
+
+    Always exits 0: this reports, it does not judge. `b3 doctor` is the command with a verdict.
+    """
+    from b3.core.probe import run_probe
+
+    # The checks talk to things, which is chatty, and the report *is* the output here.
+    for noisy in ("b3.net.logsource", "b3.net.rcon"):
+        logging.getLogger(noisy).setLevel(logging.ERROR)
+
+    for line in run_probe(config, conf_dir, lines=lines, cvar=cvar, hide=hide):
+        print(line)
     return 0
 
 

@@ -35,6 +35,21 @@ class Parser(ABC):
         self.port = 0
         self._router = LineRouter.from_instance(self)
 
+    def handler_for(self, line: str) -> str | None:
+        """Name the handler that would read ``line``, or None if this parser has none for it.
+
+        Separate from :meth:`parse_line` because "produced no event" and "was not understood" are
+        different answers that look identical from the outside: a handler may decline a line it did
+        match (chat from a player the bot never saw connect, a kill by the world). `b3 probe` reports
+        the difference, which is the only way to tell a grammar gap from a quiet server — the failure
+        mode that hid most of Urban Terror's weapons for as long as it did.
+        """
+        line = self._timestamp_re.sub("", line.strip(), count=1)
+        if not line:
+            return None
+        matched = self._router.match(line)
+        return None if matched is None else matched[1].__name__
+
     def parse_line(self, line: str) -> list[Event]:
         """Route one log line to its handler and return the events it produced."""
         line = self._timestamp_re.sub("", line.strip(), count=1)
