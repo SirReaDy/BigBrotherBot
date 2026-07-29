@@ -37,10 +37,10 @@ servers. What they sit on is all new:
 migrations instead of manual `ALTER TABLE`, plugins that install by name and pin to a version, and
 straight answers when something is misconfigured.
 
-**Where it stands today.** All 59 classic admin commands at the classic levels, 32 game titles across
-six engine families — 29 of the classic bot's 36, plus three it never had — and every core service the
+**Where it stands today.** All 59 classic admin commands at the classic levels, 33 game titles across
+seven engine families — 30 of the classic bot's 36, plus three it never had — and every core service the
 old bot offered, plus remote log tailing, per-server deployment and pre-flight checks it never had.
-1,076 tests, `mypy --strict` clean.
+1,147 tests, `mypy --strict` clean.
 
 ## What was deleted, and what was rebuilt
 
@@ -88,7 +88,7 @@ ported, then a web API and a dashboard over several servers at once.
 
 ```bash
 python -m pip install -e ".[dev]"
-pytest                                            # 1,076 tests
+pytest                                            # 1,147 tests
 cd examples && python -m b3.cli -c b3.yaml replay games_mp.log   # offline replay demo
 ```
 
@@ -681,7 +681,7 @@ messages:
 
 ### Supported games
 
-Six engine families, thirty-two titles — `b3 games` prints the list on any install. Set `server.game` to
+Seven engine families, thirty-three titles — `b3 games` prints the list on any install. Set `server.game` to
 one of them:
 
 | Family | `server.game` |
@@ -695,6 +695,7 @@ one of them:
 | **Quake 3 — Enemy Territory** | `et` `etpro` |
 | **Quake 3 — Soldier of Fortune 2** | `sof2` `sof2pm` |
 | **Altitude** | `altitude` |
+| **Homefront** | `homefront` |
 
 A family is one parser; the titles in it are data — GUID length, ban verbs, the shape of the status
 table. Adding a title to a family is a few lines; adding a family is a parser.
@@ -820,6 +821,36 @@ file — it remembers how far it has read — so anything left in it is executed
 server starts. A leftover `kick` or ban from a previous run would otherwise land on whoever holds that
 name later. Bans are recorded in the bot's own database regardless, and re-applied on reconnect, so
 nothing is lost by discarding the file.
+
+### Homefront
+
+Its admin protocol is its own thing: **one TCP connection carries commands and events**, like Arma and
+Battlefield, so there is no game log to point at.
+
+```yaml
+server:
+  game: homefront
+  host: 127.0.0.1
+  port: 27500            # the admin port from the server's configuration, not the game port
+  rcon_password: "…"     # the admin password; only its SHA1 hash crosses the wire
+```
+
+- **`server.game_log` is ignored** — the connection is the event stream, and `b3 doctor` says so rather
+  than failing a check you cannot pass.
+- **The password is never sent.** The bot sends a SHA1 hash of it, uppercase and in space-separated
+  pairs, which is the format this game insists on.
+- **The server hangs up after ten seconds of silence**, so the bot pings well inside that. A connection
+  that opens and then dies is a keepalive problem rather than a credentials one.
+
+What you get: identity from the player's Steam id — so a rename is still the same person — chat with
+team and squad channels distinguished, team-kill detection, votes, clan changes, and the server's own
+ban list read back as the bot sees it.
+
+Three limits worth knowing, all the engine's. There is **no timed ban**: it has kick and kickban and
+nothing between, so a tempban is a kick the bot re-applies from its own record. There is **no way to
+load a named map**, only "next", so `!maprotate` works and `!map <name>` does not. And **nothing can be
+asked synchronously** — the player list arrives as pushed messages in answer to a request, so the bot
+keeps asking every fifteen seconds and assembles the roster from the replies.
 
 ### Which CoD4 are you running?
 

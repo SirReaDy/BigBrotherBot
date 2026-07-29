@@ -19,6 +19,8 @@ from b3.parsers.cod import profiles as cod_profiles
 from b3.parsers.cod.parser import CodParser
 from b3.parsers.frostbite import profiles as fb_profiles
 from b3.parsers.frostbite.parser import FbParser
+from b3.parsers.homefront import profiles as hf_profiles
+from b3.parsers.homefront.parser import HfParser
 from b3.parsers.profile import GameProfile
 from b3.parsers.q3 import profiles as q3_profiles
 from b3.parsers.q3.et import EtParser
@@ -43,24 +45,29 @@ FAMILIES: dict[str, type[Parser]] = {
     # Altitude has no admin socket at all: it writes a JSON log and reads commands out of a file.
     # See b3.net.altitude.
     "altitude": AltParser,
+    # Homefront pushes its events too, over a length-prefixed TCP connection whose framing is
+    # asymmetric -- six bytes of header out, seven back. See b3.net.homefront.
+    "homefront": HfParser,
 }
 
 #: Families whose events arrive over the RCON connection instead of a log file, so `server.game_log`
 #: is meaningless for them and the CLI builds one object to serve as both.
-PUSH_FAMILIES = frozenset({"battleye", "frostbite"})
+PUSH_FAMILIES = frozenset({"battleye", "frostbite", "homefront"})
 
 #: Families the bot commands by appending to a file the game server reads, instead of over a socket.
 #: They need `server.command_file` set, and there is no reply to anything they are sent.
 FILE_RCON_FAMILIES = frozenset({"altitude"})
 
-#: `server.game` -> profile. Six engine families, thirty titles.
+#: `server.game` -> profile. Seven engine families, thirty-three titles.
 PROFILES: dict[str, GameProfile] = {
     **cod_profiles.ALL,
     **q3_profiles.ALL,
     **be_profiles.ALL,
     **fb_profiles.ALL,
     **alt_profiles.ALL,
+    **hf_profiles.ALL,
 }
+
 
 class UnknownGameError(ValueError):
     """`server.game` names a title nothing here can read."""

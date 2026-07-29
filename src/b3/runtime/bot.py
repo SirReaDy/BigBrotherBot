@@ -443,6 +443,8 @@ class Bot:
                 % {
                     "cid": client.cid,
                     "name": sanitize_rcon_value(client.name),
+                    # Homefront's `adminpm` takes the player's Steam id, not a slot or a name.
+                    "guid": sanitize_rcon_value(client.guid),
                     "text": sanitize_rcon_value(line, None),
                 }
             )
@@ -739,7 +741,11 @@ class Bot:
     # it on the player's next connect. The old order dropped the ban entirely on an RCON timeout.
 
     def _penalty_values(
-        self, client: Client, reason: str = "", minutes: int = 0
+        self,
+        client: Client,
+        reason: str = "",
+        minutes: int = 0,
+        admin: Client | None = None,
     ) -> dict[str, object]:
         """Everything a penalty template might name, so each profile picks what its engine takes.
 
@@ -763,6 +769,11 @@ class Bot:
             # The same duration in seconds, because Frostbite's ban verb counts in those. Offered
             # rather than converted at the call site so a profile picks the unit its engine takes.
             "seconds": minutes * 60,
+            # Who issued it. Homefront's ban verb names the admin — `admin kickban "<uid>" "<admin>"
+            # "<reason>"` — and the classic parser read that name off the admin object without
+            # checking there was one, so a ban with no admin behind it (a plugin's, or the console's)
+            # raised AttributeError instead of banning anybody. The bot's own name stands in.
+            "admin": sanitize_rcon_value(admin.name if admin is not None else self.config.bot.name),
         }
 
     def _expressible(self, template: str, client: Client) -> bool:
@@ -796,14 +807,14 @@ class Bot:
     def ban(self, client: Client, reason: str = "", admin: Client | None = None) -> None:
         self._record_penalty(PenaltyType.BAN, client, admin, reason, 0, NEVER_EXPIRES)
         self.bus.publish_soon(Event(EventType.CLIENT_BAN, client=client, data=reason))
-        self._send_ban(client, reason)
+        self._send_ban(client, reason, admin)
 
-    def _send_ban(self, client: Client, reason: str) -> None:
+    def _send_ban(self, client: Client, reason: str, admin: Client | None = None) -> None:
         """Send the ban verb — or the kick verb, when the ban cannot be expressed for this client."""
         template = self.profile.ban_template
         if not self._expressible(template, client):
             template = self.profile.kick_template
-        self._send(template % self._penalty_values(client, reason))
+        self._send(template % self._penalty_values(client, reason, admin=admin))
 
     def tempban(
         self, client: Client, minutes: int, reason: str = "", admin: Client | None = None
@@ -811,9 +822,11 @@ class Bot:
         expire = self.clock.epoch() + minutes * 60
         self._record_penalty(PenaltyType.TEMPBAN, client, admin, reason, minutes, expire)
         self.bus.publish_soon(Event(EventType.CLIENT_BAN_TEMP, client=client, data=reason))
-        self._send_tempban(client, minutes, reason)
+        self._send_tempban(client, minutes, reason, admin)
 
-    def _send_tempban(self, client: Client, minutes: int, reason: str) -> None:
+    def _send_tempban(
+        self, client: Client, minutes: int, reason: str, admin: Client | None = None
+    ) -> None:
         """Use the engine's own timed ban when it has one, else ban and re-apply on reconnect.
 
         Either way the penalty row is what the bot enforces: `enforce_ban` re-applies a tempban
@@ -821,7 +834,7 @@ class Bot:
         """
         template = self.profile.tempban_template
         if template is None:
-            self._send_ban(client, reason)
+            self._send_ban(client, reason, admin)
             return
         if not self._expressible(template, client):
             self._send(self.profile.kick_template % self._penalty_values(client, reason))
@@ -836,7 +849,7 @@ class Bot:
                 capped,
                 minutes,
             )
-        self._send(template % self._penalty_values(client, reason, capped))
+        self._send(template % self._penalty_values(client, reason, capped, admin))
 
     def warn(
         self,

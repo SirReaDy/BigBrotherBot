@@ -111,6 +111,7 @@ def _connect(config: Config) -> Connection:
         pushers: dict[str, Callable[[Config], PushClient]] = {
             "battleye": _battleye_client,
             "frostbite": _frostbite_client,
+            "homefront": _homefront_client,
         }
         client = pushers[profile.family](config)
         return Connection(
@@ -180,6 +181,17 @@ def _frostbite_client(config: Config) -> PushClient:
     from b3.net.frostbite import FrostbiteClient
 
     return FrostbiteClient(
+        config.server.host,
+        config.server.port,
+        config.server.rcon_password,
+        timeout=config.server.rcon_timeout,
+    )
+
+
+def _homefront_client(config: Config) -> PushClient:
+    from b3.net.homefront import HomefrontClient
+
+    return HomefrontClient(
         config.server.host,
         config.server.port,
         config.server.rcon_password,

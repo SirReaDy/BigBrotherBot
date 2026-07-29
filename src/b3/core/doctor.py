@@ -211,6 +211,8 @@ def _check_rcon(config: Config, rcon_factory: "Callable[[], RconClient] | None" 
     if rcon_factory is None and profile is not None and profile.family in PUSH_FAMILIES:
         if profile.family == "frostbite":
             return _check_frostbite_rcon(config)
+        if profile.family == "homefront":
+            return _check_homefront_rcon(config)
         return _check_battleye_rcon(config)
 
     if rcon_factory is None:
@@ -311,6 +313,49 @@ def _check_command_file(config: Config) -> Check:
             "the bot empties it on startup so the game server cannot replay old commands",
         )
     return Check("rcon", Status.OK, f"{path} is writable (this game has no rcon port)")
+
+
+def _check_homefront_rcon(config: Config) -> Check:
+    """Homefront: connect, log in, and say what came back.
+
+    Worth its own check for the same reason BattlEye has one: the port is not the game's, and a wrong
+    port looks exactly like a wrong password from the outside. This one can also tell an operator
+    something no other family needs to know — the server hangs up after ten seconds of silence, so a
+    connection that opens and then dies is a keepalive problem rather than a credentials one.
+    """
+    from b3.net.homefront import HomefrontAuthError, HomefrontClient, HomefrontError
+
+    client = HomefrontClient(
+        config.server.host,
+        config.server.port,
+        config.server.rcon_password,
+        timeout=max(config.server.rcon_timeout, 2.0),
+    )
+    try:
+        client.open()
+    except HomefrontAuthError:
+        return Check(
+            "rcon",
+            Status.FAIL,
+            f"{config.server.host}:{config.server.port} rejected the password",
+            "server.rcon_password must be the admin password from the server's own configuration",
+        )
+    except HomefrontError as exc:
+        return Check(
+            "rcon",
+            Status.FAIL,
+            f"cannot reach {config.server.host}:{config.server.port} ({exc})",
+            "server.port is the *admin* port, not the game port -- and check a firewall is not "
+            "blocking it",
+        )
+    finally:
+        try:
+            client.close()
+        except Exception:  # pragma: no cover - nothing useful to do
+            pass
+
+    version = client.server_version or "version not stated"
+    return Check("rcon", Status.OK, f"logged in; server says {version}")
 
 
 def _check_battleye_rcon(config: Config) -> Check:

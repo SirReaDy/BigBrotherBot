@@ -17,6 +17,7 @@ a session scratchpad and did not survive it, so the next protocol had to start f
 | `battleye.py` | BattlEye RCON (Arma 2/3) — login, commands, pushed server messages, ACKs, multi-part replies, a stateful ban list | `tests/test_battleye_*.py`, `e2e_battleye.py` |
 | `frostbite.py` | Frostbite RCON (BF3/BF4/BC2/MoH) — binary TCP word lists, a real salt-and-hash login, opt-in events, ACKs, deliberate stream fragmentation | `tests/test_frostbite_net.py`, `e2e_frostbite.py` |
 | `altitude.py` | Altitude's file "protocol" — a JSON log it writes, a command file it reads, strict `<port>,console,<cmd>` framing, a ban list, and a `restart()` that replays a file nobody emptied | `tests/test_altitude_net.py`, `e2e_altitude.py` |
+| `homefront.py` | Homefront's admin protocol -- length-prefixed TCP with **asymmetric framing** (6-byte header in, 7-byte out), a verified SHA1 login, fragmented writes, a ban list, and a connection that really does die after N seconds of silence | `tests/test_homefront_net.py`, `e2e_homefront.py` |
 | `e2e_battleye.py` | drives a real `Bot` against `battleye.py` end to end | run it by hand |
 | `e2e_frostbite.py` | the same for `frostbite.py` | run it by hand |
 | `e2e_altitude.py` | the same for `altitude.py` | run it by hand |
@@ -27,6 +28,7 @@ a session scratchpad and did not survive it, so the next protocol had to start f
 # a server on a random free port, printing everything it sees
 python -m tools.fakeservers.battleye --password test
 python -m tools.fakeservers.frostbite --password test
+python -m tools.fakeservers.homefront --password test
 
 # altitude has no socket: it writes a session to a temp directory and prints it
 python -m tools.fakeservers.altitude
@@ -35,6 +37,7 @@ python -m tools.fakeservers.altitude
 python -m tools.fakeservers.e2e_battleye
 python -m tools.fakeservers.e2e_frostbite
 python -m tools.fakeservers.e2e_altitude
+python -m tools.fakeservers.e2e_homefront
 ```
 
 ## Using one in a test
@@ -78,5 +81,12 @@ Keep to the shape the BattlEye one sets:
   and `for_other_ports` lists beside `received`, so a test can assert the bot wrote *nothing* wrong
   rather than only that it wrote the right thing. Being lenient here would hide a missing port prefix,
   which in production means commands running on a neighbouring game server;
+- **let the server come back.** `homefront.py` has `restart()`, which rebinds the *same* address, and
+  `altitude.py` has one that replays a command file nobody emptied. "It went away and came back" is
+  ordinary for a game server — a map change, a nightly cron — and it is where a client that only
+  noticed the going leaves the bot deaf for the rest of the evening;
+- **model the thing that kills the connection.** Homefront's server hangs up after ten seconds of
+  silence, so that fake really does, with the timeout as a parameter a test can shorten. Without it
+  a missing keepalive is invisible until a real server drops the bot ten seconds after every start;
 - **mark what you inferred.** If no capture of a reply exists, say so in the docstring rather than
   letting a plausible guess read as measured — the Altitude fake's kick reason is the example.
