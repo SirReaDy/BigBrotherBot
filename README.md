@@ -37,9 +37,10 @@ servers. What they sit on is all new:
 migrations instead of manual `ALTER TABLE`, plugins that install by name and pin to a version, and
 straight answers when something is misconfigured.
 
-**Where it stands today.** All 59 classic admin commands at the classic levels, 30 of the classic bot's
-36 game titles across six engine families, and every core service the old bot had — plus remote log
-tailing, per-server deployment and pre-flight checks it never had. 1,018 tests, `mypy --strict` clean.
+**Where it stands today.** All 59 classic admin commands at the classic levels, 32 game titles across
+six engine families — 29 of the classic bot's 36, plus three it never had — and every core service the
+old bot offered, plus remote log tailing, per-server deployment and pre-flight checks it never had.
+1,076 tests, `mypy --strict` clean.
 
 ## What was deleted, and what was rebuilt
 
@@ -87,7 +88,7 @@ ported, then a web API and a dashboard over several servers at once.
 
 ```bash
 python -m pip install -e ".[dev]"
-pytest                                            # 1,018 tests
+pytest                                            # 1,076 tests
 cd examples && python -m b3.cli -c b3.yaml replay games_mp.log   # offline replay demo
 ```
 
@@ -109,6 +110,7 @@ Installed as `b3`; equivalently `python -m b3.cli`.
 |---|---|
 | `b3 init <dir>` | Create a bot instance for one game server — config, plugin config, `plugins/`, optional systemd unit. See [Running B3](#running-b3-one-bot-per-game-server) |
 | `b3 -c b3.yaml doctor` | Check this install before starting it: RCON, game log, database, plugins |
+| `b3 -c b3.yaml probe` | Show what this server actually says — the raw `status` reply, which row pattern matched it, the parsed players, and **which log lines this bot does not understand**. Read-only; `--redact` masks addresses and ids for pasting somewhere public |
 | `b3 -c b3.yaml run` | Connect to the server, tail the game log (locally or [over the network](#tailing-a-hosted-servers-log)), and run until stopped |
 | `b3 -c b3.yaml replay <logfile>` | Replay a recorded log offline — no server, no RCON. The test/demo harness |
 | `b3 games` | Every valid `server.game`, grouped by engine, marking which need no game log. Needs no config |
@@ -121,6 +123,30 @@ unit), `--service-user`, `--force`.
 `--game` only accepts a title the bot actually reads, and so does the config: an unrecognised
 `server.game` stops the bot at startup with the near match named (`unknown game 'bf3_typo' — did you
 mean 'bf3'?`) rather than falling back to a parser that would silently match nothing.
+
+### Asking a server what it really looks like
+
+```
+b3 -c b3.yaml probe [--lines 200] [--cvar sv_maxclients] [--redact]
+```
+
+`doctor` answers "is this install working?" with a verdict. `probe` answers "what does this server
+actually say?" with evidence, and it is the command to run when something is not recognised — or when
+somebody here asks you what your server prints. It shows:
+
+- the **raw** reply to every status command this title has, exactly as it arrived;
+- how many rows each candidate row pattern matched, named by the columns it expects — so "the shape
+  with a Steam64 column matched 0 rows and the one without matched 4" tells you the server's setting
+  at a glance;
+- the players that came out, and which column was taken as their identity;
+- the reply to one cvar read, in the form this title asks for it;
+- and the part worth the most: **how many log lines matched no handler, with examples.** A line this
+  bot does not understand looks exactly like a line the server never wrote, so this is the only way to
+  see a grammar gap rather than infer one from silence.
+
+It is strictly read-only — status, one cvar, and the tail of the log; there is no path from it to a
+kick, a ban or a line of chat. `--redact` masks addresses and ids (keeping map names, which are the
+useful part) for pasting into an issue or a forum thread.
 
 ### Database
 
@@ -655,12 +681,13 @@ messages:
 
 ### Supported games
 
-Six engine families, thirty titles — `b3 games` prints the list on any install. Set `server.game` to
+Six engine families, thirty-two titles — `b3 games` prints the list on any install. Set `server.game` to
 one of them:
 
 | Family | `server.game` |
 |---|---|
 | **Call of Duty** | `cod2` `cod4` `cod4x` `cod4gr` `cod5` `cod6` `cod7` `cod8` |
+| **Call of Duty — Plutonium** | `plutoiw5` (MW3) `plutot6` (Black Ops 2) |
 | **BattlEye** | `arma2` `arma3` |
 | **Frostbite** | `bfbc2` `moh` `bf3` `bf4` `bfh` `mohw` |
 | **Quake 3** | `q3` `oa081` `smg` `smg11` `wop` `wop15` |
@@ -807,7 +834,30 @@ engine buffers its log file and the bot reacts late or not at all.
 Two caveats: **cod6/cod8 have no working ban verb**, so a ban there is a kick the bot re-applies on
 every reconnect (as it was classically); and **cod7 logs** were served by Activision's long-dead
 "Elite" service, so Black Ops needs a server that writes a log file the bot can reach. Its RCON
-framing differs from the other titles and is handled.
+framing differs from the other titles and is handled, as does the way it takes cvars: Black Ops
+refuses a plain `set` over RCON, so the bot uses `setadmindvar` there — including for the two
+settings that decide whether its log is readable at all.
+
+### Plutonium (MW3 and Black Ops 2)
+
+`plutoiw5` is Modern Warfare 3 and `plutot6` is **Black Ops 2** on the [Plutonium](https://plutonium.pw/)
+client. Same log grammar, same RCON, so they are two more titles rather than new machinery — but three
+of their differences are the kind that fail silently, and each is handled:
+
+- **Chat is cut short by the engine**, at 43 characters on IW5 and 72 on T6. The bot wraps to
+  whichever is smaller, that or your `bot.line_length`; a config value can ask for shorter lines than
+  the game shows but cannot lift the game's own limit.
+- **Bots share one GUID** — `0` on T6, a long common prefix or `bot<N>` on IW5 — and both status
+  tables also carry a `bot` column, which is believed over any of that. AI players still appear as
+  players, but they are never given an identity, so they cannot pile into one database record with a
+  shared level and ban history between them.
+- **A bot's ping is not a number** (letters on IW5, blank on T6). Read as zero, an AI would look like
+  the best-connected player on the server.
+- **IW5 reads cvars differently** from every other title here: `get <name>`, answered as
+  `name is "value"` rather than the Quake 3 form. T6 uses the Quake 3 form.
+
+Neither title has a working ban verb, so as on MW2/MW3 a ban is a kick that the bot re-applies from
+its own record when the player returns.
 
 | | `cod4` (stock) | `cod4x` (CoD4X 1.8) |
 |---|---|---|
@@ -819,7 +869,17 @@ framing differs from the other titles and is handled.
 
 Getting this wrong is loud, not silent: pointing `cod4x` at a server that is not reporting Steam64
 ids makes the bot log *"ignoring guid … Nobody will be authenticated while this is the case"* rather
-than quietly failing to recognise anybody.
+than quietly failing to recognise anybody. The player list is read whether or not that cvar is
+honoured — a CoD4X server with `sv_usesteam64id` off prints one numeric id column instead of two, and
+that shape is parsed too, rather than being mistaken for part of the player's name.
+
+**On CoD4X the bot asks `b3status` before `status`.** Servers running the `b3hide` mod — the usual way
+admins hide themselves — leave hidden players out of `status` altogether and answer `b3status` with the
+whole table, so asking the fuller question first is what stops the bot losing sight of the very people
+using it. A server without the mod does not know that command; the bot notices, falls back to `status`,
+and remembers which one worked. Load the mod later and it finds `b3status` again without a restart.
+If a table shape turns up that neither pattern fits, the bot says so and quotes the row, instead of
+reporting an empty server.
 
 A tempban longer than CoD4X allows is still recorded in full — the engine gets its 30-day maximum,
 and the bot re-applies the remainder when the player next connects.
