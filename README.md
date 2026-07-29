@@ -681,7 +681,7 @@ messages:
 
 ### Supported games
 
-Seven engine families, thirty-three titles — `b3 games` prints the list on any install. Set `server.game` to
+Eight engine families, thirty-four titles — `b3 games` prints the list on any install. Set `server.game` to
 one of them:
 
 | Family | `server.game` |
@@ -696,6 +696,7 @@ one of them:
 | **Quake 3 — Soldier of Fortune 2** | `sof2` `sof2pm` |
 | **Altitude** | `altitude` |
 | **Homefront** | `homefront` |
+| **Ravaged** | `ravaged` |
 
 A family is one parser; the titles in it are data — GUID length, ban verbs, the shape of the status
 table. Adding a title to a family is a few lines; adding a family is a parser.
@@ -851,6 +852,32 @@ nothing between, so a tempban is a kick the bot re-applies from its own record. 
 load a named map**, only "next", so `!maprotate` works and `!map <name>` does not. And **nothing can be
 asked synchronously** — the player list arrives as pushed messages in answer to a request, so the bot
 keeps asking every fifteen seconds and assembles the roster from the replies.
+
+### Ravaged
+
+One TCP connection again, and a protocol with a quirk worth stating: **the two directions have
+different shapes.** The bot writes a plain line; the server answers with a length in brackets.
+
+```yaml
+server:
+  game: ravaged
+  host: 127.0.0.1
+  port: 13550            # the admin port from the server's configuration, not the game port
+  rcon_password: "..."   # the admin password; only its SHA1 hash crosses the wire
+```
+
+- **`server.game_log` is ignored** — the connection is the event stream, and `b3 doctor` says so rather
+  than failing a check you cannot pass.
+- **Too many wrong passwords get your address blacklisted**, not merely refused — so the bot tries once
+  and stops, and `b3 doctor` tells you which of the two has happened. If you are blacklisted, fix the
+  password and wait for the server to forget before connecting again.
+- **Bans are counted in days.** The bot converts whatever duration you give it, so `!tempban bob 2h`
+  works; a permanent ban goes out as a year and is held permanently in the bot's own database.
+- **Everything is keyed on the Steam id**, so a rename is still the same person and a ban follows them.
+
+What you get: kills with the damage type, team-kill detection, chat with team chat distinguished,
+round starts and results, the rotation and `!map`, and scores and pings — which appear in no log line
+on this engine, so the bot asks for the player list every fifteen seconds to keep them current.
 
 ### Which CoD4 are you running?
 

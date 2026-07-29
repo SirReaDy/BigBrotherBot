@@ -581,7 +581,16 @@ class Bot:
 
     def get_maps(self) -> list[str]:
         if not self.profile.rotation_cvar:
-            return []  # this engine has no rotation to read (Arma changes mission by command)
+            # No cvars -- but some of those engines will still answer a question. Ravaged's
+            # `getmaplist false` returns the rotation in order, and its parser knows the row shape;
+            # asking is this method's job and reading the answer is the parser's, exactly as with the
+            # roster. Without this, `!maprotate` and `!nextmap` would quietly report nothing on a
+            # game that can in fact answer both.
+            reader = getattr(self.parser, "read_maps", None)
+            if self.profile.maplist_command and reader is not None:
+                reply = self._ask(self.profile.maplist_command)
+                return list(reader(reply)) if reply.strip() else []
+            return []  # nothing to read and nothing to ask (Arma changes mission by command)
         rotation = self.get_cvar(self.profile.rotation_cvar)
         return status_parser.parse_rotation(rotation) if rotation else []
 
@@ -597,7 +606,11 @@ class Bot:
         return maps[0]  # current map is not in the rotation: the next one played is its first
 
     def change_map(self, name: str) -> None:
-        self._send(self.profile.map_template % sanitize_rcon_value(name))
+        """Load a named map. Some engines need two commands for it, so the template may hold both."""
+        rendered = self.profile.map_template % sanitize_rcon_value(name)
+        for command in rendered.splitlines():
+            if command.strip():
+                self._send(command.strip())
 
     def rotate_map(self) -> None:
         if not self.profile.rotate_command:
@@ -766,9 +779,11 @@ class Bot:
                 sanitize_rcon_value(reason, self.profile.max_reason_length) or "no reason given"
             ),
             "minutes": minutes,
-            # The same duration in seconds, because Frostbite's ban verb counts in those. Offered
-            # rather than converted at the call site so a profile picks the unit its engine takes.
+            # The same duration in seconds, because Frostbite's ban verb counts in those, and in
+            # days, because Ravaged's does. Offered rather than converted at the call site, so a
+            # profile picks the unit its own engine takes and nothing has to know which that is.
             "seconds": minutes * 60,
+            "days": round(minutes / 1440, 4) if minutes else 0,
             # Who issued it. Homefront's ban verb names the admin — `admin kickban "<uid>" "<admin>"
             # "<reason>"` — and the classic parser read that name off the admin object without
             # checking there was one, so a ban with no admin behind it (a plugin's, or the console's)

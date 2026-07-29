@@ -145,6 +145,13 @@ class GameProfile:
     # Which named group of that row is the player's *persistent* identity. Stock CoD has only
     # `guid`; CoD4X also reports `steam`, which is the one that survives a reinstall.
     identity_field: str = "guid"
+    # May hold **more than one command, one per line**: on Ravaged, loading a map is `addmap <name> 1`
+    # (put it next in the rotation) followed by `nextmap` (go there now), and a single-command version
+    # would appear to work while actually doing nothing until the round ended on its own.
     map_template: str = "map %s"
     rotate_command: str = "map_rotate"
     rotation_cvar: str = "sv_mapRotation"
+    # For engines that have no cvars but *do* answer a question: Ravaged has `getmaplist false`.
+    # Only consulted when `rotation_cvar` is empty, and only useful if the parser can read the reply
+    # (`read_maps`) -- the same division as the roster, with the asking here and the parsing there.
+    maplist_command: str = ""

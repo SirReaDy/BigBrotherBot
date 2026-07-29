@@ -112,6 +112,7 @@ def _connect(config: Config) -> Connection:
             "battleye": _battleye_client,
             "frostbite": _frostbite_client,
             "homefront": _homefront_client,
+            "ravaged": _ravaged_client,
         }
         client = pushers[profile.family](config)
         return Connection(
@@ -196,6 +197,19 @@ def _homefront_client(config: Config) -> PushClient:
         config.server.port,
         config.server.rcon_password,
         timeout=config.server.rcon_timeout,
+    )
+
+
+def _ravaged_client(config: Config) -> PushClient:
+    from b3.net.ravaged import RavagedClient
+
+    return RavagedClient(
+        config.server.host,
+        config.server.port,
+        config.server.rcon_password,
+        # A longer floor than the rcon default: this engine answers questions, and a player-list
+        # round trip on a busy server is not instant.
+        timeout=max(config.server.rcon_timeout, 2.0),
     )
 
 

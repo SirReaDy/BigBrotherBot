@@ -27,6 +27,9 @@ if TYPE_CHECKING:
 
 log = logging.getLogger(__name__)
 
+#: Ravaged's admin port, quoted in a hint when the connection fails.
+DEFAULT_RAVAGED_PORT = 13550
+
 #: Replies a Quake3/IW server sends when the RCON password is wrong.
 BAD_PASSWORD_MARKERS = ("invalid password", "bad rcon", "badrcon", "invalid rcon")
 
@@ -213,6 +216,8 @@ def _check_rcon(config: Config, rcon_factory: "Callable[[], RconClient] | None" 
             return _check_frostbite_rcon(config)
         if profile.family == "homefront":
             return _check_homefront_rcon(config)
+        if profile.family == "ravaged":
+            return _check_ravaged_rcon(config)
         return _check_battleye_rcon(config)
 
     if rcon_factory is None:
@@ -313,6 +318,60 @@ def _check_command_file(config: Config) -> Check:
             "the bot empties it on startup so the game server cannot replay old commands",
         )
     return Check("rcon", Status.OK, f"{path} is writable (this game has no rcon port)")
+
+
+def _check_ravaged_rcon(config: Config) -> Check:
+    """Ravaged: log in, and prove commands work rather than trusting the password was accepted.
+
+    The one thing an operator needs telling here that no other family needs: **too many failed logins
+    get the address blacklisted**, not merely refused. So a wrong password reported once is worth more
+    than a retry, and doctor never retries.
+    """
+    from b3.net.ravaged import (
+        RavagedAuthError,
+        RavagedBlacklistedError,
+        RavagedClient,
+        RavagedError,
+    )
+
+    client = RavagedClient(
+        config.server.host,
+        config.server.port,
+        config.server.rcon_password,
+        timeout=max(config.server.rcon_timeout, 2.0),
+    )
+    try:
+        client.open()
+    except RavagedBlacklistedError as exc:
+        return Check(
+            "rcon",
+            Status.FAIL,
+            f"{exc}",
+            "wait for the server to forget this address before trying again, and fix the password "
+            "first -- more attempts extend the blacklist",
+        )
+    except RavagedAuthError:
+        return Check(
+            "rcon",
+            Status.FAIL,
+            f"{config.server.host}:{config.server.port} refused the password",
+            "server.rcon_password is the admin password from the server's own configuration. Note "
+            "that repeated failures get this address blacklisted, so fix it before retrying",
+        )
+    except RavagedError as exc:
+        return Check(
+            "rcon",
+            Status.FAIL,
+            f"cannot reach {config.server.host}:{config.server.port} ({exc})",
+            f"server.port is the *admin* port (default {DEFAULT_RAVAGED_PORT}), not the game port",
+        )
+    finally:
+        try:
+            client.close()
+        except Exception:  # pragma: no cover - nothing useful to do
+            pass
+
+    return Check("rcon", Status.OK, "logged in, and commands are answered")
 
 
 def _check_homefront_rcon(config: Config) -> Check:
