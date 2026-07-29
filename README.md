@@ -660,6 +660,7 @@ server:
   game_log: "games_mp.log"            # local path, or an ftp/sftp/http URL (see below)
   encoding: latin-1                   # CoD engines are latin-1
   rcon_timeout: 0.8
+  rcon_user: admin                    # only Frontline and Ravaged authenticate an account name
   log_poll_interval: 2.0              # remote logs only: seconds between polls
   log_timeout: 10.0                   # remote logs only: per-operation network timeout
   log_max_gap: 20480                  # remote logs only: skip ahead past a bigger jump than this
@@ -681,7 +682,7 @@ messages:
 
 ### Supported games
 
-Eight engine families, thirty-four titles — `b3 games` prints the list on any install. Set `server.game` to
+Nine engine families, thirty-five titles — `b3 games` prints the list on any install. Set `server.game` to
 one of them:
 
 | Family | `server.game` |
@@ -697,6 +698,7 @@ one of them:
 | **Altitude** | `altitude` |
 | **Homefront** | `homefront` |
 | **Ravaged** | `ravaged` |
+| **Frontlines: Fuel of War** | `frontline` |
 
 A family is one parser; the titles in it are data — GUID length, ban verbs, the shape of the status
 table. Adding a title to a family is a few lines; adding a family is a parser.
@@ -878,6 +880,39 @@ server:
 What you get: kills with the damage type, team-kill detection, chat with team chat distinguished,
 round starts and results, the rotation and `!map`, and scores and pings — which appear in no log line
 on this engine, so the bot asks for the player list every fifteen seconds to keep them current.
+
+### Frontlines: Fuel of War
+
+One TCP connection again, and the only game here whose login needs a **user name as well as a
+password**.
+
+```yaml
+server:
+  game: frontline
+  host: 127.0.0.1
+  port: 14507            # the remote console port from the server's configuration, not the game port
+  rcon_user: admin       # the admin account name -- this engine authenticates one
+  rcon_password: "..."   # only an MD5 hash of it, salted by the server's challenge, crosses the wire
+```
+
+- **`server.game_log` is ignored** — the connection is the event stream, and `b3 doctor` says so rather
+  than failing a check you cannot pass.
+- **A wrong user and a wrong password look identical**: this server refuses a login by hanging up
+  without a word. `b3 doctor` reports it as a refusal rather than a network problem, and names both
+  settings, because the server will not say which one it was.
+- **Bans are keyed on the player's ProfileID**, their account, so a ban follows them across a rename and
+  across the slot number changing. Durations are in minutes; a permanent ban is `BanTime=0`.
+- **The bot switches the server's reporting on** when it connects, and again after a restart. Without
+  that this connection is silent — no chat and no debug lines at all.
+
+What you get: chat with team and squad channels distinguished, joins and departures, team changes,
+scores and pings, the rotation and `!map`, the server's own ban list changes (including bans an admin
+made at the console), and IP addresses when PunkBuster logging is on.
+
+One property of this engine is worth knowing because it sets the pace of everything: **it reports no
+connect or disconnect lines at all.** The player list is the only statement of who is playing, so the
+bot asks for it every three seconds and works out the joins and departures from the difference. That is
+why arrivals are noticed within a few seconds rather than instantly.
 
 ### Which CoD4 are you running?
 

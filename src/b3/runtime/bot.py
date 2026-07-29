@@ -590,12 +590,27 @@ class Bot:
             if self.profile.maplist_command and reader is not None:
                 reply = self._ask(self.profile.maplist_command)
                 return list(reader(reply)) if reply.strip() else []
+            # Or the parser may simply have it. Frontline answers `MapList` with a pushed message
+            # naming no command, so nothing can correlate it to a question -- the client asks on an
+            # interval and the parser keeps the answer. Same seam as `get_players`.
+            own = getattr(self.parser, "get_maps", None)
+            if own is not None:
+                return list(own())
             return []  # nothing to read and nothing to ask (Arma changes mission by command)
         rotation = self.get_cvar(self.profile.rotation_cvar)
         return status_parser.parse_rotation(rotation) if rotation else []
 
     def get_next_map(self) -> str | None:
-        """The map after the current one in the rotation — wrapping around at the end."""
+        """The map after the current one in the rotation — wrapping around at the end.
+
+        Unless the engine simply says: Frontline answers `GetNextMap` outright, and a server
+        whose rotation is randomised or voted on knows better than any arithmetic done here.
+        """
+        stated = getattr(self.parser, "get_next_map", None)
+        if stated is not None:
+            answer = stated()
+            if answer:
+                return str(answer)
         maps = self.get_maps()
         if not maps:
             return None

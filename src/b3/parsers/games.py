@@ -21,6 +21,8 @@ from b3.parsers.frostbite import profiles as fb_profiles
 from b3.parsers.frostbite.parser import FbParser
 from b3.parsers.homefront import profiles as hf_profiles
 from b3.parsers.homefront.parser import HfParser
+from b3.parsers.frontline import profiles as fl_profiles
+from b3.parsers.frontline.parser import FlParser
 from b3.parsers.profile import GameProfile
 from b3.parsers.ravaged import profiles as rav_profiles
 from b3.parsers.ravaged.parser import RavParser
@@ -53,17 +55,20 @@ FAMILIES: dict[str, type[Parser]] = {
     # Ravaged pushes its events too, but it also *answers* questions -- and its framing is a
     # decimal length in brackets. See b3.net.ravaged.
     "ravaged": RavParser,
+    # Frontline pushes everything too, and answers nothing: the server never says which command
+    # it is replying to, so even its roster arrives as a line. See b3.net.frontline.
+    "frontline": FlParser,
 }
 
 #: Families whose events arrive over the RCON connection instead of a log file, so `server.game_log`
 #: is meaningless for them and the CLI builds one object to serve as both.
-PUSH_FAMILIES = frozenset({"battleye", "frostbite", "homefront", "ravaged"})
+PUSH_FAMILIES = frozenset({"battleye", "frostbite", "frontline", "homefront", "ravaged"})
 
 #: Families the bot commands by appending to a file the game server reads, instead of over a socket.
 #: They need `server.command_file` set, and there is no reply to anything they are sent.
 FILE_RCON_FAMILIES = frozenset({"altitude"})
 
-#: `server.game` -> profile. Eight engine families, thirty-four titles.
+#: `server.game` -> profile. Nine engine families, thirty-five titles.
 PROFILES: dict[str, GameProfile] = {
     **cod_profiles.ALL,
     **q3_profiles.ALL,
@@ -72,6 +77,7 @@ PROFILES: dict[str, GameProfile] = {
     **alt_profiles.ALL,
     **hf_profiles.ALL,
     **rav_profiles.ALL,
+    **fl_profiles.ALL,
 }
 
 

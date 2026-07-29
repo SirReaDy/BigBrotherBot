@@ -113,6 +113,7 @@ def _connect(config: Config) -> Connection:
             "frostbite": _frostbite_client,
             "homefront": _homefront_client,
             "ravaged": _ravaged_client,
+            "frontline": _frontline_client,
         }
         client = pushers[profile.family](config)
         return Connection(
@@ -200,6 +201,19 @@ def _homefront_client(config: Config) -> PushClient:
     )
 
 
+def _frontline_client(config: Config) -> PushClient:
+    from b3.net.frontline import FrontlineClient
+
+    return FrontlineClient(
+        config.server.host,
+        config.server.port,
+        config.server.rcon_password,
+        # This engine authenticates a user as well as a password, and cannot log in without one.
+        user=config.server.rcon_user,
+        timeout=max(config.server.rcon_timeout, 1.0),
+    )
+
+
 def _ravaged_client(config: Config) -> PushClient:
     from b3.net.ravaged import RavagedClient
 
@@ -207,6 +221,9 @@ def _ravaged_client(config: Config) -> PushClient:
         config.server.host,
         config.server.port,
         config.server.rcon_password,
+        # Its `LOGIN=` step names an account too, and a server whose admin is not called "admin"
+        # would otherwise be unreachable with no way to say so in the config.
+        user=config.server.rcon_user,
         # A longer floor than the rcon default: this engine answers questions, and a player-list
         # round trip on a busy server is not instant.
         timeout=max(config.server.rcon_timeout, 2.0),

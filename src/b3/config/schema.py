@@ -68,6 +68,11 @@ class ServerConfig(BaseModel):
     # is utf-8).
     encoding: str = "latin-1"
     rcon_timeout: float = 0.8
+    # The admin *account* name, for the two engines whose login has one: Frontline hashes
+    # `RESPONSE <user> md5(challenge+password)` and cannot log in without it, and Ravaged's
+    # `LOGIN=` step names it. Ignored by every other family, all of which authenticate with a
+    # password alone.
+    rcon_user: str = "admin"
     # -- remote game_log only (ignored for a local path) --
     # Seconds between polls. Each poll is a round trip, so don't set this too low.
     log_poll_interval: float = 2.0

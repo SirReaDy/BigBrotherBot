@@ -21,6 +21,9 @@ server:
   # (percent-encode any @ or : in the credentials; sftp needs `pip install b3ng[sftp]`)
   game_log: "games_mp.log"
   encoding: latin-1
+  # Only two engines authenticate an account name as well as a password: Frontline cannot log in
+  # without one, and Ravaged names one in its login step. Ignored by every other game.
+  # rcon_user: admin
   # Remote logs only:
   # log_poll_interval: 2.0   # seconds between polls
   # log_timeout: 10.0        # per-operation network timeout

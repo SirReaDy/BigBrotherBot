@@ -218,6 +218,8 @@ def _check_rcon(config: Config, rcon_factory: "Callable[[], RconClient] | None" 
             return _check_homefront_rcon(config)
         if profile.family == "ravaged":
             return _check_ravaged_rcon(config)
+        if profile.family == "frontline":
+            return _check_frontline_rcon(config)
         return _check_battleye_rcon(config)
 
     if rcon_factory is None:
@@ -318,6 +320,58 @@ def _check_command_file(config: Config) -> Check:
             "the bot empties it on startup so the game server cannot replay old commands",
         )
     return Check("rcon", Status.OK, f"{path} is writable (this game has no rcon port)")
+
+
+def _check_frontline_rcon(config: Config) -> Check:
+    """Frontline: complete the challenge/response, and name the two ways it can fail.
+
+    Worth its own check because a refusal here carries **no message at all** -- the server hangs
+    up -- so what an operator sees is a closed connection, and the two causes (wrong password,
+    wrong *user*) look identical. This engine is the only one with a separate account name to
+    get wrong.
+    """
+    from b3.net.frontline import (
+        DEFAULT_PORT as FRONTLINE_PORT,
+    )
+    from b3.net.frontline import (
+        FrontlineAuthError,
+        FrontlineClient,
+        FrontlineError,
+    )
+
+    client = FrontlineClient(
+        config.server.host,
+        config.server.port,
+        config.server.rcon_password,
+        user=config.server.rcon_user,
+        timeout=max(config.server.rcon_timeout, 1.0),
+    )
+    try:
+        client.open()
+    except FrontlineAuthError:
+        return Check(
+            "rcon",
+            Status.FAIL,
+            f"{config.server.host}:{config.server.port} refused the login",
+            f"this engine authenticates a *user* as well as a password, and says nothing about "
+            f"which was wrong: check server.rcon_user (currently {config.server.rcon_user!r}) "
+            "as well as server.rcon_password",
+        )
+    except FrontlineError as exc:
+        return Check(
+            "rcon",
+            Status.FAIL,
+            f"cannot reach {config.server.host}:{config.server.port} ({exc})",
+            f"server.port is the *remote console* port (default {FRONTLINE_PORT}), not the game "
+            "port",
+        )
+    finally:
+        try:
+            client.close()
+        except Exception:  # pragma: no cover - nothing useful to do
+            pass
+
+    return Check("rcon", Status.OK, "logged in, and the server's reporting was switched on")
 
 
 def _check_ravaged_rcon(config: Config) -> Check:
