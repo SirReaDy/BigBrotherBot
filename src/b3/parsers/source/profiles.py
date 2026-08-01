@@ -123,12 +123,95 @@ INSURGENCY = GameProfile(
     rotate_command="",
 )
 
-ALL: dict[str, GameProfile] = {INSURGENCY.name: INSURGENCY}
+#: Counter-Strike 2's team tokens, mapped exactly as the classic ``csgo.py`` mapped them
+#: (``getTeam``): TERRORIST is blue and CT is red. The pairing is arbitrary either way, and matching
+#: the classic one is what keeps a plugin's stored per-team figures meaning the same thing after an
+#: import. ``Unassigned`` is a recognised token for "no team yet", which is not the same as a token
+#: this bot does not know -- see `SourceParser._set_team`, where the difference decides whether a
+#: player's team is cleared or left alone.
+CS2_TEAMS = {
+    "TERRORIST": "blue",
+    "CT": "red",
+    "Unassigned": "",
+    "Spectator": "spec",
+}
+
+#: **Counter-Strike 2, and it is not Insurgency with different team names.**
+#:
+#: The grammar is shared -- every line captured in the classic ``test_csgo.py`` is read by
+#: `SourceParser` without a change, which is unsurprising since the two titles shared one parser
+#: classically. What is *not* shared is everything the bot says back, because **SourceMod has no CS2
+#: build**: Source 2 broke the interface it hooks, and the community moved to Metamod:Source with
+#: CounterStrikeSharp instead. So none of Insurgency's verbs exist here -- no ``sm_say``, no
+#: ``sm_psay``, no ``sm_addban`` -- and this title is built on what a stock server answers:
+#:
+#: * ``say`` and ``kickid <userid> [reason]`` are native and documented.
+#: * ``changelevel <map>`` is native.
+#: * **There is no native private message.** `tell_template` therefore goes out as a public ``say``
+#:   with the player's name in front of it. That is a real loss of privacy for `!command` replies and
+#:   it is deliberate: the alternative is sending a verb the server does not have, which fails
+#:   silently, and a reply nobody receives is worse than one everybody sees.
+#: * **There is no reliable ban.** ``banid``/``writeid`` survive from Source 1 but are reported
+#:   unreliable on CS2 builds, so `ban_template` is the kick verb and enforcement is this bot's own:
+#:   the record is kept here and re-applied when the player comes back. `Bot.unban` recognises the
+#:   ban-equals-kick case and says so rather than sending an operator to hunt through a server-side
+#:   list that was never written. The same position ``plutoiw5``/``plutot6`` and MW2/MW3 are in.
+#:
+#: A server running CounterStrikeSharp with an admin plugin could do all three properly, and that is
+#: worth a second profile once somebody with such a server can confirm the verb names. Guessing them
+#: is what this codebase keeps finding to be the expensive mistake, so it is not done here.
+CS2 = GameProfile(
+    name="cs2",
+    family="source",
+    # Eight, and the length is measured *after* normalisation rather than before, which is what makes
+    # it safe here: `SourceParser._ensure` canonicalises first, so what this sees is always the legacy
+    # form, and the shortest possible one is `STEAM_1:0:0` at eleven characters. Raw `[U:1:1]` is
+    # seven, the same as `Console`, so a check applied to the wire form could not have separated them.
+    guid_min_length=8,
+    normalise_steam_ids=True,
+    # As on Insurgency: the map killing somebody arrives as `committed suicide with "world"`, naming
+    # one player, so there is no world slot to attribute it to.
+    world_cid="",
+    bot_guids=frozenset({BOT_GUID}),
+    teams=CS2_TEAMS,
+    # The classic parser's figure for this engine's console.
+    line_length=120,
+    # No required mod: a stock CS2 server can be administered, just not privately (see above).
+    say_template="say %s",
+    # No centre-screen verb natively; `Bot.say_big` falls back to `say` when this is empty.
+    saybig_template="",
+    # Public, because the engine offers nothing else. Named so the player can see it was meant for
+    # them, and so everybody else can see who is being answered rather than reading a reply out of
+    # nowhere.
+    tell_template="say [%(name)s] %(text)s",
+    kick_template='kickid %(cid)s "%(reason)s"',
+    # Deliberately the kick verb: see the note above on `banid`. `Bot.unban` keys the "no server-side
+    # ban list" message off this equality, so the two must stay identical.
+    ban_template='kickid %(cid)s "%(reason)s"',
+    tempban_template='kickid %(cid)s "%(reason)s"',
+    tempban_max_minutes=0,
+    # Nothing to lift server-side, because nothing was ever written there.
+    unban_template=None,
+    set_template='%(name)s "%(value)s"',
+    status_patterns=(SOURCE_STATUS_ROW_RE,),
+    identity_field="guid",
+    map_template="changelevel %s",
+    rotation_cvar="",
+    maplist_command="maps *",
+    # SourceMod publishes `sm_nextmap`; a stock CS2 server does not, so there is nothing to read and
+    # `Bot.get_next_map` correctly answers "nobody knows" rather than guessing from the map list.
+    next_map_cvar="",
+    rotate_command="",
+)
+
+ALL: dict[str, GameProfile] = {p.name: p for p in (INSURGENCY, CS2)}
 
 __all__ = [
     "ALL",
     "BOT_GUID",
     "CONSOLE_GUID",
+    "CS2",
+    "CS2_TEAMS",
     "INSURGENCY",
     "INSURGENCY_TEAMS",
     "SOURCEMOD",

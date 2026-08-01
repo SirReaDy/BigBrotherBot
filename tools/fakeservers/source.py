@@ -81,6 +81,7 @@ class FakeSourceServer:
         require_challenge: bool = True,
         hostname: str = "Fake Insurgency Server",
         map_name: str = "buhriz",
+        maps: tuple[str, ...] | None = None,
     ) -> None:
         self.password = password
         #: If set, an RCON reply is written as several packets of this many body bytes, all carrying
@@ -110,7 +111,10 @@ class FakeSourceServer:
             "mp_lobbytime": "10",
             "tv_password": "",
         }
-        self.maps: list[str] = ["buhriz", "district", "sinjar", "siege", "market"]
+        #: What `maps *` lists: every map *installed*, which is emphatically not a rotation. Per
+        #: title, because a server pretending to be CS2 while answering with Insurgency's maps would
+        #: let `!map` be exercised against a list no such server could ever return.
+        self.maps: list[str] = list(maps or ("buhriz", "district", "sinjar", "siege", "market"))
 
         self._tcp: socket.socket | None = None
         self._udp: socket.socket | None = None
@@ -325,6 +329,19 @@ class FakeSourceServer:
         if verb in ("sm_say", "sm_hsay", "sm_psay"):
             self.push(f'rcon from "127.0.0.1:40000": command "{command}"')
             return ""
+        # Counter-Strike 2's native verbs, which is all that title has: SourceMod does not build for
+        # Source 2, so a CS2 server answers `sm version` with nothing useful and the bot has to work
+        # with these. Serve them alongside the SourceMod ones and let the caller decide which title
+        # it is pretending to be by passing `sourcemod=False`.
+        #
+        # `say` records the command and writes no log line: whether a native `say` echoes itself into
+        # the console log is not something anybody here has seen a real CS2 server do, and inventing
+        # an echo would let the bot pass against behaviour that may not exist. `received` is the
+        # honest record that it was sent.
+        if verb == "say":
+            return ""
+        if verb == "kickid":
+            return self._kick(rest)
         if verb == "sm_kick":
             return self._kick(rest)
         if verb == "sm_addban":
