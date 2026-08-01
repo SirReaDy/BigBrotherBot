@@ -37,10 +37,10 @@ servers. What they sit on is all new:
 migrations instead of manual `ALTER TABLE`, plugins that install by name and pin to a version, and
 straight answers when something is misconfigured.
 
-**Where it stands today.** All 59 classic admin commands at the classic levels, 33 game titles across
-seven engine families — 30 of the classic bot's 36, plus three it never had — and every core service the
+**Where it stands today.** All 59 classic admin commands at the classic levels, 37 game titles across
+ten engine families — 34 of the classic bot's 37, plus three it never had — and every core service the
 old bot offered, plus remote log tailing, per-server deployment and pre-flight checks it never had.
-1,147 tests, `mypy --strict` clean.
+1,500 tests, `mypy --strict` clean.
 
 ## What was deleted, and what was rebuilt
 
@@ -444,8 +444,8 @@ say where a ban came from.
 ### The bot need not run on the game server
 
 `server.game_log` accepts `ftp://`, `ftps://`, `sftp://` and `http(s)://` URLs, so one VPS can run every
-bot while the game servers live elsewhere — the log is tailed over the network and RCON is UDP anyway.
-See [Tailing a hosted server's log](#tailing-a-hosted-servers-log).
+bot while the game servers live elsewhere — the log is tailed over the network and RCON is a network
+protocol anyway. See [Tailing a hosted server's log](#tailing-a-hosted-servers-log).
 
 On Arma and Battlefield titles there is no log at all — the RCON connection carries the events — so those
 bots run anywhere that can reach the RCON port, and `server.game_log` is ignored entirely.
@@ -508,7 +508,7 @@ a fresh player should not be able to make the bot shout at the whole server.
 | `!kickall <pattern> [reason]` | `!kall` | 80 | Kick every player whose name matches |
 | `!lookup <player>` | `!l` | 80 | Find a player in the database, connected or not |
 | `!makereg <player>` | `!mr` | 80 | Make a player a regular |
-| `!map <name>` |  | 80 | Change to another map |
+| `!map <name>` |  | 80 | Change to another map — a partial name will do |
 | `!maprotate` |  | 80 | Advance to the next map in the rotation |
 | `!pause <duration>` |  | 80 | Stop acting on the game for a while (0 to resume) |
 | `!permban <player> [reason]` | `!pb` | 80 | Ban a player permanently, whatever ban_duration says |
@@ -533,8 +533,17 @@ That is **all 59 of the classic bot's admin commands**, at its `plugin_admin.ini
 id (`@42`). Commands that act on people who have already left — `!unban`, `!baninfo`, `!aliases`,
 `!warns`, `!warnclear`, `!clientinfo`, `!putgroup`, `!ungroup`, `!makereg`, `!unreg`, `!leveltest`,
 `!seen`, `!lookup` — also search stored names **and past aliases**, so someone who renamed themselves
-is still findable. When a name matches several stored players the bot lists the candidates with their
-`@id` instead of guessing.
+is still findable.
+
+**A name that could mean two people is refused, never guessed.** With "bob" and "bobby" both in the
+server, `!ban bob` lists both with their slot numbers and does nothing until you say which; the same
+goes for stored players, listed with their `@id`. An exact name always wins outright, so "bob" is
+still one word even while "bobby" is playing.
+
+`!map` resolves partial names the same way, against the server's own rotation — `!map metro` finds
+`MP_Subway`. On Battlefield and Medal of Honor titles you can type the name you see on screen
+(`!map grand bazaar`), and `!maps`, `!nextmap` and `!map` all answer with those names rather than the
+engine's ids.
 
 A few commands deliberately behave differently from the classic bot:
 
@@ -682,16 +691,16 @@ messages:
 
 ### Supported games
 
-Nine engine families, thirty-five titles — `b3 games` prints the list on any install. Set `server.game` to
-one of them:
+Ten engine families, thirty-seven titles — `b3 games` prints the list on any install. Set `server.game`
+to one of them:
 
 | Family | `server.game` |
 |---|---|
-| **Call of Duty** | `cod2` `cod4` `cod4x` `cod4gr` `cod5` `cod6` `cod7` `cod8` |
+| **Call of Duty** | `cod` `cod2` `cod4` `cod4x` `cod4gr` `cod5` `cod6` `cod7` `cod8` |
 | **Call of Duty — Plutonium** | `plutoiw5` (MW3) `plutot6` (Black Ops 2) |
 | **BattlEye** | `arma2` `arma3` |
 | **Frostbite** | `bfbc2` `moh` `bf3` `bf4` `bfh` `mohw` |
-| **Quake 3** | `q3` `oa081` `smg` `smg11` `wop` `wop15` |
+| **Quake 3** | `q3` (also accepted as `q3a`) `oa081` `smg` `smg11` `wop` `wop15` |
 | **Quake 3 — Urban Terror** | `iourt41` `iourt42` `iourt43` |
 | **Quake 3 — Enemy Territory** | `et` `etpro` |
 | **Quake 3 — Soldier of Fortune 2** | `sof2` `sof2pm` |
@@ -699,27 +708,38 @@ one of them:
 | **Homefront** | `homefront` |
 | **Ravaged** | `ravaged` |
 | **Frontlines: Fuel of War** | `frontline` |
+| **Source** | `insurgency` |
 
 A family is one parser; the titles in it are data — GUID length, ban verbs, the shape of the status
 table. Adding a title to a family is a few lines; adding a family is a parser.
 
 The two families differ in one structural way worth knowing. A CoD log repeats a player's identity
 on every line; a Quake3 log states it **once**, in an infostring when the player connects, and
-every later line is a bare slot number. Quake3 chat lines carry a *name* rather than a slot, so a
-player the bot never saw connect produces no event rather than a nameless one.
+every later line is a bare slot number. A chat line names the speaker by name, or by slot and name
+on the titles that write both — where the two disagree the name wins, because some of these engines
+report chat against the wrong slot and attributing a `!command` to the wrong player is how the wrong
+person gets banned.
 
-The three Urban Terror / ET / SoF2 rows are the shared Quake3 grammar **plus** that title's own
-lines, read by a subclass — a title never loses a line by gaining a family of its own:
+Capture-the-flag, awards, item pickups and generic objectives all arrive as events on every title in
+this family. Beyond that, the Urban Terror / ET / SoF2 / World of Padman 1.5 rows are the shared
+grammar **plus** that title's own lines, read by a subclass — a title never loses a line by gaining a
+family of its own:
 
 - **Urban Terror** — `Hit:` (non-fatal hits with a hit location, which is what makes team-damage
-  policing possible), `Radio:`, flags, bomb mode and the voting lines. A hit line carries no damage
-  figure, so the damage comes from a weapon×hit-location table, and hit lines number weapons on a
-  *different* scale from kill lines. Not included: UrT's `auth` account service, and the freeze-tag
-  and jump-run lines (they belong with the plugins that want them).
+  policing possible), `Radio:`, private chat, spawns, kill assists, flags, capture times, bomb mode
+  and the voting lines. A hit line carries no damage figure, so the damage comes from a
+  weapon×hit-location table, and hit lines number weapons on a *different* scale from kill lines.
+  Radio is policed by `spamcontrol` like any other chat channel. Names longer than the protocol
+  allows are truncated, and by default the player is kicked — that length is an exploit rather than a
+  nickname; `server.allow_long_names: true` keeps the truncation and lets them play. Not included:
+  UrT's `auth` account service, and the freeze-tag and jump-run lines (they belong with the plugins
+  that want them).
 - **Enemy Territory** — `ConnectInfo:`, which is where an ET player's identity comes from: a plain ET
   server sets no `cl_guid` at all, so without this line nobody could hold a level or a ban. Also
   `Gib:` and ET's own slot-numbered chat lines, which beat matching a colour-coded name.
 - **Soldier of Fortune 2** — its `Hit:` line, which states the damage outright.
+- **World of Padman 1.5** — its own kill line (`Kill: <attacker> <means-of-death> <victim>`, a
+  different shape from every other title here) and its `Damage:` line for non-fatal hits.
 
 ### Battlefield / Medal of Honor (Frostbite)
 
@@ -914,15 +934,61 @@ connect or disconnect lines at all.** The player list is the only statement of w
 bot asks for it every three seconds and works out the joins and departures from the difference. That is
 why arrivals are noticed within a few seconds rather than instantly.
 
+### Insurgency (Source)
+
+The first Source title here, and the only family that reads a log file *and* logs in to a stateful RCON
+session. Events come from `console.log`; commands go over Source RCON, which shares the game's port over
+**TCP**.
+
+```yaml
+server:
+  game: insurgency
+  host: 127.0.0.1
+  port: 27015                       # the game port -- rcon shares it, over TCP
+  rcon_password: "..."              # the server's rcon_password
+  game_log: /srv/insurgency/insurgency/console.log
+```
+
+Two things to set up on the game server, and neither is optional:
+
+- **Start the server with `-condebug`**, which is what makes it write `console.log` at all. Without it
+  there is no log to point `server.game_log` at.
+- **Install [SourceMod](https://www.sourcemod.net/).** A stock Source server has no command for a
+  private message and none for a ban that survives a restart, so on this engine every command reply,
+  every `!` answer and the whole of `!ban` go through SourceMod. The bot checks for it on connect and
+  **refuses to start without it**, rather than running as a bot whose `!ban` quietly does nothing;
+  `b3 doctor` reports it as its own line, separately from whether the password worked.
+
+Worth knowing:
+
+- **Choose different command prefixes from SourceMod's.** SourceMod also answers `!` commands; see
+  `PublicChatTrigger` and `SilentChatTrigger` in `addons/sourcemod/configs/core.cfg`.
+- **Everything is keyed on the Steam id**, so a rename is still the same person and a ban follows them.
+  Both `STEAM_1:0:...` and the newer `[U:1:...]` form are read as identities.
+- **A ban is two commands** — one to write the ban list, one to remove the player who is on the server
+  now. The first alone leaves a banned player in the game until the map ends.
+- **AI players appear as players but are never given an identity.** Every bot on a Source server reports
+  the same `BOT`, so identifying them would pile every AI that ever played into one database record with
+  a single level and ban history between them.
+- **`!maps` lists what is installed, not a rotation** — that is all `maps *` can answer. `!nextmap` reads
+  SourceMod's `sm_nextmap` instead of guessing from that list, and says it does not know if the nextmap
+  plugin is not loaded.
+
+What you get: chat with team chat distinguished, joins, departures and team changes, kills with the
+weapon and whether it was a headshot, assists, objective actions, round and match state, the map, the
+roster with pings and addresses, and the server's own bans and kicks — including ones made at the
+console by somebody else.
+
 ### Which CoD4 are you running?
 
 Nearly every live CoD4 server runs **CoD4X 1.8** rather than the stock 1.7 binary, and they differ in
 ways that matter. Set `server.game` accordingly:
 
-`server.game` accepts every Call of Duty title the classic bot supported: `cod2`, `cod4`, `cod4x`,
-`cod4gr` (GameRanger), `cod5`, `cod6` (MW2), `cod7` (Black Ops), `cod8` (MW3). They share one parser
-— the differences are data. All of them are asked for `g_logsync` on connect, without which the
-engine buffers its log file and the bot reacts late or not at all.
+`server.game` accepts every Call of Duty title the classic bot supported: `cod` (Call of Duty 1),
+`cod2`, `cod4`, `cod4x`, `cod4gr` (GameRanger), `cod5`, `cod6` (MW2), `cod7` (Black Ops), `cod8`
+(MW3). They share one parser — the differences are data. All of them are asked for `g_logsync` on
+connect, without which the engine buffers its log file and the bot reacts late or not at all, and all
+of them wrap chat at 65 characters, which is as much as a Call of Duty console will show.
 
 Two caveats: **cod6/cod8 have no working ban verb**, so a ban there is a kick the bot re-applies on
 every reconnect (as it was classically); and **cod7 logs** were served by Activision's long-dead
