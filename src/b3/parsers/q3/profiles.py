@@ -57,7 +57,9 @@ SOF2PM = replace(_SOF2, name="sof2pm")
 SMG = replace(_BASE, name="smg")
 SMG11 = replace(_BASE, name="smg11")
 WOP = replace(_BASE, name="wop")
-WOP15 = replace(_BASE, name="wop15")
+#: World of Padman 1.5 writes its own kill and damage lines, so it needs its own parser class — see
+#: b3.parsers.q3.wop. 1.x stays on the shared grammar; only 1.5 is known to differ.
+WOP15 = replace(_BASE, name="wop15", family="wop15")
 
 #: Wolfenstein: Enemy Territory. ET sends the infostring on a line of its own, which the parser
 #: already handles, and its identity arrives on a `ConnectInfo:` line as a 32-character PunkBuster

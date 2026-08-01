@@ -244,9 +244,10 @@ def test_the_status_table_parses_with_and_without_a_guid_column():
      "iourt41", "iourt42", "iourt43"],
 )
 def test_every_quake3_title_is_configurable(game):
-    # Urban Terror, ET and SoF2 have extra lines of their own, so each names a *subclass* family;
-    # the `isinstance` below is the part that matters — every one of these reads the shared grammar.
-    assert PROFILES[game].family in ("q3", "urt", "et", "sof2")
+    # Urban Terror, ET, SoF2 and World of Padman 1.5 have extra lines of their own, so each names a
+    # *subclass* family; the `isinstance` below is the part that matters — every one of these reads
+    # the shared grammar.
+    assert PROFILES[game].family in ("q3", "urt", "et", "sof2", "wop15")
     assert isinstance(parser_for(PROFILES[game]), Q3Parser)
 
 

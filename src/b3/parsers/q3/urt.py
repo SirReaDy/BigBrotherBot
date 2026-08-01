@@ -1,25 +1,25 @@
 """UrtParser — the log lines Urban Terror adds to the shared Quake3 grammar.
 
-UrT is by far the most-played title in the Quake3 family, and it is the one that says the most in
-its log. On top of the lines every Quake3 server writes, it reports:
+On top of the lines every Quake3 server writes, Urban Terror reports:
 
-* ``Hit:`` — every non-fatal hit, with a hit location. **This is the important one**: it is what a
-  team-kill plugin watches, and without it a UrT server can only see completed kills, so shooting
-  your own team repeatedly without finishing them off is invisible.
-* ``Radio:`` — the voice-command menu, which spam control needs to police.
-* ``Flag:`` / ``Flag Return:`` — capture-the-flag.
+* ``Hit:`` — every non-fatal hit, with a hit location. This is what a team-kill plugin watches:
+  without it a UrT server only reports completed kills, so shooting your own team repeatedly
+  without finishing them off produces nothing.
+* ``Radio:`` — the voice-command menu, which spam control policies as a chat channel.
+* ``saytell:`` — private chat, including commands whispered to the bot.
+* ``Flag:`` / ``Flag Return:`` / ``FlagCaptureTime:`` — capture-the-flag.
 * ``Bomb ...`` / ``Bombholder is`` / ``Pop!`` — bomb mode.
 * ``Callvote:`` / ``Vote:`` / ``VotePassed:`` / ``VoteFailed:`` — the voting system.
-* ``SurvivorWinner:`` — the end of a survivor round.
+* ``ClientSpawn:``, ``Assist:`` (4.3 only) and ``SurvivorWinner:``.
 
-Everything here is transplanted from the classic ``iourt41.py``/``iourt42.py``, including the two
-tables that are pure hard-won data: the hit lines number weapons **differently from the kill lines**
-(so ``19`` means the LR300 on one and something else on the other), and the damage a hit does is a
-weapon×hit-location lookup, because the log line does not carry a damage figure at all.
+The two lookup tables below come from the classic ``iourt41.py``/``iourt42.py``: hit lines number
+weapons differently from kill lines (``19`` is the LR300 on one scale and another weapon on the
+other), and a hit's damage is a weapon×hit-location lookup because the line carries no damage
+figure.
 
-Not ported, and tracked in TODO.md §1.3 rather than hidden here: UrT's ``auth`` identity service
-(a separate socket to Frozen Sand's account servers, which needs a live server to confirm it still
-exists), and the freeze-tag and jump-run lines, which exist to serve plugins nobody has ported yet.
+Not implemented: UrT's ``auth`` identity service (a separate socket to Frozen Sand's account
+servers, which needs a live server to confirm it still answers), and the freeze-tag and jump-run
+lines, which exist to serve plugins that have not been ported.
 """
 
 from __future__ import annotations
@@ -29,7 +29,7 @@ import re
 
 from b3.core.events import Event, EventType
 from b3.parsers.cod.parser import KillData
-from b3.parsers.q3.parser import Q3Parser
+from b3.parsers.q3.parser import Q3Parser, chat_text
 from b3.parsers.registry import handles
 
 log = logging.getLogger(__name__)
@@ -221,6 +221,33 @@ class UrtParser(Q3Parser):
         )
         return Event(etype, data={"yes": int(m["yes"]), "no": int(m["no"]), "what": m["what"]})
 
+    # -- private chat and spawns ---------------------------------------------
+
+    @handles(r"^saytell:\s*(?P<cid>\d+)\s+(?P<tcid>\d+)\s+(?P<name>.+?):\s?(?P<text>.*)$")
+    def on_saytell(self, m: "re.Match[str]") -> Event | None:
+        """``saytell: 15 16 repelSteeltje: nno`` — speaker's slot, target's slot, speaker's name.
+
+        Private chat, which is how a command is whispered to the bot rather than said out loud. The
+        two slots can be equal (``saytell: 15 15 …``), so they are not required to differ.
+        """
+        client = self._chat_client(m["cid"], m["name"])
+        if client is None:
+            return None
+        return Event(
+            EventType.CLIENT_PRIVATE_SAY,
+            data=chat_text(m["text"]),
+            client=client,
+            target=self.clients.get_by_cid(m["tcid"]),
+        )
+
+    @handles(r"^ClientSpawn:\s*(?P<cid>\d+)\s*$")
+    def on_spawn(self, m: "re.Match[str]") -> Event | None:
+        """``ClientSpawn: 0`` — several plugins key respawn logic on this."""
+        client = self.clients.get_by_cid(m["cid"])
+        if client is None:
+            return None
+        return Event(EventType.CLIENT_SPAWN, client=client)
+
     # -- objectives ----------------------------------------------------------
 
     @handles(r"^Flag:\s*(?P<cid>\d+)\s+(?P<subtype>\d+):\s*(?P<text>.*)$")
@@ -258,9 +285,33 @@ class UrtParser(Q3Parser):
         """``SurvivorWinner: Red`` (a team) or ``SurvivorWinner: 0`` (a slot)."""
         return Event(EventType.GAME_SURVIVOR_WINNER, data=m["who"])
 
-    def _action(self, cid: str, action: str) -> Event | None:
-        """Publish a player objective as CLIENT_ACTION, the way every other engine reports one."""
-        client = self.clients.get_by_cid(cid)
+    @handles(r"^FlagCaptureTime:\s*(?P<cid>\d+):\s*(?P<ms>\d+)\s*$")
+    def on_flag_capture_time(self, m: "re.Match[str]") -> Event | None:
+        """``FlagCaptureTime: 0: 1234567890`` — how long that capture took, in milliseconds.
+
+        The slot is followed by a colon, unlike the space-separated fields most of these lines use.
+        """
+        client = self.clients.get_by_cid(m["cid"])
         if client is None:
             return None
-        return Event(EventType.CLIENT_ACTION, data=action, client=client)
+        return Event(EventType.CLIENT_FLAG_CAPTURE_TIME, data=int(m["ms"]), client=client)
+
+    # -- 4.3 only -------------------------------------------------------------
+
+    @handles(r"^Assist:\s*(?P<acid>\d+)\s+(?P<kcid>\d+)\s+(?P<vcid>\d+):\s*(?P<text>.*)$")
+    def on_assist(self, m: "re.Match[str]") -> Event | None:
+        """``Assist: 0 14 15: -[TPF]-PtitBigorneau assisted Bot1 to kill Bot2`` — 4.3 only.
+
+        Three slots: the assister, the killer, the victim. The assist is credited to the assister,
+        so they are the event's `client`; `target` is the player who died and the killer is in
+        `extra`.
+        """
+        assister = self.clients.get_by_cid(m["acid"])
+        if assister is None:
+            return None
+        return Event(
+            EventType.CLIENT_ASSIST,
+            client=assister,
+            target=self.clients.get_by_cid(m["vcid"]),
+            extra={"killer": self.clients.get_by_cid(m["kcid"])},
+        )

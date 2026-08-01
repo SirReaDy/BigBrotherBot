@@ -8,6 +8,7 @@ new parser and an entry here.
 from __future__ import annotations
 
 import difflib
+import logging
 
 from b3.core.clients import ClientManager
 from b3.parsers.altitude import profiles as alt_profiles
@@ -31,6 +32,7 @@ from b3.parsers.q3.et import EtParser
 from b3.parsers.q3.parser import Q3Parser
 from b3.parsers.q3.sof2 import Sof2Parser
 from b3.parsers.q3.urt import UrtParser
+from b3.parsers.q3.wop import Wop15Parser
 
 #: family -> the parser that reads it. `urt`, `et` and `sof2` are Quake3 titles with extra lines of
 #: their own rather than separate engines, so each is a Q3Parser subclass and inherits the whole
@@ -41,6 +43,7 @@ FAMILIES: dict[str, type[Parser]] = {
     "urt": UrtParser,
     "et": EtParser,
     "sof2": Sof2Parser,
+    "wop15": Wop15Parser,
     # Not a log format at all: a BattlEye server pushes its events down the RCON socket, so this
     # family's "log source" *is* its rcon client. See b3.net.battleye and cli._connect.
     "battleye": BeParser,
@@ -81,8 +84,16 @@ PROFILES: dict[str, GameProfile] = {
 }
 
 
+log = logging.getLogger(__name__)
+
+
 class UnknownGameError(ValueError):
     """`server.game` names a title nothing here can read."""
+
+
+#: Title ids the classic bot used under a different spelling, accepted so an imported config starts
+#: unchanged. The classic id for Quake 3 Arena is `q3a`; ours is `q3`.
+ALIASES = {"q3a": "q3"}
 
 
 def suggest(game: str) -> list[str]:
@@ -93,6 +104,8 @@ def suggest(game: str) -> list[str]:
     the whole of it, which is exactly the suffixed-name typo an operator makes.
     """
     wanted = game.lower()
+    if wanted in ALIASES:
+        return [ALIASES[wanted]]
     found = difflib.get_close_matches(wanted, sorted(PROFILES), n=3)
     if len(wanted) >= 2:  # one character, or none, is a prefix of far too much to be a hint
         found += [
@@ -114,6 +127,10 @@ def profile_for(game: str) -> GameProfile:
     profile = PROFILES.get(game)
     if profile is not None:
         return profile
+    renamed = ALIASES.get(game.lower())
+    if renamed is not None:
+        log.info("game %r is called %r here; using that profile", game, renamed)
+        return PROFILES[renamed]
     near = suggest(game)
     did_you_mean = f" — did you mean {' or '.join(repr(n) for n in near)}?" if near else ""
     raise UnknownGameError(

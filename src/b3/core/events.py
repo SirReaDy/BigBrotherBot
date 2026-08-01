@@ -52,6 +52,10 @@ class EventType(Enum):
     CLIENT_GIB_SELF = auto()
     CLIENT_GIB_TEAM = auto()
     CLIENT_ACTION = auto()
+    #: Someone else finished the kill this player set up. `client` is the assister, `target` the
+    #: player who died, and `extra["killer"]` whoever landed the last shot. Urban Terror 4.3 is the
+    #: only engine here that reports assists.
+    CLIENT_ASSIST = auto()
     CLIENT_ITEM_PICKUP = auto()
     #: A player entered the world with a fresh life. The classic bot's `EVT_CLIENT_SPAWN`, which was
     #: missing here because no parser had reported it until Frostbite — the engine whose only
@@ -95,6 +99,9 @@ class EventType(Enum):
     GAME_FLAG_RETURNED = auto()
     GAME_BOMB_EXPLODED = auto()
     GAME_SURVIVOR_WINNER = auto()
+    #: How long a capture took, in milliseconds, credited to the player who made it (`client`).
+    #: A statistic rather than an outcome: the capture itself is already a CLIENT_ACTION.
+    CLIENT_FLAG_CAPTURE_TIME = auto()
 
     # --- admin / plugin lifecycle ----------------------------------------
     ADMIN_COMMAND = auto()

@@ -34,6 +34,17 @@ log = logging.getLogger(__name__)
 #: `\key\value\key\value`, the Quake3 infostring format.
 INFO_PAIR = re.compile(r"\\([^\\]+)\\([^\\]*)")
 
+#: `CTF:` action codes, from the classic q3/oa081 parsers.
+CTF_ACTIONS = {
+    "0": "flag_taken",
+    "1": "flag_captured",
+    "2": "flag_returned",
+    "3": "flag_carrier_kill",
+}
+
+#: The `fid` column of a `CTF:` line — which flag, not which team scored.
+CTF_FLAG_COLOURS = {"1": "RED", "2": "BLUE"}
+
 #: Means-of-death strings that mean the player did it to themselves.
 SELF_INFLICTED = frozenset({"MOD_SUICIDE", "MOD_FALLING", "MOD_WATER", "MOD_LAVA", "MOD_SLIME",
                             "MOD_CRUSH", "MOD_TRIGGER_HURT", "MOD_TARGET_LASER"})
@@ -44,6 +55,15 @@ def parse_infostring(text: str) -> dict[str, str]:
     if not text.startswith("\\"):
         text = "\\" + text
     return dict(INFO_PAIR.findall(text))
+
+
+def chat_text(text: str) -> str:
+    """Drop the leading 0x15 some Quake3 clients prefix chat with.
+
+    Without this a command arrives as ``\\x15!help``, whose first character is no longer the command
+    prefix, so it is read as ordinary chat and never runs.
+    """
+    return text[1:] if text[:1] == "\x15" else text
 
 
 class Q3Parser(Parser):
@@ -178,17 +198,19 @@ class Q3Parser(Parser):
 
     # -- chat ----------------------------------------------------------------
     #
-    # Quake3 chat lines identify the speaker by *name*, not slot, which is why the bot keeps the
-    # name from the last infostring. A name it has never seen produces no event rather than a
-    # client with no identity.
+    # Quake3's own chat line identifies the speaker by name, which is why the bot keeps the name
+    # from the last infostring. A name it has never seen produces no event rather than a client
+    # with no identity. Urban Terror and World of Padman put the slot in front of the name; both
+    # forms are handled here rather than in a subclass, since they share one verb.
 
-    @handles(r"^(?P<action>say|sayteam):\s*(?P<name>.+?):\s?(?P<text>.*)$")
+    @handles(r"^(?P<action>say|sayteam):\s*(?:(?P<cid>\d+)\s+)?(?P<name>.+?):\s?(?P<text>.*)$")
     def on_say(self, m: "re.Match[str]") -> Event | None:
-        client = self._by_name(m["name"])
+        """``say: Bob: hello``, or ``say: 6 ^5Marcel^2[^6CZARMY^2]: !help`` where a slot is given."""
+        client = self._chat_client(m["cid"], m["name"])
         if client is None:
             return None
         etype = EventType.CLIENT_TEAM_SAY if m["action"] == "sayteam" else EventType.CLIENT_SAY
-        return Event(etype, data=m["text"], client=client)
+        return Event(etype, data=chat_text(m["text"]), client=client)
 
     @handles(r"^tell:\s*(?P<name>.+?)\s+to\s+(?P<tname>.+?):\s?(?P<text>.*)$")
     def on_tell(self, m: "re.Match[str]") -> Event | None:
@@ -197,10 +219,25 @@ class Q3Parser(Parser):
             return None
         return Event(
             EventType.CLIENT_PRIVATE_SAY,
-            data=m["text"],
+            data=chat_text(m["text"]),
             client=client,
             target=self._by_name(m["tname"]),
         )
+
+    def _chat_client(self, cid: str | None, name: str) -> Client | None:
+        """Who spoke, given a slot that may be absent and may be wrong.
+
+        Urban Terror sometimes reports a chat line against the wrong slot, so the name is checked
+        against it and wins where the two disagree. Commands run with the speaker's permission
+        level, which makes attributing a line to the wrong player worth guarding against.
+        """
+        by_name = self._by_name(name)
+        if cid is None:
+            return by_name
+        by_cid = self.clients.get_by_cid(cid)
+        if by_cid is not None and by_cid.name == name.strip():
+            return by_cid
+        return by_name if by_name is not None else by_cid
 
     def _by_name(self, name: str) -> Client | None:
         name = name.strip()
@@ -219,6 +256,28 @@ class Q3Parser(Parser):
         return Event(
             EventType.CLIENT_ACTION, data=m["award"], client=self._get_or_create(m["cid"])
         )
+
+    @handles(r"^CTF:\s+(?P<cid>\d+)\s+(?P<fid>\d+)\s+(?P<type>\d+):\s*(?P<text>.*)$")
+    def on_ctf(self, m: "re.Match[str]") -> Event | None:
+        """``CTF: 2 2 1: Burpman captured the BLUE flag!`` — slot, flag team, action.
+
+        Capture-the-flag on plain Quake 3 and OpenArena; Urban Terror writes ``Flag:`` instead.
+
+        The flag's colour is taken from the ``fid`` column rather than from the sentence, which is
+        the server's English announcement and would not match on a translated or modded server.
+        """
+        action = CTF_ACTIONS.get(m["type"], f"flag_action_{m['type']}")
+        if action == "flag_returned":
+            # Returned by the game rather than credited to a player, as `Flag Return:` is.
+            return Event(EventType.GAME_FLAG_RETURNED, data=CTF_FLAG_COLOURS.get(m["fid"], m["fid"]))
+        return self._action(m["cid"], action)
+
+    def _action(self, cid: str, action: str) -> Event | None:
+        """Publish a player objective as CLIENT_ACTION, the way every other engine reports one."""
+        client = self.clients.get_by_cid(cid)
+        if client is None:
+            return None
+        return Event(EventType.CLIENT_ACTION, data=action, client=client)
 
     @handles(r"^InitGame:\s*(?P<info>.*)$")
     def on_init_game(self, m: "re.Match[str]") -> Event:
