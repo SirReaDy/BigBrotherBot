@@ -54,6 +54,7 @@ DEFAULT_MESSAGES: dict[str, str] = {
     "unbanned": "{name} was unbanned ({count} {noun})",
     "no_active_ban": "{name} has no active ban",
     "invalid_duration": "invalid duration: '{value}' (try 30m, 2h, 1d)",
+    "name_too_long": "your name is too long — this game allows {limit} characters",
     # -- penalty inspection ------------------------------------------------
     "baninfo": "{name}: {details}",
     "baninfo_none": "{name} is not banned",

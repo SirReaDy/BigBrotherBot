@@ -141,6 +141,9 @@ class CensorPlugin(Plugin):
         self.subscribe(EventType.CLIENT_TEAM_SAY, self.on_chat)
         self.subscribe(EventType.CLIENT_NAME_CHANGE, self.on_name)
         self.subscribe(EventType.CLIENT_AUTH, self.on_name)
+        # Not CLIENT_RADIO, though spamcontrol does subscribe to it: a radio call's text and
+        # location are both chosen by the engine from fixed menus, so a player cannot put anything
+        # in one to censor.
 
     # -- handlers -----------------------------------------------------------
 

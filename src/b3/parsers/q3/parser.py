@@ -107,12 +107,34 @@ class Q3Parser(Parser):
             )
         return ""
 
+    def _bounded_name(self, name: str, cid: str) -> tuple[str, bool]:
+        """Cut a name to the length the protocol allows, and report whether it had to be cut.
+
+        Urban Terror 4.2 lets a client connect with a nickname longer than the 32 characters the
+        userinfo string holds, overflowing it (BigBrotherBot/big-brother-bot#346). The name is
+        always truncated, since it reaches RCON command lines and any formatted table. Whether the
+        player is kicked as well is a configuration question, so it is left to the runtime.
+        """
+        limit = self.profile.name_max_length
+        if not limit or len(name) <= limit:
+            return name, False
+        log.warning(
+            "%s: slot %s has a %d-character name, over this engine's limit of %d — truncating. "
+            "This is the userinfo-overflow exploit; set server.allow_long_names: true to allow it "
+            "instead of kicking.",
+            self.profile.name,
+            cid,
+            len(name),
+            limit,
+        )
+        return name[:limit], True
+
     def _apply_userinfo(self, cid: str, info: dict[str, str]) -> Client:
         """Fold an infostring into the client for that slot — the only place identity arrives."""
         client = self._get_or_create(cid)
         name = info.get("name") or info.get("n")
         if name:
-            client.name = name
+            client.name, client.name_overflow = self._bounded_name(name, cid)
         guid = self._valid_guid(info.get("cl_guid") or info.get("guid") or "")
         if guid and not client.guid:
             client.guid = guid

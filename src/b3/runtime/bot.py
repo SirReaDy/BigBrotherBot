@@ -150,6 +150,7 @@ class Bot:
 
         # Authenticate players as they join; route chat to the command processor.
         self.bus.subscribe(EventType.CLIENT_JOIN, self._on_join)
+        self.bus.subscribe(EventType.CLIENT_UPDATE, self._on_client_update)
         self.bus.subscribe(EventType.CLIENT_DISCONNECT, self._on_disconnect)
         self.bus.subscribe(EventType.GAME_ROUND_START, self._on_round_start)
         self.bus.subscribe(EventType.SERVER_INFO, self._on_server_info)
@@ -216,10 +217,36 @@ class Bot:
     def _on_join(self, event: Event) -> None:
         if event.client is None:
             return
+        if self._reject_long_name(event.client):
+            return
         if self._authenticate(event.client) and not event.client.ip:
             # The join line has no IP; it only exists in the server's status table, which lags the
             # join by a second or two. Poll for it in the background (legacy Parser.authorizeClients).
             self._schedule_auth(event.client)
+
+    def _on_client_update(self, event: Event) -> None:
+        """A player changed their userinfo; enforce the engine's name-length limit.
+
+        Checked on update as well as on join because a rename mid-game overflows the same string,
+        and on Urban Terror a userinfo line is how a rename arrives.
+        """
+        if event.client is not None:
+            self._reject_long_name(event.client)
+
+    def _reject_long_name(self, client: Client) -> bool:
+        """Kick a player whose name overflowed the protocol. True if they were thrown out.
+
+        The parser has already truncated the name (:attr:`GameProfile.name_max_length`). Kicking
+        needs the config and an RCON socket, so it happens here; `server.allow_long_names: true`
+        keeps the truncation and skips the kick.
+        """
+        if not client.name_overflow or self.config.server.allow_long_names:
+            return False
+        client.name_overflow = False  # dealt with; a rejoin gets a fresh verdict
+        client.rejected = True
+        limit = self.profile.name_max_length
+        self.kick(client, reason=self.messages.get("name_too_long", limit=limit))
+        return True
 
     def _on_disconnect(self, event: Event) -> None:
         if event.client is not None and event.client.cid is not None:

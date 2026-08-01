@@ -58,6 +58,8 @@ class SpamcontrolPlugin(Plugin):
             EventType.CLIENT_SAY,
             EventType.CLIENT_TEAM_SAY,
             EventType.CLIENT_PRIVATE_SAY,
+            # Urban Terror's radio is a chat channel and is flooded like one.
+            EventType.CLIENT_RADIO,
         ):
             self.subscribe(event_type, self.on_chat)
 
@@ -102,6 +104,19 @@ class SpamcontrolPlugin(Plugin):
 
     # -- handlers -----------------------------------------------------------
 
+    def scored_text(self, event: Event) -> str:
+        """What to measure. Chat is a line of text; a radio call is a dict of fields.
+
+        A radio call's location changes as the player moves, so it is left out: including it would
+        make the same message sent twice from different places look like two different messages,
+        and repetition is what this plugin scores most heavily.
+        """
+        data = event.data
+        if isinstance(data, dict):
+            group, msg = data.get("msg_group"), data.get("msg_id")
+            return f"radio:{group}:{msg}:{data.get('text', '')}"
+        return str(data)
+
     def on_chat(self, event: Event) -> None:
         client = event.client
         if client is None or not event.data:
@@ -109,7 +124,7 @@ class SpamcontrolPlugin(Plugin):
         if client.max_level() >= as_int(self.settings.get("mod_level"), 20):
             return  # admins are trusted to know when to stop
 
-        text = str(event.data)
+        text = self.scored_text(event)
         total = self.add_points(client, self.points_for(client, text))
         client.set_var(self, "last_message", text)
 

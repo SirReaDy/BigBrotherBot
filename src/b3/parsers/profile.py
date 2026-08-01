@@ -118,6 +118,13 @@ class GameProfile:
     # ban at all — not a matter of tidiness.
     max_reason_length: int = 128
 
+    # Longest name this engine's protocol allows, or 0 where there is no limit to enforce. Urban
+    # Terror 4.2 lets a client connect with a nickname longer than the 32 characters the userinfo
+    # string holds, which overflows it (BigBrotherBot/big-brother-bot#346). A name over this length
+    # is truncated by the parser, and the runtime kicks the player unless `server.allow_long_names`
+    # is set.
+    name_max_length: int = 0
+
     # Sent once when the bot connects — e.g. asking CoD4X to report Steam64 ids.
     startup_commands: tuple[str, ...] = ()
 

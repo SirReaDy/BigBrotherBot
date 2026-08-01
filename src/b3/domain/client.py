@@ -97,6 +97,10 @@ class Client:
     cid: str | None = None  # in-game slot id
     authed: bool = False
     rejected: bool = False  # a ban was re-applied on auth; do not serve this client
+    # The server reported a name longer than the protocol allows (see GameProfile.name_max_length).
+    # `name` has already been truncated to fit; this records that it happened, since the runtime
+    # rather than the parser decides whether to kick for it.
+    name_overflow: bool = False
     team: str | None = None
     _vars: dict[int, dict[str, Any]] = field(default_factory=dict)
 

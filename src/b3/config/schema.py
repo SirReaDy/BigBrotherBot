@@ -73,6 +73,11 @@ class ServerConfig(BaseModel):
     # `LOGIN=` step names it. Ignored by every other family, all of which authenticate with a
     # password alone.
     rcon_user: str = "admin"
+    # Urban Terror 4.2 lets a client connect with a name longer than the 32 characters the userinfo
+    # string holds, which overflows it. The name is always truncated to fit; this decides whether
+    # the player is kicked as well. Ignored on engines that declare no limit
+    # (GameProfile.name_max_length).
+    allow_long_names: bool = False
     # -- remote game_log only (ignored for a local path) --
     # Seconds between polls. Each poll is a round trip, so don't set this too low.
     log_poll_interval: float = 2.0

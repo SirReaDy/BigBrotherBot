@@ -73,7 +73,10 @@ ETPRO = replace(_ET, name="etpro")
 #: 32-character ids, so the floor is raised to reject the short ones a client can spoof. The `urt`
 #: family adds its own log lines (hits, radio, flags, bomb, votes) on top of the shared grammar —
 #: see b3.parsers.q3.urt.
-_URT = replace(_BASE, family="urt", guid_min_length=32)
+#: `name_max_length` guards the userinfo-overflow exploit: 4.2 lets a client connect with a nickname
+#: longer than the 32 characters the userinfo string holds. Declared for all three, since 32 is the
+#: protocol's limit on each of them and the exploit is in the client rather than the server build.
+_URT = replace(_BASE, family="urt", guid_min_length=32, name_max_length=32)
 IOURT41 = replace(_URT, name="iourt41")
 IOURT42 = replace(_URT, name="iourt42")
 IOURT43 = replace(_URT, name="iourt43")
