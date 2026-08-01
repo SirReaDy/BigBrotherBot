@@ -276,6 +276,21 @@ def _open_rcon(
     from b3.net.rcon import Rcon, UdpRconTransport, dialect_for
 
     profile = games.profile_for(config.server.game)
+    if profile.family in games.TCP_RCON_FAMILIES:
+        # A stateful session rather than connectionless datagrams, so it has to be opened and logged
+        # in to before anything can be asked. Still read-only: everything probe sends is a question.
+        from b3.net.source import SourceRconClient
+
+        client = SourceRconClient(
+            config.server.host,
+            config.server.port,
+            config.server.rcon_password,
+            timeout=max(config.server.rcon_timeout, 2.0),
+            encoding="utf-8",
+        )
+        client.open()
+        return client
+
     transport = UdpRconTransport(
         config.server.host, config.server.port, timeout=config.server.rcon_timeout
     )

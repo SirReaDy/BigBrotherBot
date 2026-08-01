@@ -16,6 +16,29 @@ import re
 from dataclasses import dataclass, field
 
 
+@dataclass(frozen=True, slots=True)
+class RequiredMod:
+    """A server-side mod the bot cannot work without, and how to prove it is installed.
+
+    The Source engines are why this exists. A stock Source server has no verb for a private message
+    and none for a ban that outlives a restart, so on those titles *every* command reply and the
+    whole of `!ban` go through SourceMod — a third-party plugin. Starting anyway produces a bot that
+    looks healthy and silently does nothing, which is the failure mode this whole codebase keeps
+    finding; so the runtime asks, and refuses to start when the answer is wrong.
+
+    Data rather than a check in one parser, because the shape is general: ask a command, expect some
+    text in the reply.
+    """
+
+    #: What to call it when telling the operator what is missing.
+    name: str
+    #: The command whose reply proves it is there.
+    command: str
+    #: Text that must appear in that reply. A server without the mod answers something like
+    #: ``Unknown command "sm"``, which contains none of it.
+    expect: str
+
+
 @dataclass(frozen=True)
 class GameProfile:
     name: str
@@ -154,6 +177,10 @@ class GameProfile:
     # Sent once when the bot connects — e.g. asking CoD4X to report Steam64 ids.
     startup_commands: tuple[str, ...] = ()
 
+    # A server-side mod without which this title cannot be administered at all. Checked on connect;
+    # None for every engine that needs nothing installed. See :class:`RequiredMod`.
+    required_mod: RequiredMod | None = None
+
     # Which RCON wire format this title speaks (see b3.net.rcon.DIALECTS). Black Ops frames its
     # packets differently from every other Infinity-Ward title; the rest share "quake3".
     rcon_dialect: str = "quake3"
@@ -184,7 +211,16 @@ class GameProfile:
     map_template: str = "map %s"
     rotate_command: str = "map_rotate"
     rotation_cvar: str = "sv_mapRotation"
+    # A cvar that names the map coming next, for engines whose map *list* is not a rotation. The
+    # Source titles are why: what they can be asked for (`maps *`) is every map installed, in no
+    # particular order, so deriving "the next one" by stepping through that list reports a map the
+    # server has no intention of loading. SourceMod publishes the real answer in `sm_nextmap`.
+    # Consulted before any arithmetic over `get_maps`, and empty means the engine has no such cvar.
+    next_map_cvar: str = ""
     # For engines that have no cvars but *do* answer a question: Ravaged has `getmaplist false`.
     # Only consulted when `rotation_cvar` is empty, and only useful if the parser can read the reply
     # (`read_maps`) -- the same division as the roster, with the asking here and the parsing there.
     maplist_command: str = ""
+
+
+__all__ = ["GameProfile", "RequiredMod"]

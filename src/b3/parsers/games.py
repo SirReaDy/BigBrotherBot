@@ -33,6 +33,8 @@ from b3.parsers.q3.parser import Q3Parser
 from b3.parsers.q3.sof2 import Sof2Parser
 from b3.parsers.q3.urt import UrtParser
 from b3.parsers.q3.wop import Wop15Parser
+from b3.parsers.source import profiles as src_profiles
+from b3.parsers.source.parser import SourceParser
 
 #: family -> the parser that reads it. `urt`, `et` and `sof2` are Quake3 titles with extra lines of
 #: their own rather than separate engines, so each is a Q3Parser subclass and inherits the whole
@@ -61,6 +63,10 @@ FAMILIES: dict[str, type[Parser]] = {
     # Frontline pushes everything too, and answers nothing: the server never says which command
     # it is replying to, so even its roster arrives as a line. See b3.net.frontline.
     "frontline": FlParser,
+    # The Source engines read a log file like the Call of Duty titles do, but their rcon is a
+    # request/response protocol over TCP with its own handshake, and the server's own facts come from
+    # a separate query protocol on the game port. See b3.net.source and b3.net.a2s.
+    "source": SourceParser,
 }
 
 #: Families whose events arrive over the RCON connection instead of a log file, so `server.game_log`
@@ -71,7 +77,13 @@ PUSH_FAMILIES = frozenset({"battleye", "frostbite", "frontline", "homefront", "r
 #: They need `server.command_file` set, and there is no reply to anything they are sent.
 FILE_RCON_FAMILIES = frozenset({"altitude"})
 
-#: `server.game` -> profile. Nine engine families, thirty-five titles.
+#: Families whose events come from a log file, as most do, but whose RCON is a stateful TCP session
+#: rather than the connectionless UDP the Tech 3 engines use. They need their own client built, and
+#: `server.port` is the game port they share it with.
+TCP_RCON_FAMILIES = frozenset({"source"})
+
+#: `server.game` -> profile. Deliberately unnumbered here: a hand-maintained count of titles in a
+#: comment has gone wrong twice, and `len(PROFILES)` cannot.
 PROFILES: dict[str, GameProfile] = {
     **cod_profiles.ALL,
     **q3_profiles.ALL,
@@ -81,6 +93,7 @@ PROFILES: dict[str, GameProfile] = {
     **hf_profiles.ALL,
     **rav_profiles.ALL,
     **fl_profiles.ALL,
+    **src_profiles.ALL,
 }
 
 

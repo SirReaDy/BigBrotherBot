@@ -50,6 +50,14 @@ SYNC_MINUTES = 5
 PROFILES: dict[str, GameProfile] = dict(games.PROFILES)
 
 
+class MissingServerModError(RuntimeError):
+    """The title needs a server-side mod (SourceMod) and the server does not have it.
+
+    Its own class so `cli.main` can report it as one line an operator can act on, the way it already
+    does for an unknown `server.game`, rather than as a traceback.
+    """
+
+
 class RconClient(Protocol):
     """What the bot needs of an RCON client.
 
@@ -176,6 +184,10 @@ class Bot:
     def start(self) -> None:
         """Connect storage and start the enabled plugins. Call before feeding any lines."""
         self.storage.connect()
+        # Before anything else that could look like success: a title needing a server-side mod is
+        # not administerable without it, and the whole point of checking is to say so instead of
+        # running as a bot whose `!ban` does nothing.
+        self.check_required_mod()
         for name, plugin in self._plugins.items():
             if plugin.is_enabled():
                 plugin.start()
@@ -191,6 +203,43 @@ class Bot:
             # Without this a bot started mid-match sees nobody until the next join line, and a
             # missed disconnect leaves a ghost in the client list forever.
             self.scheduler.add(self._scheduled_sync, minute=f"*/{SYNC_MINUTES}", name="Bot.sync")
+
+    def check_required_mod(self) -> None:
+        """Refuse to run when the title needs a server-side mod that is not installed.
+
+        Only asked when there is an RCON connection to ask over: an offline `b3 replay` has no
+        server, and a mod check there would fail on every run for no reason.
+
+        A server that does not answer at all is *not* treated as a missing mod. The distinction
+        matters because the responses differ: a missing mod is an install job, and a silent server is
+        a wrong host, port or password — and reporting the second as the first sends the operator to
+        install something they already have.
+        """
+        required = self.profile.required_mod
+        if required is None or self._rcon is None:
+            return
+        try:
+            reply = self._rcon.command(required.command)
+        except Exception as exc:  # noqa: BLE001 - any transport failure means "could not ask"
+            log.warning(
+                "%s: could not check for %s (%r failed: %s); continuing, but %s commands will not "
+                "work if it is absent",
+                self.profile.name,
+                required.name,
+                required.command,
+                exc,
+                required.name,
+            )
+            return
+        if required.expect.lower() in (reply or "").lower():
+            log.info("%s: %s is installed", self.profile.name, required.name)
+            return
+        raise MissingServerModError(
+            f"{self.profile.name} requires {required.name} on the game server, and "
+            f"{required.command!r} answered {(reply or '').strip()[:120]!r}. Every command reply, "
+            f"every private message and the whole of !ban go through {required.name} on this "
+            "engine, so the bot would start and silently do nothing. Install it and try again."
+        )
 
     # -- main loop ---------------------------------------------------------
 
@@ -395,7 +444,9 @@ class Bot:
         would inflate the player's ban history every time they knocked on the door.
         """
         if penalty.time_expire == NEVER_EXPIRES:
-            self._send(self.profile.ban_template % self._penalty_values(client, penalty.reason))
+            self._send_penalty(
+                self.profile.ban_template, client, self._penalty_values(client, penalty.reason)
+            )
             log.info("rejected banned client %s (%s)", client.name, client.guid)
             self.bus.publish_soon(Event(EventType.CLIENT_BAN, client=client, data=penalty.reason))
             return
@@ -638,6 +689,15 @@ class Bot:
             answer = stated()
             if answer:
                 return str(answer)
+        # Or a cvar may hold it outright. Asked before the arithmetic below rather than after,
+        # because on the engines that have such a cvar the arithmetic is not a worse answer, it is a
+        # wrong one: their map list is everything installed, not a rotation (see next_map_cvar).
+        if self.profile.next_map_cvar:
+            named = self.get_cvar(self.profile.next_map_cvar)
+            # And on those engines an unanswered cvar means "nobody knows", **not** "work it out from
+            # the map list": falling through would print a map picked out of an alphabetical listing
+            # of everything installed, which reads to an admin as a fact about the rotation.
+            return named.strip() if named and named.strip() else None
         maps = self.get_maps()
         if not maps:
             return None
@@ -664,8 +724,17 @@ class Bot:
 
     def rotate_map(self) -> None:
         if not self.profile.rotate_command:
-            # No verb for it on this engine. Said out loud, because the alternative is an admin
-            # typing `!maprotate`, being told nothing, and assuming it worked.
+            # No single verb for it. Some of those engines can still be rotated in two steps: ask
+            # what comes next, then load it — which is exactly what the classic Source parser did,
+            # there being no `map_rotate` on that engine either. Only attempted when the next map is
+            # actually *known*, so this never degenerates into loading a guess.
+            following = self.get_next_map()
+            if following:
+                log.info("%s: rotating to %s", self.profile.name, following)
+                self.change_map(following)
+                return
+            # Said out loud, because the alternative is an admin typing `!maprotate`, being told
+            # nothing, and assuming it worked.
             log.warning(
                 "%s has no map-rotation command; skip to a named map with !map instead",
                 self.profile.name,
@@ -841,6 +910,33 @@ class Bot:
             "admin": sanitize_rcon_value(admin.name if admin is not None else self.config.bot.name),
         }
 
+    def _send_penalty(self, template: str, client: Client, values: dict[str, object]) -> None:
+        """Send a penalty verb, which may be **more than one command — one per line**.
+
+        The same rule `change_map` already follows, and for the same reason: some engines need two
+        commands to do one thing. On the Source titles a ban is ``sm_addban``, which writes the ban
+        list, *and* ``sm_kick``, which removes the player who is on the server right now —
+        ``sm_addban`` alone bans them and leaves them playing to the end of the map. The classic
+        parser sent both, and a single-command version looks like it worked.
+
+        A command naming a **slot** is skipped when the target has not got one, which is what lets the
+        same template serve an offline ban: there is nobody in a slot to kick, and sending the verb
+        anyway would name the literal string "None".
+        """
+        for raw in template.splitlines():
+            command = raw.strip()
+            if not command:
+                continue
+            if "%(cid)s" in command and client.cid is None:
+                log.debug(
+                    "%s: skipping %r — %s is not on the server, so there is no slot to name",
+                    self.profile.name,
+                    command.split(" ", 1)[0],
+                    client.name or client.guid,
+                )
+                continue
+            self._send(command % values)
+
     def _expressible(self, template: str, client: Client) -> bool:
         """Whether ``template`` can actually be filled in for this client.
 
@@ -867,7 +963,9 @@ class Bot:
     def kick(self, client: Client, reason: str = "", admin: Client | None = None) -> None:
         self._record_penalty(PenaltyType.KICK, client, admin, reason, 0, NEVER_EXPIRES)
         self.bus.publish_soon(Event(EventType.CLIENT_KICK, client=client, data=reason))
-        self._send(self.profile.kick_template % self._penalty_values(client, reason))
+        self._send_penalty(
+            self.profile.kick_template, client, self._penalty_values(client, reason)
+        )
 
     def ban(self, client: Client, reason: str = "", admin: Client | None = None) -> None:
         self._record_penalty(PenaltyType.BAN, client, admin, reason, 0, NEVER_EXPIRES)
@@ -879,7 +977,9 @@ class Bot:
         template = self.profile.ban_template
         if not self._expressible(template, client):
             template = self.profile.kick_template
-        self._send(template % self._penalty_values(client, reason, admin=admin))
+        self._send_penalty(
+            template, client, self._penalty_values(client, reason, admin=admin)
+        )
 
     def tempban(
         self, client: Client, minutes: int, reason: str = "", admin: Client | None = None
@@ -902,7 +1002,9 @@ class Bot:
             self._send_ban(client, reason, admin)
             return
         if not self._expressible(template, client):
-            self._send(self.profile.kick_template % self._penalty_values(client, reason))
+            self._send_penalty(
+                self.profile.kick_template, client, self._penalty_values(client, reason)
+            )
             return
         capped = minutes
         if self.profile.tempban_max_minutes and minutes > self.profile.tempban_max_minutes:
@@ -914,7 +1016,9 @@ class Bot:
                 capped,
                 minutes,
             )
-        self._send(template % self._penalty_values(client, reason, capped, admin))
+        self._send_penalty(
+            template, client, self._penalty_values(client, reason, capped, admin)
+        )
 
     def warn(
         self,
@@ -974,7 +1078,9 @@ class Bot:
             # Nothing to send: this engine lifts a ban by id and we have none. Our own record is
             # already lifted above, which is what stops the bot re-applying it.
             return
-        self._send(self.profile.unban_template % self._penalty_values(client, reason))
+        self._send_penalty(
+            self.profile.unban_template, client, self._penalty_values(client, reason)
+        )
 
     def _record_penalty(
         self,

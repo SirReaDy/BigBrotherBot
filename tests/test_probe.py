@@ -98,8 +98,8 @@ def test_every_status_command_is_reported_not_just_the_winner(tmp_path):
     assert "asked: status" in report
 
 
-def test_rows_it_cannot_read_are_called_out_as_the_bug(tmp_path):
-    """An empty server and a table shape we do not know look identical in a player count."""
+def test_rows_it_cannot_read_are_reported(tmp_path):
+    """An empty server and an unrecognised table shape both parse to zero players."""
     unknown = (
         "map: mp_crash\n"
         "num score ping something name\n"
@@ -109,7 +109,7 @@ def test_rows_it_cannot_read_are_called_out_as_the_bug(tmp_path):
     report = _report(_config(tmp_path), rcon_factory=lambda: rcon)
 
     assert "parsed 0 players" in report
-    assert "match no pattern" in report
+    assert "match no known pattern" in report
     assert "! 0    12   47 ??        Bob" in report
 
 

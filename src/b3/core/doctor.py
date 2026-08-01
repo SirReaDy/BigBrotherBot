@@ -194,7 +194,12 @@ def _check_game_log(config: Config) -> Check:
 def _check_rcon(config: Config, rcon_factory: "Callable[[], RconClient] | None" = None) -> Check:
     """Ask the server for its status. Distinguishes 'not answering' from 'wrong password'."""
     from b3.net.rcon import Rcon, RconError, UdpRconTransport
-    from b3.parsers.games import FILE_RCON_FAMILIES, PROFILES, PUSH_FAMILIES
+    from b3.parsers.games import (
+        FILE_RCON_FAMILIES,
+        PROFILES,
+        PUSH_FAMILIES,
+        TCP_RCON_FAMILIES,
+    )
 
     profile = PROFILES.get(config.server.game)
     if rcon_factory is None and profile is not None and profile.family in FILE_RCON_FAMILIES:
@@ -221,6 +226,15 @@ def _check_rcon(config: Config, rcon_factory: "Callable[[], RconClient] | None" 
         if profile.family == "frontline":
             return _check_frontline_rcon(config)
         return _check_battleye_rcon(config)
+
+    if profile is not None and profile.family in TCP_RCON_FAMILIES:
+        # Not a push family — this one has a game log like most — but its rcon is a TCP session with
+        # a login, so the generic UDP probe below would time out against a working server.
+        #
+        # Unlike the branches above, this one runs even when a client is injected: the thing it
+        # checks — is the required mod installed? — is a fact about the *family*, not about how the
+        # connection was made, and skipping it under a factory would leave the check untestable.
+        return _check_source_rcon(config, rcon_factory)
 
     if rcon_factory is None:
 
@@ -426,6 +440,75 @@ def _check_ravaged_rcon(config: Config) -> Check:
             pass
 
     return Check("rcon", Status.OK, "logged in, and commands are answered")
+
+
+def _check_source_rcon(
+    config: Config, rcon_factory: "Callable[[], RconClient] | None" = None
+) -> Check:
+    """Source: log in, then check for SourceMod — which is what actually decides if this works.
+
+    The password being right is only half the answer on this family. A stock Source server has no verb
+    for a private message and none for a ban that outlives a restart, so without SourceMod the bot
+    connects, authenticates, reports itself healthy and cannot kick, ban or reply to anybody. Telling
+    an operator that here is the whole point: it is a five-minute install, and the alternative is
+    finding out from a `!ban` that did nothing.
+    """
+    from b3.net.source import SourceAuthError, SourceError, SourceRconClient
+    from b3.parsers.games import PROFILES
+
+    profile = PROFILES.get(config.server.game)
+    required = profile.required_mod if profile is not None else None
+    client: RconClient = (
+        rcon_factory()
+        if rcon_factory is not None
+        else SourceRconClient(
+            config.server.host,
+            config.server.port,
+            config.server.rcon_password,
+            timeout=max(config.server.rcon_timeout, 2.0),
+            encoding="utf-8",
+        )
+    )
+    reply = ""
+    try:
+        # An injected client is already connected; a real one has a session to establish first.
+        opener = getattr(client, "open", None)
+        if opener is not None:
+            opener()
+        if required is not None:
+            reply = client.command(required.command)
+    except SourceAuthError:
+        return Check(
+            "rcon",
+            Status.FAIL,
+            f"{config.server.host}:{config.server.port} refused the password",
+            "server.rcon_password must match rcon_password on the game server. Note that this "
+            "protocol signals a refusal with no message at all, so there is nothing else to read",
+        )
+    except SourceError as exc:
+        return Check(
+            "rcon",
+            Status.FAIL,
+            f"cannot reach {config.server.host}:{config.server.port} ({exc})",
+            "server.port is the game port, and rcon shares it over **TCP** -- so a firewall rule "
+            "that only allows the game's UDP traffic blocks this",
+        )
+    finally:
+        try:
+            client.close()
+        except Exception:  # pragma: no cover - nothing useful to do
+            pass
+
+    if required is not None and required.expect.lower() not in reply.lower():
+        return Check(
+            "rcon",
+            Status.FAIL,
+            f"logged in, but {required.name} is not installed",
+            f"install {required.name} on the game server: every command reply, every private "
+            f"message and the whole of !ban go through it on this engine, so the bot would run and "
+            "silently do nothing",
+        )
+    return Check("rcon", Status.OK, f"logged in, and {required.name if required else 'rcon'} answers")
 
 
 def _check_homefront_rcon(config: Config) -> Check:

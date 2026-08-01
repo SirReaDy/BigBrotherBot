@@ -80,7 +80,12 @@ def _connect(config: Config) -> Connection:
     """
     from b3.net.logsource import create_log_source
     from b3.net.rcon import Rcon, UdpRconTransport, dialect_for
-    from b3.parsers.games import FILE_RCON_FAMILIES, PUSH_FAMILIES, profile_for
+    from b3.parsers.games import (
+        FILE_RCON_FAMILIES,
+        PUSH_FAMILIES,
+        TCP_RCON_FAMILIES,
+        profile_for,
+    )
 
     # Raises UnknownGameError on a typo, which main() reports; nothing has connected yet.
     profile = profile_for(config.server.game)
@@ -125,6 +130,29 @@ def _connect(config: Config) -> Connection:
             shared=True,
         )
 
+    if profile.family in TCP_RCON_FAMILIES:
+        # A fourth shape: events from a log file like most games, but a *stateful* rcon — a TCP
+        # session with a login handshake, which cannot be expressed as one of `Rcon`'s dialects
+        # because those encode a password into every datagram and this one authenticates once.
+        return Connection(
+            rcon=_source_client(config),
+            source=create_log_source(
+                config.server.game_log,
+                # utf-8 regardless of `server.encoding`, which defaults to latin-1 for the Call of
+                # Duty engines. A Source server writes utf-8, so reading it as latin-1 does not fail
+                # — it quietly mangles every non-ASCII player name, and a mangled name is a name no
+                # `!ban` will match.
+                encoding="utf-8",
+                poll_interval=config.server.log_poll_interval,
+                timeout=config.server.log_timeout,
+                max_gap=config.server.log_max_gap,
+            ),
+            description=(
+                f"{config.server.game_log} (commands -> {config.server.host}:"
+                f"{config.server.port} source rcon)"
+            ),
+        )
+
     transport = UdpRconTransport(
         config.server.host, config.server.port, timeout=config.server.rcon_timeout
     )
@@ -163,6 +191,28 @@ def _command_file_client(config: Config) -> RconClient:
         )
     client = AltitudeCommandFile(
         config.server.command_file, port=config.server.port, encoding="utf-8"
+    )
+    client.open()
+    return client
+
+
+def _source_client(config: Config) -> RconClient:
+    """Source RCON, opened and authenticated before the bot is handed it.
+
+    Opened here rather than lazily so a wrong password is reported by `b3 run` at startup, next to the
+    line that says which server it is, instead of at whatever moment the first command happens to be
+    sent — which on a quiet server could be the first `!kick`, hours later.
+    """
+    from b3.net.source import SourceRconClient
+
+    client = SourceRconClient(
+        config.server.host,
+        config.server.port,
+        config.server.rcon_password,
+        timeout=max(config.server.rcon_timeout, 2.0),
+        # utf-8 for the same reason the log is read as utf-8: it is what this protocol carries, and
+        # `server.encoding` describes the Call of Duty engines rather than this one.
+        encoding="utf-8",
     )
     client.open()
     return client
@@ -301,6 +351,7 @@ def main(argv: list[str] | None = None) -> int:
     from b3.config.schema import ConfigError
     from b3.core.probe import DEFAULT_LINES
     from b3.parsers.games import PROFILES, UnknownGameError
+    from b3.runtime.bot import MissingServerModError
 
     parser = argparse.ArgumentParser(prog="b3", description="Big Brother Bot 2.0")
     parser.add_argument("-c", "--config", default="b3.yaml", help="path to the YAML config")
@@ -445,8 +496,10 @@ def main(argv: list[str] | None = None) -> int:
             _run_import(config, args.source_url)
         elif args.cmd == "plugin":
             return _run_plugin(config, args, Path(args.config), conf_dir)
-    except (UnknownGameError, ConfigError) as exc:
+    except (UnknownGameError, ConfigError, MissingServerModError) as exc:
         # A one-line refusal beats a traceback: these are mistakes in their config, not crashes.
+        # A missing server-side mod is the same kind of thing: an install job, with the command to
+        # run in the message.
         logging.error("%s", exc)
         return 1
     return 0

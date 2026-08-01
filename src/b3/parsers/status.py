@@ -17,7 +17,16 @@ from collections.abc import Sequence
 from b3.core.game import PlayerInfo
 
 #: Header line of a status reply: ``map: mp_crash``.
-MAP_LINE_RE = re.compile(r"^map:\s+(?P<map>.+)$", re.IGNORECASE)
+#:
+#: Whitespace is allowed **before** the colon because the Source engines pad their header labels into
+#: a column — ``map     : cs_foobar`` — so a pattern anchored on ``map:`` finds no map at all there,
+#: and `!map` on those titles would report nothing while the reply plainly said otherwise.
+#:
+#: The value is one token rather than the rest of the line, which matters for the same family:
+#: current Source builds append the spawn position (``map     : de_dust2 at: 0 x, 0 y, 0 z``) and
+#: taking `.+` there would hand the whole of that back as the map's name. No engine here has a map
+#: name containing a space.
+MAP_LINE_RE = re.compile(r"^map\s*:\s*(?P<map>\S+)", re.IGNORECASE)
 
 #: The stock id Tech 3 status row, printed by Call of Duty and by most Quake3 titles.
 #: Transplanted from the legacy ``cod4.py`` ``_regPlayer`` (hex guid, so it also
@@ -44,8 +53,13 @@ PLAYER_LINE_RE = re.compile(
 #: answers ``sv_maxclients is "18"`` with neither. Widening this rather than giving those titles their
 #: own pattern is safe: `is` plus a quoted value is still required, so nothing else in a reply matches
 #: — and the alternative was a cvar read that silently returned None on two whole titles.
+#: The Source engines answer with an equals sign instead of the word — ``"tv_password" = ""`` — and
+#: they are the reason ``=`` is an alternative here rather than a second pattern: `parse_cvar` still
+#: checks that the name it read is the name that was asked, so widening the separator cannot make a
+#: reply to one question answer another. Without it every cvar read on that family returns None, which
+#: is indistinguishable from a server that does not have the cvar.
 CVAR_RE = re.compile(
-    r'^"?(?P<cvar>[a-z0-9_.]+)"?\s+is:?\s*"(?P<value>.*?)(?:\^7)?"',
+    r'^"?(?P<cvar>[a-z0-9_.]+)"?\s*(?:is:?|=)\s*"(?P<value>.*?)(?:\^7)?"',
     re.IGNORECASE | re.MULTILINE,
 )
 
@@ -188,7 +202,13 @@ def _ping(value: str | None) -> int:
 #: ping. Loose on purpose — it exists only to tell "this reply had rows we could not read" apart from
 #: "this reply had no rows", which are the same thing to :func:`parse_status` and very different
 #: things to an operator.
-DATA_ROW_RE = re.compile(r"^\s*[0-9]+\s+-?[0-9]+\s+[0-9]+\s+\S")
+#:
+#: Two shapes, because the Source engines number their rows differently: ``#194 2 "courgette" …``
+#: leads with a ``#`` and puts a quoted name where the Tech 3 table has a score, so the Tech 3 shape
+#: recognises none of it. Without the alternative, `b3 probe` and the runtime's "rows we cannot read"
+#: warning would report a Source table this bot failed to parse as an *empty server* — the one
+#: distinction this pattern exists to make.
+DATA_ROW_RE = re.compile(r"^\s*(?:#\s*[0-9]+\s+\S|[0-9]+\s+-?[0-9]+\s+[0-9]+\s+\S)")
 
 
 def unparsed_rows(
