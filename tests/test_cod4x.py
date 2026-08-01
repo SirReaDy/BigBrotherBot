@@ -246,6 +246,40 @@ def test_a_reply_we_cannot_read_is_reported_once(tmp_path, caplog):
     bot.storage.close()
 
 
+def test_a_reply_we_cannot_read_does_not_disconnect_everybody(tmp_path, caplog):
+    """The destructive half of a sync is dropping whoever is missing from the list it is given.
+
+    A table shape this bot cannot read yields no players, which under a plain reconcile means the
+    whole server is reported as having left: every player loses their session, and gets adopted again
+    as a stranger on the next line they write. It happens once per sync for as long as the mismatch
+    lasts, and a mismatch is what a game update does. So an unreadable answer leaves the roster
+    alone.
+    """
+    rcon = ScriptedRcon({"status": "map: mp_crash\n  0    12   47 ?? Admin\n"})
+    bot = _bot(tmp_path, rcon=rcon, forget_startup=True)
+    playing = Client(cid="0", name="Admin", guid=STEAM_ADMIN)
+    bot.clients.add(playing)
+
+    with caplog.at_level("WARNING"):
+        still_here = bot.sync()
+
+    assert [c.name for c in still_here] == ["Admin"]
+    assert bot.clients.get_by_cid("0") is playing  # the same record, not a re-adopted stranger
+    assert "roster is being left alone" in caplog.text
+    bot.storage.close()
+
+
+def test_a_genuinely_empty_server_still_clears_the_roster(tmp_path):
+    """The other half of the same decision: no rows *and* nothing unreadable means nobody is on."""
+    rcon = ScriptedRcon({"status": "map: mp_crash\n"})
+    bot = _bot(tmp_path, rcon=rcon, forget_startup=True)
+    bot.clients.add(Client(cid="0", name="Admin", guid=STEAM_ADMIN))
+
+    assert bot.sync() == []
+    assert bot.clients.get_by_cid("0") is None
+    bot.storage.close()
+
+
 def test_the_map_still_comes_back_from_an_empty_server(tmp_path):
     """No rows to parse, but `!map` has to work: the map line is read independently of the players."""
     rcon = ScriptedRcon({"b3status": "map: mp_crash\n", "status": "map: mp_crash\n"})

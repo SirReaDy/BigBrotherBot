@@ -139,6 +139,9 @@ class Bot:
         self._status_command = ""
         #: A status reply we could not read is worth one warning, not one per poll.
         self._warned_about_status = False
+        #: Set when the last status reply held rows no pattern could read. "Unknown", not "empty" --
+        #: `sync` refuses to reconcile on it rather than reporting an empty server.
+        self._status_unreadable = False
 
         self.parser = games.parser_for(self.profile, self.clients, config.server.port)
         self.game = Game()
@@ -608,17 +611,25 @@ class Bot:
             map_name = map_name or found_map
             if players:
                 self._status_command = command
+                self._status_unreadable = False
                 return map_name, players
             unreadable.extend(status_parser.unparsed_rows(raw, self.profile.status_patterns))
         self._status_command = ""
+        # Rows we could not read mean the roster is **unknown**, which is a different answer from
+        # "empty" and must not be allowed to become one: `_reconcile` drops every player missing from
+        # the list it is given, so reporting nobody would disconnect the whole server every sync,
+        # losing each player's session for as long as the mismatch lasts. `sync` reads this and
+        # declines to reconcile. It is the same reasoning `get_players` already applies to an engine
+        # that cannot be asked at all.
+        self._status_unreadable = bool(unreadable)
         if unreadable and not self._warned_about_status:
             # An empty server and a table shape we cannot read look identical from here, and they
             # want opposite responses. Saying which it is beats guessing at a looser pattern: a
             # pattern that is *almost* right reads the id column as part of the player's name.
             self._warned_about_status = True
             log.warning(
-                "%s: the server answered with %d row(s) this bot cannot read, so it sees nobody. "
-                "The first is: %s",
+                "%s: the server answered with %d row(s) this bot cannot read, so it cannot tell who "
+                "is playing; the roster is being left alone. The first is: %s",
                 self.profile.name,
                 len(unreadable),
                 unreadable[0],
@@ -749,8 +760,15 @@ class Bot:
         started mid-match never saw anyone join, and a dropped log line leaves a ghost in the slot
         list forever. This adopts players we do not know about, drops those the server no longer
         lists, and fills in IPs along the way.
+
+        Skipped entirely when the server's answer could not be read (see `_read_status`): the
+        departures half of reconciling is destructive, and an unreadable table is no evidence that
+        anybody left.
         """
-        return self._reconcile(self.get_players())
+        players = self.get_players()
+        if self._status_unreadable:
+            return self.clients.connected()
+        return self._reconcile(players)
 
     def _reconcile(self, players: list[PlayerInfo]) -> list[Client]:
         """Apply a player list to the client manager. No I/O of its own — see :meth:`sync`.
