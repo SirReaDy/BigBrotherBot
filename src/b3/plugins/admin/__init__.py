@@ -15,11 +15,14 @@ from b3.core.console import Console
 from b3.core.events import Event, EventType
 from b3.core.game import PlayerInfo
 from b3.core.plugin import Plugin
-from b3.core.util import duration_text, parse_duration
+from b3.core.util import duration_text, match_names, parse_duration
 from b3.domain.client import Client, NEVER_EXPIRES, Penalty, PenaltyType
 from b3.domain.permissions import DEFAULT_GROUPS, Group, find_group, group_by_keyword, max_group
 
 log = logging.getLogger(__name__)
+
+#: Rotations up to this length are printed in full when `!map` finds no match; longer ones are not.
+MAPS_WORTH_LISTING = 12
 
 #: The `settings:` section of the plugin config — the classic bot's defaults, verbatim.
 DEFAULT_SETTINGS: dict[str, object] = {
@@ -1138,13 +1141,47 @@ class AdminPlugin(Plugin):
 
     @command(level=80)
     def cmd_map(self, ctx: CommandContext) -> None:
-        """map <name> - change to another map"""
+        """map <name> - change to another map (a partial name will do)"""
         name = ctx.args.strip()
         if not name:
             ctx.reply(self.message("usage", usage="map <name>"))
             return
-        self.console.say(self.message("map_changing", map=name))
-        self.console.change_map(name)
+        chosen = self._resolve_map(ctx, name)
+        if chosen is None:
+            return
+        self.console.say(self.message("map_changing", map=self.console.map_display(chosen)))
+        self.console.change_map(chosen)
+
+    def _resolve_map(self, ctx: CommandContext, wanted: str) -> str | None:
+        """Turn what the admin typed into a map the server has, or reply saying why not.
+
+        Map ids are awkward to type (`Thrust_Oilrig`, `mp_crossfire`, `MP_Subway`, `fl-harbor`) and
+        sending one the server does not have fails silently, since `change_map` gets no reply to
+        report. The name is matched against the rotation by id or display name, so `!map metro`
+        resolves to `MP_Subway`.
+
+        Where the rotation cannot be read at all the typed name is sent unchecked, which is all that
+        can be done on those engines.
+        """
+        maps = self.console.get_maps()
+        if not maps:
+            return wanted
+        found = match_names(wanted, [(m, self.console.map_display(m)) for m in maps])
+        if not found:
+            ctx.reply(self.message("map_not_found", map=wanted))
+            if len(maps) <= MAPS_WORTH_LISTING:
+                ctx.reply(self.message("maps_rotation", maps=self._map_list(maps)))
+            return None
+        if len(found) > 1:
+            ctx.reply(
+                self.message("map_ambiguous", count=len(found), maps=self._map_list(found))
+            )
+            return None
+        return found[0]
+
+    def _map_list(self, maps: list[str]) -> str:
+        """Format maps for a reply, using display names where the title has them."""
+        return ", ".join(self.console.map_display(m) for m in maps)
 
     @command(level=80)
     def cmd_maprotate(self, ctx: CommandContext) -> None:
@@ -1159,7 +1196,7 @@ class AdminPlugin(Plugin):
         if not maps:
             ctx.reply(self.message("maps_none"))
             return
-        ctx.reply(self.message("maps_rotation", maps=", ".join(maps)))
+        ctx.reply(self.message("maps_rotation", maps=self._map_list(maps)))
 
     @command(level=1)
     def cmd_nextmap(self, ctx: CommandContext) -> None:
@@ -1168,7 +1205,7 @@ class AdminPlugin(Plugin):
         if not next_map:
             ctx.reply(self.message("nextmap_unknown"))
             return
-        ctx.reply(self.message("nextmap", map=next_map))
+        ctx.reply(self.message("nextmap", map=self.console.map_display(next_map)))
 
     @command(level=20)
     def cmd_status(self, ctx: CommandContext) -> None:

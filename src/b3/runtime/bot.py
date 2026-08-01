@@ -647,6 +647,14 @@ class Bot:
                 return maps[(index + 1) % len(maps)]
         return maps[0]  # current map is not in the rotation: the next one played is its first
 
+    def map_display(self, map_id: str) -> str:
+        """The name to show a player for a map id — "Operation Metro" rather than `MP_Subway`.
+
+        One helper rather than a call at each site, so `!map`, `!maps`, `!nextmap` and `!status`
+        cannot disagree about what a map is called.
+        """
+        return self.profile.map_display(map_id)
+
     def change_map(self, name: str) -> None:
         """Load a named map. Some engines need two commands for it, so the template may hold both."""
         rendered = self.profile.map_template % sanitize_rcon_value(name)

@@ -101,6 +101,8 @@ DEFAULT_MESSAGES: dict[str, str] = {
     "map_unknown": "the server did not report a map",
     "maps_rotation": "map rotation: {maps}",
     "maps_none": "the server has no map rotation configured",
+    "map_not_found": "no map in the rotation matching '{map}'",
+    "map_ambiguous": "{count} maps match — be more specific: {maps}",
     "nextmap": "next map: {map}",
     "nextmap_unknown": "could not work out the next map",
     "status": "database {database}, {players} player(s) on {map}",

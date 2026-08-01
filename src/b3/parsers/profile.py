@@ -57,6 +57,27 @@ class GameProfile:
             return True
         return bool(self.bot_guid_prefixes) and guid.startswith(self.bot_guid_prefixes)
 
+    def map_display(self, map_id: str) -> str:
+        """The name to show a player for a map id, or the id itself if the title has no table.
+
+        Matching is exact first, then longest prefix, because some titles report a level path with a
+        suffix: Bad Company 2 says ``Levels/MP_001`` and Medal of Honor ``levels/mp_01_elimination``.
+        On Medal of Honor that suffix names a different map ("Bagram Hanger" against
+        "Mazar-i-Sharif Airfield"), so the longest match has to win and table order must not matter.
+        """
+        if not self.map_names:
+            return map_id
+        key = map_id.strip().lower()
+        exact = self.map_names.get(key)
+        if exact is not None:
+            return exact
+        best = max(
+            (candidate for candidate in self.map_names if key.startswith(candidate)),
+            key=len,
+            default="",
+        )
+        return self.map_names[best] if best else map_id
+
     # Longest chat line this engine will show, when the engine imposes one. 0 means it does not, and
     # `bot.line_length` from the config decides alone. Where both apply the **smaller wins**: a
     # config value cannot lift an engine's limit, it can only ask for shorter lines. Plutonium is why
@@ -77,6 +98,11 @@ class GameProfile:
     # needs it, where Infinity-Ward puts everything in `A;`. Empty = this engine uses the generic
     # line, so those two-letter lines are not ours to interpret.
     action_map: dict[str, str] = field(default_factory=dict)
+
+    # Engine map id -> the name players use for it, keys lowercased. Frostbite titles report
+    # `MP_Subway` for the map everyone calls "Operation Metro", so `!map`, `!maps` and `!nextmap`
+    # would otherwise print ids nobody recognises. Consulted through `map_display` below.
+    map_names: dict[str, str] = field(default_factory=dict)
 
     # Authenticate by IP instead of GUID when the server can't supply usable GUIDs.
     ips_only: bool = False

@@ -119,6 +119,7 @@ class FakeConsole:
         self.players: list[PlayerInfo] = []
         self.cvars: dict[str, str] = {}
         self.maps: list[str] = []
+        self.map_names: dict[str, str] = {}  # lowercased id -> display name, as a profile carries
         self.next_map: str | None = None
         self.map_changes: list[str] = []
         self.rotations = 0
@@ -171,6 +172,9 @@ class FakeConsole:
 
     def change_map(self, name: str) -> None:
         self.map_changes.append(name)
+
+    def map_display(self, map_id: str) -> str:
+        return self.map_names.get(map_id.lower(), map_id)
 
     def rotate_map(self) -> None:
         self.rotations += 1

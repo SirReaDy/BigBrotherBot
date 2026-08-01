@@ -336,11 +336,14 @@ def test_every_title_is_configurable(game):  # noqa: ANN001
 
 
 def test_the_titles_differ_in_nothing_the_bot_cares_about():
-    """Both protocol generations take the same verbs; what differs is data read by name."""
+    """Both protocol generations take the same verbs; what differs is data read by name.
+
+    `map_names` is excluded because it is per-title data by definition.
+    """
     from dataclasses import replace
 
     for profile in (BF4, BFBC2, BFH, MOH, MOHW):
-        assert replace(profile, name="bf3") == BF3
+        assert replace(profile, name="bf3", map_names=BF3.map_names) == BF3
 
 
 def test_bans_are_native_and_by_guid():

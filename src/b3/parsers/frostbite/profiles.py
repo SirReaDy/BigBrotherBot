@@ -23,6 +23,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 
+from b3.parsers.frostbite import maps
 from b3.parsers.profile import GameProfile
 
 #: Frostbite team ids, as they appear in events. 0 is "no team yet" — a player still at the deploy
@@ -64,15 +65,16 @@ _BASE = GameProfile(
     rotation_cvar="",  # the map list is a command, not a cvar
 )
 
-#: Frostbite 1 — Bad Company 2 and the 2010 Medal of Honor.
-BFBC2 = replace(_BASE, name="bfbc2")
-MOH = replace(_BASE, name="moh")
+#: Frostbite 1 — Bad Company 2 and the 2010 Medal of Honor. Both report a level path, so their map
+#: tables are matched by longest prefix (b3.parsers.frostbite.maps).
+BFBC2 = replace(_BASE, name="bfbc2", map_names=maps.BFBC2_MAPS)
+MOH = replace(_BASE, name="moh", map_names=maps.MOH_MAPS)
 
 #: Frostbite 2 — BF3, BF4, Hardline and MoH Warfighter.
-BF3 = replace(_BASE, name="bf3")
-BF4 = replace(_BASE, name="bf4")
-BFH = replace(_BASE, name="bfh")
-MOHW = replace(_BASE, name="mohw")
+BF3 = replace(_BASE, name="bf3", map_names=maps.BF3_MAPS)
+BF4 = replace(_BASE, name="bf4", map_names=maps.BF4_MAPS)
+BFH = replace(_BASE, name="bfh", map_names=maps.BFH_MAPS)
+MOHW = replace(_BASE, name="mohw", map_names=maps.MOHW_MAPS)
 
 #: Every Frostbite title, by the id used in `server.game`.
 ALL: dict[str, GameProfile] = {p.name: p for p in (BFBC2, MOH, BF3, BF4, BFH, MOHW)}

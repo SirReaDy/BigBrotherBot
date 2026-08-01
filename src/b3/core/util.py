@@ -2,11 +2,51 @@
 
 from __future__ import annotations
 
+import difflib
 import logging
 import re
+from collections.abc import Sequence
 from datetime import datetime, tzinfo
 
 log = logging.getLogger(__name__)
+
+#: How close a difflib ratio has to be before a guess is offered at all.
+FUZZY_CUTOFF = 0.6
+
+
+def match_names(wanted: str, options: Sequence[tuple[str, str]]) -> list[str]:
+    """Resolve what somebody typed against ``(value, label)`` pairs; returns the matching values.
+
+    Four steps, narrowest first — exact, prefix, substring, then a difflib ratio — and the first
+    step that matches anything wins. That keeps an exact answer from being ambiguous with a longer
+    one: "metro" resolves to a map of that name even when "metro 2014" is also in the rotation.
+
+    Both halves of each pair are searched, so a caller can offer an id and a display name for the
+    same thing and accept either. Duplicates are collapsed, first occurrence winning, so results
+    come back in the caller's order.
+    """
+    needle = wanted.strip().lower()
+    if not needle:
+        return []
+    pairs = [(value, [text.lower() for text in (value, label) if text]) for value, label in options]
+
+    exact = [value for value, texts in pairs if needle in texts]
+    if exact:
+        return list(dict.fromkeys(exact))
+    prefixed = [value for value, texts in pairs if any(t.startswith(needle) for t in texts)]
+    if prefixed:
+        return list(dict.fromkeys(prefixed))
+    contained = [value for value, texts in pairs if any(needle in t for t in texts)]
+    if contained:
+        return list(dict.fromkeys(contained))
+
+    close = set(
+        difflib.get_close_matches(
+            needle, [t for _, texts in pairs for t in texts], n=5, cutoff=FUZZY_CUTOFF
+        )
+    )
+    return list(dict.fromkeys(v for v, texts in pairs if close.intersection(texts)))
+
 
 #: How `!time`, `!seen` and `!lookup` render a timestamp. The classic bot's `formatTime` used the
 #: locale's `%c`, which is unreadable in a game chat line; this is short, sortable and unambiguous.
