@@ -288,7 +288,11 @@ class A2SClient:
                 )
             except A2SError:
                 log.debug(
-                    "a2s: %s:%s said %d players and sent %d", self.host, self.port, count, len(found)
+                    "a2s: %s:%s said %d players and sent %d",
+                    self.host,
+                    self.port,
+                    count,
+                    len(found),
                 )
                 break
         return found
@@ -309,7 +313,9 @@ class A2SClient:
             except A2SError:
                 break
         if len(found) != stated:
-            log.debug("a2s: %s:%s stated %d rules and sent %d", self.host, self.port, stated, len(found))
+            log.debug(
+                "a2s: %s:%s stated %d rules and sent %d", self.host, self.port, stated, len(found)
+            )
         return found
 
     # -- the wire ----------------------------------------------------------
@@ -353,6 +359,11 @@ class A2SClient:
             try:
                 datagram = sock.recv(PACKET_SIZE * 2)
             except TimeoutError as exc:
+                raise A2SError(f"no reply from {self.host}:{self.port}") from exc
+            except ConnectionError as exc:
+                # Nothing listening on that port, arriving as an ICMP unreachable: Windows spells it
+                # ConnectionResetError and Linux ConnectionRefusedError. Same answer as a timeout,
+                # and it wants the same message, which names the port.
                 raise A2SError(f"no reply from {self.host}:{self.port}") from exc
             except OSError as exc:
                 raise A2SError(f"read failed: {exc}") from exc

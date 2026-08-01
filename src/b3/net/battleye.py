@@ -457,11 +457,13 @@ class BattleyeClient:
             raw = sock.recv(8192)
         except (TimeoutError, BlockingIOError):
             return None
-        except ConnectionResetError:
-            # A connected UDP socket surfaces "nothing is listening on that port" as a reset, once
-            # the ICMP unreachable comes back. Treated as silence: the caller's own timeout reports
-            # it, with a message that names the likely cause (BattlEye's port is not the game port).
-            log.debug("battleye: connection reset from %s:%d", *self._addr)
+        except ConnectionError:
+            # A connected UDP socket surfaces "nothing is listening on that port" once the ICMP
+            # unreachable comes back, and the platforms spell it differently: Windows raises
+            # ConnectionResetError, Linux ConnectionRefusedError, and neither subclasses the other.
+            # Both are silence, reported by the caller's own timeout with a message that names the
+            # likely cause (BattlEye's port is not the game port).
+            log.debug("battleye: nothing listening at %s:%d", *self._addr)
             return None
         except OSError as exc:  # pragma: no cover - network
             raise BattleyeError(f"read failed: {exc}") from exc

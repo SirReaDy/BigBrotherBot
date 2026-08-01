@@ -54,10 +54,19 @@ def test_init_writes_a_config_that_loads_on_windows_too(tmp_path):
         )
     )
 
+    # The regression itself: the file has to be *readable*, with the backslashes still in it.
+    written = (tmp_path / "b3" / "b3.yaml").read_text(encoding="utf-8")
+    assert r"C:\Users\b3\Altitude\servers\log.txt" in written
+    assert r"sqlite:///C:\Users\b3\b3.sqlite" in written
+
     config = load_config(str(tmp_path / "b3" / "b3.yaml"))
     assert config.server.game_log == r"C:\Users\b3\Altitude\servers\log.txt"
     assert config.bot.shared_plugins_dir == r"C:\Users\b3\shared"
-    assert config.bot.database.endswith(r"C:\Users\b3\b3.sqlite")
+    # Not the resolved absolute form: `database` is path-resolved on load, and `C:\...` is only
+    # absolute *on Windows* -- run on Linux it is a relative path and gets joined to the config's
+    # directory, which is correct behaviour there and not something this test is about. What has to
+    # hold on both is that the value came back naming the file the operator asked for.
+    assert config.bot.database.endswith("b3.sqlite")
 
 
 @pytest.mark.parametrize(
@@ -77,9 +86,7 @@ def test_init_creates_the_plugins_directory(tmp_path):
 
 
 def test_init_records_a_shared_pool_when_asked(tmp_path):
-    create_instance(
-        InstanceSpec(directory=tmp_path / "b3", shared_plugins_dir="/opt/b3/plugins")
-    )
+    create_instance(InstanceSpec(directory=tmp_path / "b3", shared_plugins_dir="/opt/b3/plugins"))
     config = load_config(str(tmp_path / "b3" / "b3.yaml"))
     assert config.bot.shared_plugins_dir == "/opt/b3/plugins"
 
@@ -108,9 +115,7 @@ def test_the_admin_config_is_copied_in(tmp_path):
     source = tmp_path / "plugin_admin.yaml"
     source.write_text("settings:\n  ban_duration: 14d\n", encoding="utf-8")
 
-    written = create_instance(
-        InstanceSpec(directory=tmp_path / "b3"), admin_config_source=source
-    )
+    written = create_instance(InstanceSpec(directory=tmp_path / "b3"), admin_config_source=source)
 
     copied = tmp_path / "b3" / "plugin_admin.yaml"
     assert copied in written

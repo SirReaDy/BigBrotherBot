@@ -25,6 +25,7 @@ from __future__ import annotations
 import asyncio
 import sys
 import tempfile
+from collections.abc import Callable
 from pathlib import Path
 
 from b3.config.schema import BotConfig, Config, PluginEntry, ServerConfig
@@ -45,6 +46,24 @@ def check(condition: bool, description: str) -> None:
     print(f"  {'ok  ' if condition else 'FAIL'} {description}")
     if not condition:
         failures.append(description)
+
+
+async def settled(
+    predicate: "Callable[[], bool]", *, rounds: int = 60, delay: float = 0.05
+) -> bool:
+    """Wait for something the server's own thread has to do before asking whether it did it.
+
+    Writing a command and the fake reading it are separate events, so asking straight after a write
+    races another thread rather than testing anything.
+
+    Returns the predicate's final value, so a caller still `check`s it and still fails if the wait
+    ran out.
+    """
+    for _ in range(rounds):
+        if predicate():
+            return True
+        await asyncio.sleep(delay)
+    return predicate()
 
 
 async def main() -> int:
@@ -71,7 +90,7 @@ async def main() -> int:
         check(server.authed, "the MD5 challenge was answered (the password never crossed the wire)")
         check(client.server_version == "2", "and the server's RCON version was read")
         check(
-            server.chat_logging and server.debug_logging,
+            await settled(lambda: server.chat_logging and server.debug_logging),
             "the reporting switches were turned on -- without them nobody can be heard at all",
         )
 
@@ -131,7 +150,8 @@ async def main() -> int:
         check(badger is not None, "the culprit is in the database, keyed on his ProfileID")
         if badger is not None:
             check(
-                len(bot.storage.get_active_penalties(badger.require_id(), PenaltyType.TEMPBAN)) == 1,
+                len(bot.storage.get_active_penalties(badger.require_id(), PenaltyType.TEMPBAN))
+                == 1,
                 "the tempban was recorded",
             )
 
@@ -185,7 +205,9 @@ async def main() -> int:
         await pump()
         await refresh()
         check(server.sent_command("ForceMapChange FL-Harbor"), "the map change went out")
-        check(bot.game.map_name == "FL-Harbor", "and the new map was picked up from the next roster")
+        check(
+            bot.game.map_name == "FL-Harbor", "and the new map was picked up from the next roster"
+        )
         check(
             not bot.clients.connected(),
             "everybody was dropped through the loading screen, and the roster says so",
@@ -225,7 +247,9 @@ async def main() -> int:
             check(False, "a wrong password is refused")
         except FrontlineAuthError:
             check(True, "a wrong password is refused -- and as an auth failure, not a network one")
-        check(strict.rejected, "the server hung up rather than answering, which is all it ever does")
+        check(
+            strict.rejected, "the server hung up rather than answering, which is all it ever does"
+        )
     finally:
         strict.stop()
 
@@ -289,9 +313,18 @@ async def main() -> int:
 
         restarting.restart()
         lines: list[str] = []
-        for _ in range(40):
+        # Waits for the *last* of the three things a reconnect does, not the first. Logging in and
+        # having the switches read are separate events -- the client writes them, and the server's
+        # own thread reads them a moment later -- so stopping at `authed` and asking about the
+        # switches straight away is a race. It happens to be won on Windows and lost on Linux, which
+        # is exactly the kind of difference a driver should not be sensitive to.
+        for _ in range(80):
             lines.extend(client.read_lines())
-            if client.authed and any("RECONNECTED" in line for line in lines):
+            if (
+                client.authed
+                and any("RECONNECTED" in line for line in lines)
+                and restarting.chat_logging
+            ):
                 break
             client._retry_at = 0.0  # the back-off is real; a demo should not wait it out
             await asyncio.sleep(0.05)
