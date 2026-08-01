@@ -35,10 +35,10 @@ servers. What they sit on is all new:
 migrations instead of manual `ALTER TABLE`, plugins that install by name and pin to a version, and
 straight answers when something is misconfigured.
 
-**Where it stands today.** All 59 classic admin commands at the classic levels, 37 game titles across
-ten engine families — 34 of the classic bot's 37, plus three it never had — and every core service the
+**Where it stands today.** All 59 classic admin commands at the classic levels, 38 game titles across
+ten engine families — 35 of the classic bot's 37, plus three it never had — and every core service the
 old bot offered, plus remote log tailing, per-server deployment and pre-flight checks it never had.
-1,500 tests, `mypy --strict` clean.
+1,530 tests, `mypy --strict` clean.
 
 ## What was deleted, and what was rebuilt
 
@@ -111,7 +111,7 @@ The replay demo boots the bot against a recorded CoD4 log: a player claims super
 
 ## Supported games
 
-Ten engine families, thirty-seven titles — `b3 games` prints the list on any install. Set `server.game`
+Ten engine families, thirty-eight titles — `b3 games` prints the list on any install. Set `server.game`
 to one of them:
 
 | Family | `server.game` |
@@ -128,7 +128,7 @@ to one of them:
 | **Homefront** | `homefront` |
 | **Ravaged** | `ravaged` |
 | **Frontlines: Fuel of War** | `frontline` |
-| **Source** | `insurgency` |
+| **Source** | `insurgency` `cs2` |
 
 A family is one parser; the titles in it are data — GUID length, ban verbs, the shape of the status
 table. Adding a title to a family is a few lines; adding a family is a parser.

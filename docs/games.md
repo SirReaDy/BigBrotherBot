@@ -245,6 +245,58 @@ weapon and whether it was a headshot, assists, objective actions, round and matc
 roster with pings and addresses, and the server's own bans and kicks — including ones made at the
 console by somebody else.
 
+## Counter-Strike 2 (Source)
+
+Same engine family as Insurgency, same two transports — `console.log` for events, Source RCON for
+commands — and the log grammar is identical, because CS2 kept the Half-Life log standard. What is
+different is everything the bot can *say back*, and it is worth reading before you deploy it.
+
+```yaml
+server:
+  game: cs2
+  host: 203.0.113.10
+  port: 27015                # RCON shares the game port
+  rcon_password: your_rcon_password
+  game_log: /srv/cs2/game/csgo/console.log
+```
+
+Start the server with **`-condebug`**, which is what writes `console.log`. CS2 dropped UDP
+`logaddress_add`; it has a native HTTP log sink instead (`logaddress_add_http`, or `CS2_LOG_HTTP_URL`
+on the common Docker images), but the bot does not need it — the file is simpler and is what the
+community's own HTTP forwarders tail anyway.
+
+**SourceMod does not exist for CS2.** Source 2 broke the interface it hooks, and the community moved
+to Metamod:Source with CounterStrikeSharp. So unlike Insurgency, this title needs nothing installed —
+and it also cannot do three things Insurgency can:
+
+- **Replies are public.** There is no private-message command on a stock CS2 server, so a `!` answer
+  goes out as a normal `say` with your name in front of it: `[courgette] you are now superadmin`. The
+  alternative was sending a command the server does not have, which fails without an error and leaves
+  an admin watching their command do nothing.
+- **A ban is a kick, and B3's database is what enforces it.** The old `banid`/`writeid` commands
+  survive from Source 1 but are unreliable on CS2 builds, so the bot kicks and keeps the ban itself,
+  re-applying it whenever that player reconnects. It holds across a name change, because it is keyed
+  on the Steam id, and it holds across a bot restart, because it is in the database. It does **not**
+  hold while the bot is *down* — which is the difference from a ban written into the server.
+  `!unban` says so rather than sending you to look for a server-side ban list.
+- **`!nextmap` answers "unknown" rather than guessing.** `maps *` lists every map installed, in no
+  order, which is not a rotation; there is no `sm_nextmap` here to publish the real answer. `!map`
+  still resolves partial names against that installed list, and refuses one the server has not got.
+
+**One Steam account, three spellings, and the bot folds them into one.** CS2 writes `[U:1:2222222]`
+in the log, answers `status` with `76561197962487950`, and a database imported from classic B3 is
+keyed on `STEAM_1:0:1111111`. Those are all the same player. Every one is converted to the classic
+form before anything is stored or compared, so an imported database keeps matching its own players,
+and a `status` poll does not read someone as a stranger who has taken their slot.
+
+What you get: everything the Insurgency section lists — chat and team chat, joins, departures, team
+switches, kills with weapon and headshot, assists, objective actions, round and match state, the map,
+and the roster with pings and addresses.
+
+Not verified against a real CS2 server. It is exercised end to end against
+`tools/fakeservers/e2e_cs2.py`, and `b3 probe` works on this family, so one command against a real
+one settles the rest.
+
 ## Which CoD4 are you running?
 
 Nearly every live CoD4 server runs **CoD4X 1.8** rather than the stock 1.7 binary, and they differ in
