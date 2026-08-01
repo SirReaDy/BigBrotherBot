@@ -1,0 +1,131 @@
+# The checks that have been run by hand until now, run by the repository instead.
+#
+# Everything here is already part of the project's definition of done: ruff, mypy --strict, the test
+# suite, the end-to-end drivers, and the markdown links. Nothing new is being demanded of a change;
+# what changes is that nobody has to remember, and a pull request says so before it is merged.
+#
+# The jobs are separate on purpose. "ruff failed" and "the Frostbite reassembly broke" want different
+# people looking at them, and a single job would report only whichever failed first.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch: # so a run can be forced without pushing anything
+
+# Read-only. Nothing here comments, pushes, or publishes; the docs site (TODO 5) will need its own
+# workflow with `pages: write`, and keeping this one unable to write is the point of saying so.
+permissions:
+  contents: read
+
+# A second push to the same branch makes the first run's answer irrelevant, so stop paying for it.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: ruff
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      - run: python -m pip install -e ".[dev]"
+      - run: python -m ruff check src tests tools
+
+  types:
+    name: mypy --strict
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      - run: python -m pip install -e ".[dev]"
+      # Strict mode is configured in pyproject.toml, over `src` only: the tests deliberately poke at
+      # private attributes and pass deliberately-wrong values.
+      - run: python -m mypy src
+
+  test:
+    name: pytest (${{ matrix.os }}, py${{ matrix.python }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      # One red cell must not hide the others: which platforms fail is the useful information.
+      fail-fast: false
+      matrix:
+        # 3.11 is the floor `requires-python` states, so it is the one that can break by accident.
+        # Windows is here because that is where this is developed, Linux because that is where a bot
+        # actually runs, and the suite opens real sockets and starts real threads, so the two are not
+        # interchangeable.
+        include:
+          - { os: ubuntu-latest, python: "3.11" }
+          - { os: ubuntu-latest, python: "3.12" }
+          - { os: ubuntu-latest, python: "3.13" }
+          - { os: windows-latest, python: "3.13" }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      - run: python -m pip install -e ".[dev]"
+      - run: python -m pytest -q
+
+  e2e:
+    name: end-to-end drivers
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      - run: python -m pip install -e ".[dev]"
+      # Each driver runs a real bot against a fake server that speaks the real protocol, and checks
+      # what the commands *accomplished* rather than what was sent. That distinction has caught bugs
+      # every unit test passed: a ban that was recorded, appeared in the server's ban list, and left
+      # the player playing. Each exits non-zero and names the check that failed.
+      #
+      # Run in one job rather than a matrix: they are seconds each, apart from Ravaged, which waits
+      # out real back-off timers.
+      - name: Run every e2e driver
+        shell: bash
+        env:
+          PYTHONPATH: .
+        run: |
+          status=0
+          for driver in tools/fakeservers/e2e_*.py; do
+            echo "::group::$driver"
+            python "$driver" || status=1
+            echo "::endgroup::"
+          done
+          exit $status
+
+  docs:
+    name: markdown links
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      # No install: the checker is stdlib only, so this job stays quick.
+      #
+      # It exists because the README was split into docs/, which turned its internal anchors into
+      # links between files. A wrong one renders as an ordinary link and silently goes nowhere.
+      - run: python tools/check_links.py
