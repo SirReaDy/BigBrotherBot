@@ -106,9 +106,7 @@ def test_public_chat():
     assert ev.client.cid == "Bravo17"
 
 
-@pytest.mark.parametrize(
-    "target", ["team 1", "squad 1 2", "player Bob"]
-)
+@pytest.mark.parametrize("target", ["team 1", "squad 1 2", "player Bob"])
 def test_restricted_chat_is_team_chat(target):  # noqa: ANN001
     p = _with_players()
     ev = one(p, ["player.onChat", "Bravo17", "on my six", target])
@@ -287,9 +285,7 @@ def test_an_empty_player_block():
 
 def test_a_block_cut_short_yields_what_arrived():
     """It says two players and delivers one and a half; the first must still come through."""
-    players = list(
-        parse_player_block(["2", "name", "guid", "2", "Bravo17", GUID, "Bob"])
-    )
+    players = list(parse_player_block(["2", "name", "guid", "2", "Bravo17", GUID, "Bob"]))
     assert [p.name for p in players] == ["Bravo17"]
 
 
@@ -308,7 +304,9 @@ def test_no_ip_is_reported_and_none_is_invented():
 
 
 def test_reading_a_ban_list():
-    bans = parse_ban_list(["guid", GUID, "perm", "0", "cheating", "ip", "1.2.3.4", "rounds", "5", "x"])
+    bans = parse_ban_list(
+        ["guid", GUID, "perm", "0", "cheating", "ip", "1.2.3.4", "rounds", "5", "x"]
+    )
     assert bans[0] == {
         "id_type": "guid",
         "target": GUID,

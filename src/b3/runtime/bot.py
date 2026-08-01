@@ -460,9 +460,7 @@ class Bot:
         log.info(
             "rejected tempbanned client %s (%s), %d min left", client.name, client.guid, remaining
         )
-        self.bus.publish_soon(
-            Event(EventType.CLIENT_BAN_TEMP, client=client, data=penalty.reason)
-        )
+        self.bus.publish_soon(Event(EventType.CLIENT_BAN_TEMP, client=client, data=penalty.reason))
 
     async def run_command(self, issuer: Client, text: str) -> bool:
         """Run a chat line as if ``issuer`` had typed it — what `!runas` is built on."""
@@ -987,9 +985,7 @@ class Bot:
     def kick(self, client: Client, reason: str = "", admin: Client | None = None) -> None:
         self._record_penalty(PenaltyType.KICK, client, admin, reason, 0, NEVER_EXPIRES)
         self.bus.publish_soon(Event(EventType.CLIENT_KICK, client=client, data=reason))
-        self._send_penalty(
-            self.profile.kick_template, client, self._penalty_values(client, reason)
-        )
+        self._send_penalty(self.profile.kick_template, client, self._penalty_values(client, reason))
 
     def ban(self, client: Client, reason: str = "", admin: Client | None = None) -> None:
         self._record_penalty(PenaltyType.BAN, client, admin, reason, 0, NEVER_EXPIRES)
@@ -1001,9 +997,7 @@ class Bot:
         template = self.profile.ban_template
         if not self._expressible(template, client):
             template = self.profile.kick_template
-        self._send_penalty(
-            template, client, self._penalty_values(client, reason, admin=admin)
-        )
+        self._send_penalty(template, client, self._penalty_values(client, reason, admin=admin))
 
     def tempban(
         self, client: Client, minutes: int, reason: str = "", admin: Client | None = None
@@ -1040,9 +1034,7 @@ class Bot:
                 capped,
                 minutes,
             )
-        self._send_penalty(
-            template, client, self._penalty_values(client, reason, capped, admin)
-        )
+        self._send_penalty(template, client, self._penalty_values(client, reason, capped, admin))
 
     def warn(
         self,

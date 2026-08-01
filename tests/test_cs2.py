@@ -98,9 +98,7 @@ def test_no_other_title_pays_for_it():
 
 def test_the_log_form_is_stored_in_the_canonical_form():
     parser = _parser()
-    parser.parse_line(
-        f'L 01/15/2026 - 20:11:04: "courgette<194><{MODERN}><CT>" say "!help"'
-    )
+    parser.parse_line(f'L 01/15/2026 - 20:11:04: "courgette<194><{MODERN}><CT>" say "!help"')
     client = parser.clients.get_by_cid("194")
     assert client is not None
     assert client.guid == LEGACY

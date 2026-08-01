@@ -128,9 +128,7 @@ def test_a_bot_stuck_line_puts_a_number_where_the_team_goes_and_is_understood():
 def test_a_bot_gets_no_identity_so_they_cannot_share_one_database_row():
     """``"Moe<3><BOT><>"`` — every AI player on the server reports the same ``BOT``."""
     parser = _parser()
-    events = parser.parse_line(
-        'L 08/26/2012 - 03:22:36: "Moe<3><BOT><>" connected, address "none"'
-    )
+    events = parser.parse_line('L 08/26/2012 - 03:22:36: "Moe<3><BOT><>" connected, address "none"')
 
     assert [e.type for e in events] == [EventType.CLIENT_CONNECT]
     client = events[0].client
@@ -205,7 +203,9 @@ def test_team_chat_is_its_own_event():
 def test_the_console_talking_is_not_a_player_saying_something():
     """A bot that read its own console output as player speech would answer itself."""
     parser = _parser()
-    assert parser.parse_line('L 08/26/2012 - 05:09:55: "Console<0><Console><Console>" say "hi"') == []
+    assert (
+        parser.parse_line('L 08/26/2012 - 05:09:55: "Console<0><Console><Console>" say "hi"') == []
+    )
 
 
 # -- leaving -----------------------------------------------------------------------------------
@@ -360,7 +360,9 @@ def test_a_team_token_this_title_does_not_have_is_ignored_rather_than_reported()
 
 def test_a_kill_reports_the_weapon_and_whether_it_was_a_headshot():
     parser = _parser()
-    parser.parse_line('L 08/26/2012 - 03:00:00: "Pheonix<22><BOT><#Team_Insurgent>" entered the game')
+    parser.parse_line(
+        'L 08/26/2012 - 03:00:00: "Pheonix<22><BOT><#Team_Insurgent>" entered the game'
+    )
     parser.parse_line('L 08/26/2012 - 03:00:00: "Ringo<17><BOT><#Team_Security>" entered the game')
     events = parser.parse_line(
         'L 08/26/2012 - 03:46:44: "Pheonix<22><BOT><#Team_Insurgent>" killed '
@@ -558,7 +560,10 @@ def test_an_unrecognised_team_trigger_does_not_end_the_round():
     """Gated where the *player* triggers are not, because this one drives logic: a spurious round end
     runs every end-of-round handler in the bot at a moment when the round did not end."""
     parser = _parser()
-    assert parser.parse_line('L 02/07/2015 - 12:53:23: Team "#Team_Insurgent" triggered "Nonsense"') == []
+    assert (
+        parser.parse_line('L 02/07/2015 - 12:53:23: Team "#Team_Insurgent" triggered "Nonsense"')
+        == []
+    )
 
 
 def test_a_team_score_line_is_understood_and_recorded_nowhere():
@@ -693,7 +698,9 @@ def test_the_dropped_from_server_line_the_classic_could_never_have_ignored():
     **unescaped**, making them a group — so it could only match ``…from serverDisconnected.``, a line
     no server writes. That line was reported as unhandled for the whole life of the parser."""
     parser = _parser()
-    assert parser.handler_for("L 02/07/2015 - 12:00:00: Dropped courgette from server (Disconnected.)")
+    assert parser.handler_for(
+        "L 02/07/2015 - 12:00:00: Dropped courgette from server (Disconnected.)"
+    )
 
 
 # -- the status table --------------------------------------------------------------------------

@@ -75,7 +75,9 @@ def test_the_file_is_emptied_on_open_so_a_crash_cannot_replay_old_penalties(tmp_
     """The classic parser only cleared this on a clean shutdown, so a killed bot left its commands
     for the game server to find and re-run against whoever holds those names now."""
     path = tmp_path / "command.txt"
-    path.write_text(f"{PORT},console,kick Bob\n{PORT},console,addBan {BOB_ID} 1 forever old\n", encoding="utf-8")
+    path.write_text(
+        f"{PORT},console,kick Bob\n{PORT},console,addBan {BOB_ID} 1 forever old\n", encoding="utf-8"
+    )
 
     client = AltitudeCommandFile(path, port=PORT)
     with caplog.at_level("WARNING"):
@@ -350,7 +352,9 @@ def test_the_cli_reports_that_refusal_instead_of_raising(tmp_path, monkeypatch, 
 
     monkeypatch.chdir(tmp_path)
     log = tmp_path / "log.txt"
-    log.write_text("", encoding="utf-8")  # so the refusal is about the command file and nothing else
+    log.write_text(
+        "", encoding="utf-8"
+    )  # so the refusal is about the command file and nothing else
     config_path = tmp_path / "b3.yaml"
     config_path.write_text(
         f'bot:\n  database: "sqlite:///{(tmp_path / "b3.sqlite").as_posix()}"\n'

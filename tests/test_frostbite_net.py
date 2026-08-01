@@ -103,7 +103,10 @@ def test_an_empty_word_survives():
 
 
 def test_non_ascii_words_round_trip():
-    assert decode(encode(["player.onChat", "Renée", "café ☕"], 0)).words[1:] == ["Renée", "café ☕"]
+    assert decode(encode(["player.onChat", "Renée", "café ☕"], 0)).words[1:] == [
+        "Renée",
+        "café ☕",
+    ]
 
 
 def test_a_partial_packet_is_not_yet_a_packet():
@@ -187,7 +190,10 @@ def test_a_quoted_value_stays_one_word(server):  # noqa: ANN001
     [
         ('admin.say "one two" all', ["admin.say", "one two", "all"]),
         ("admin.kickPlayer Bob idle", ["admin.kickPlayer", "Bob", "idle"]),
-        ('banList.add guid "EA_1" perm "no reason given"', ["banList.add", "guid", "EA_1", "perm", "no reason given"]),
+        (
+            'banList.add guid "EA_1" perm "no reason given"',
+            ["banList.add", "guid", "EA_1", "perm", "no reason given"],
+        ),
         ('admin.say "" all', ["admin.say", "", "all"]),
     ],
 )
@@ -257,9 +263,16 @@ def test_the_player_block_is_read_by_field_name(server):  # noqa: ANN001
 def test_a_server_that_adds_a_column_does_not_break_it(server):  # noqa: ANN001
     """The block carries its own schema precisely so this is safe. Read names, not positions."""
     server.replies["admin.listPlayers"] = [
-        "4", "name", "guid", "score", "somethingNew",
+        "4",
+        "name",
+        "guid",
+        "score",
+        "somethingNew",
         "1",
-        "Bravo17", "EA_1234567890123456", "99", "whatever",
+        "Bravo17",
+        "EA_1234567890123456",
+        "99",
+        "whatever",
     ]
     client = _client(server)
     try:

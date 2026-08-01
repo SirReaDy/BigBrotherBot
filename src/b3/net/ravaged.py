@@ -389,7 +389,9 @@ class RavagedClient:
                 if match is not None and match["command"].lower() == wanted:
                     return match["response"]
                 # A reply to something else — a command that timed out earlier. Not ours to return.
-                log.debug("ravaged: ignoring a late reply to %r", match["command"] if match else "?")
+                log.debug(
+                    "ravaged: ignoring a late reply to %r", match["command"] if match else "?"
+                )
         log.warning("ravaged: no reply to %r within %.1fs", cmd, self.command_timeout)
         return ""
 

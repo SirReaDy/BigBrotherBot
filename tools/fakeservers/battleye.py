@@ -263,7 +263,9 @@ def main() -> None:  # pragma: no cover - a hand tool
         server._sock.settimeout(0.05)
         server.address = server._sock.getsockname()
     server.start()
-    print(f"fake BattlEye server on {server.address[0]}:{server.address[1]}, password {args.password!r}")
+    print(
+        f"fake BattlEye server on {server.address[0]}:{server.address[1]}, password {args.password!r}"
+    )
     print("type a server message to push it to the bot; ctrl-c to stop")
     try:
         while True:

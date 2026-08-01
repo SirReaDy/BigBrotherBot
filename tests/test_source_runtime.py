@@ -90,7 +90,7 @@ def test_a_tempban_does_the_same_and_carries_the_minutes(tmp_path):
     sent = [c for c in rcon.sent if c != "sm version"]
     addban = next(c for c in sent if c.startswith("sm_addban"))
     assert "120" in addban
-    assert 'STEAM_1:0:1111111' in addban
+    assert "STEAM_1:0:1111111" in addban
     assert any(c.startswith("sm_kick") for c in sent)
     bot.storage.close()
 
@@ -245,7 +245,9 @@ def test_an_unanswered_next_map_cvar_does_not_fall_back_to_guessing_from_the_map
 def test_doctor_says_the_password_worked_and_sourcemod_is_there(tmp_path):
     config = Config(
         bot=BotConfig(database=f"sqlite:///{tmp_path / 'b3.sqlite'}"),
-        server=ServerConfig(game="insurgency", rcon_password="test", game_log=str(tmp_path / "c.log")),
+        server=ServerConfig(
+            game="insurgency", rcon_password="test", game_log=str(tmp_path / "c.log")
+        ),
     )
     (tmp_path / "c.log").write_text("L 08/26/2012 - 03:22:35: Log file started\n", encoding="utf-8")
 
@@ -259,7 +261,9 @@ def test_doctor_fails_when_the_password_works_and_sourcemod_is_missing(tmp_path)
     """The check that matters on this family: authenticating proves nothing about being able to act."""
     config = Config(
         bot=BotConfig(database=f"sqlite:///{tmp_path / 'b3.sqlite'}"),
-        server=ServerConfig(game="insurgency", rcon_password="test", game_log=str(tmp_path / "c.log")),
+        server=ServerConfig(
+            game="insurgency", rcon_password="test", game_log=str(tmp_path / "c.log")
+        ),
     )
     (tmp_path / "c.log").write_text("L 08/26/2012 - 03:22:35: Log file started\n", encoding="utf-8")
 

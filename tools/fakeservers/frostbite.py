@@ -229,9 +229,13 @@ class FakeFrostbiteServer:
     def _login(self, arguments: list[str]) -> list[str]:
         if not arguments:
             return ["OK", SALT_HEX]  # the challenge
-        expected = hashlib.md5(  # noqa: S324 - the protocol specifies md5
-            bytes.fromhex(SALT_HEX) + self.password.encode("utf-8")
-        ).hexdigest().upper()
+        expected = (
+            hashlib.md5(  # noqa: S324 - the protocol specifies md5
+                bytes.fromhex(SALT_HEX) + self.password.encode("utf-8")
+            )
+            .hexdigest()
+            .upper()
+        )
         if self.accept_login and arguments[0].upper() == expected:
             self.logged_in = True
             return ["OK"]
@@ -280,7 +284,9 @@ def main() -> None:  # pragma: no cover - a hand tool
 
     logging.basicConfig(level=logging.INFO, format="%(message)s")
     server = FakeFrostbiteServer(password=args.password).start()
-    print(f"fake Frostbite server on {server.address[0]}:{server.address[1]}, password {args.password!r}")
+    print(
+        f"fake Frostbite server on {server.address[0]}:{server.address[1]}, password {args.password!r}"
+    )
     print("type an event as space-separated words to push it; ctrl-c to stop")
     print('  e.g. player.onChat Bravo17 "!ban Bob" all')
     try:

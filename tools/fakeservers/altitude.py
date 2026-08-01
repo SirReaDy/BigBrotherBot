@@ -121,7 +121,9 @@ class FakeAltitudeServer:
         real file is shared, and reading somebody else's line is a real failure mode.
         """
         self._clock_ms += 137  # a plausible gap; the bot does not read this field
-        line = json.dumps({"port": self.port if port is None else port, "time": self._clock_ms, **event})
+        line = json.dumps(
+            {"port": self.port if port is None else port, "time": self._clock_ms, **event}
+        )
         with self.log_path.open("a", encoding="utf-8") as handle:
             handle.write(line + "\n")
         return line

@@ -123,7 +123,9 @@ def encode_words(words: list[str]) -> bytes:
     return bytes(out)
 
 
-def encode(words: list[str], sequence: int, *, from_server: bool = False, response: bool = False) -> bytes:
+def encode(
+    words: list[str], sequence: int, *, from_server: bool = False, response: bool = False
+) -> bytes:
     """Frame a packet. Size counts the header, which is what the reader uses to find the end."""
     header = sequence & SEQUENCE_MASK
     if from_server:
@@ -265,7 +267,9 @@ class FrostbiteClient:
             self._command_words(["admin.eventsEnabled", "true"])
         except FrostbiteCommandError as exc:
             self.close()
-            raise FrostbiteAuthError(f"the server rejected the rcon password ({exc.words})") from exc
+            raise FrostbiteAuthError(
+                f"the server rejected the rcon password ({exc.words})"
+            ) from exc
         except (ValueError, FrostbiteError):
             self.close()
             raise

@@ -221,8 +221,12 @@ async def test_a_ban_records_which_server_issued_it(tmp_path):
     bot.add_plugin(AdminPlugin(bot))
     bot.start()
     await bot.replay(
-        [f"J;{GADMIN};1;Admin", f"J;{GBOB};2;Bob", "say;x;1;Admin;!iamgod",
-         "say;x;1;Admin;!permban Bob cheating"]
+        [
+            f"J;{GADMIN};1;Admin",
+            f"J;{GBOB};2;Bob",
+            "say;x;1;Admin;!iamgod",
+            "say;x;1;Admin;!permban Bob cheating",
+        ]
     )
 
     bob = bot.storage.get_client_by_guid(GBOB)

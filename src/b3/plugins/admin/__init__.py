@@ -476,7 +476,9 @@ class AdminPlugin(Plugin):
         target, _ = self._stored_target(ctx)
         if target is None:
             return
-        warnings = self.console.storage.get_active_penalties(target.require_id(), PenaltyType.WARNING)
+        warnings = self.console.storage.get_active_penalties(
+            target.require_id(), PenaltyType.WARNING
+        )
         if not warnings:
             ctx.reply(self.message("warns_none", name=target.name))
             return
@@ -502,7 +504,9 @@ class AdminPlugin(Plugin):
         if target is None:
             return
         others = [
-            a.value for a in self.console.storage.get_aliases(target.require_id()) if a.value != target.name
+            a.value
+            for a in self.console.storage.get_aliases(target.require_id())
+            if a.value != target.name
         ]
         if not others:
             ctx.reply(self.message("aliases_none", name=target.name))
@@ -683,9 +687,7 @@ class AdminPlugin(Plugin):
         if reg is None:
             return
         regulars = [
-            c
-            for c in self.console.clients.connected()
-            if c.display_level(self.groups) == reg.level
+            c for c in self.console.clients.connected() if c.display_level(self.groups) == reg.level
         ]
         if not regulars:
             ctx.reply(self.message("regulars_none"))
@@ -701,9 +703,7 @@ class AdminPlugin(Plugin):
     @command(level=80, alias="kall")
     def cmd_kickall(self, ctx: CommandContext) -> None:
         """kickall <pattern> [reason] - kick every player whose name matches"""
-        self._bulk(
-            ctx, "kicked", lambda t, r: self.console.kick(t, reason=r, admin=ctx.client)
-        )
+        self._bulk(ctx, "kicked", lambda t, r: self.console.kick(t, reason=r, admin=ctx.client))
 
     @command(level=80, alias="ball")
     def cmd_banall(self, ctx: CommandContext) -> None:
@@ -720,9 +720,7 @@ class AdminPlugin(Plugin):
 
         self._bulk(ctx, "spanked", spank)
 
-    def _bulk(
-        self, ctx: CommandContext, verb: str, action: Callable[[Client, str], None]
-    ) -> None:
+    def _bulk(self, ctx: CommandContext, verb: str, action: Callable[[Client, str], None]) -> None:
         tokens = ctx.arg_list()
         if not tokens:
             ctx.reply(self.message("usage", usage=f"{ctx.command.name} <pattern> [reason]"))
@@ -762,7 +760,9 @@ class AdminPlugin(Plugin):
         target, _ = self._stored_target(ctx, usage="warninfo <player>")
         if target is None:
             return
-        warnings = self.console.storage.get_active_penalties(target.require_id(), PenaltyType.WARNING)
+        warnings = self.console.storage.get_active_penalties(
+            target.require_id(), PenaltyType.WARNING
+        )
         if not warnings:
             ctx.reply(self.message("warninfo_none", name=target.name))
             return
@@ -779,7 +779,9 @@ class AdminPlugin(Plugin):
         target, _ = self._stored_target(ctx, usage="warnremove <player>")
         if target is None:
             return
-        warnings = self.console.storage.get_active_penalties(target.require_id(), PenaltyType.WARNING)
+        warnings = self.console.storage.get_active_penalties(
+            target.require_id(), PenaltyType.WARNING
+        )
         if not warnings:
             ctx.reply(self.message("warns_none", name=target.name))
             return
@@ -1083,7 +1085,8 @@ class AdminPlugin(Plugin):
                 self.message(
                     "plugin_list",
                     plugins=", ".join(
-                        f"{n}{'' if p.is_enabled() else ' (off)'}" for n, p in sorted(plugins.items())
+                        f"{n}{'' if p.is_enabled() else ' (off)'}"
+                        for n, p in sorted(plugins.items())
                     ),
                 )
             )
@@ -1173,9 +1176,7 @@ class AdminPlugin(Plugin):
                 ctx.reply(self.message("maps_rotation", maps=self._map_list(maps)))
             return None
         if len(found) > 1:
-            ctx.reply(
-                self.message("map_ambiguous", count=len(found), maps=self._map_list(found))
-            )
+            ctx.reply(self.message("map_ambiguous", count=len(found), maps=self._map_list(found)))
             return None
         return found[0]
 
@@ -1290,7 +1291,7 @@ class AdminPlugin(Plugin):
         )
 
     def _tempban_reply(self, target: Client, minutes: int) -> str:
-        """"tempbanned for 14 days" reads better than "for 20160 min"."""
+        """ "tempbanned for 14 days" reads better than "for 20160 min"."""
         return self.message(
             "tempbanned", name=target.name, duration=duration_text(minutes), minutes=minutes
         )

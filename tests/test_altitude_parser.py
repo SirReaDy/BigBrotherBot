@@ -100,7 +100,18 @@ def test_a_spawn_is_a_spawn_and_never_invents_a_player():
     assert parser.clients.get_by_cid("1") is None
 
     _join(parser, 1, "Bob", BOB_ID)
-    events = parser.parse_line(_line(type="spawn", player=1, team=3, plane="Biplane", skin="", perkRed="", perkGreen="", perkBlue=""))
+    events = parser.parse_line(
+        _line(
+            type="spawn",
+            player=1,
+            team=3,
+            plane="Biplane",
+            skin="",
+            perkRed="",
+            perkGreen="",
+            perkBlue="",
+        )
+    )
     assert [e.type for e in events] == [EventType.CLIENT_SPAWN]
     assert events[0].extra["plane"] == "Biplane"
 
@@ -156,8 +167,13 @@ def test_the_same_player_reconnecting_into_their_own_slot_is_not_a_departure():
     _join(parser, 1, "Bob", BOB_ID)
     events = parser.parse_line(
         _line(
-            type="clientAdd", player=1, nickname="Bob", vaporId=BOB_ID, ip="10.0.0.5:27272",
-            level=9, aceRank=0,
+            type="clientAdd",
+            player=1,
+            nickname="Bob",
+            vaporId=BOB_ID,
+            ip="10.0.0.5:27272",
+            level=9,
+            aceRank=0,
         )
     )
     assert [e.type for e in events] == [EventType.CLIENT_JOIN]
@@ -174,7 +190,9 @@ def test_a_departure_is_always_a_departure_whatever_the_reason_says():
     ):
         _join(parser, slot, f"P{slot}", f"{slot}{BOB_ID[1:]}")
         events = parser.parse_line(
-            _line(type="clientRemove", player=slot, nickname=f"P{slot}", reason=reason, message="left")
+            _line(
+                type="clientRemove", player=slot, nickname=f"P{slot}", reason=reason, message="left"
+            )
         )
         assert [e.type for e in events] == [EventType.CLIENT_DISCONNECT]
         assert events[0].extra["vote_kick"] is vote_kick
@@ -188,8 +206,17 @@ def test_another_servers_lines_are_not_ours():
     """An Altitude installation writes every server it runs into one log file."""
     parser = _parser(port=PORT)
     neighbour = json.dumps(
-        {"port": 27999, "time": 1, "type": "clientAdd", "player": 1, "nickname": "Stranger",
-         "vaporId": BOB_ID, "ip": "10.0.0.9:27272", "level": 1, "aceRank": 0}
+        {
+            "port": 27999,
+            "time": 1,
+            "type": "clientAdd",
+            "player": 1,
+            "nickname": "Stranger",
+            "vaporId": BOB_ID,
+            "ip": "10.0.0.9:27272",
+            "level": 1,
+            "aceRank": 0,
+        }
     )
     assert parser.parse_line(neighbour) == []
     assert parser.clients.get_by_cid("1") is None
@@ -200,8 +227,17 @@ def test_with_no_port_configured_nothing_is_filtered():
     means "read it all" — which is also correct for a single-server box."""
     parser = _parser(port=0)
     line = json.dumps(
-        {"port": 27999, "time": 1, "type": "clientAdd", "player": 1, "nickname": "Stranger",
-         "vaporId": BOB_ID, "ip": "10.0.0.9:27272", "level": 1, "aceRank": 0}
+        {
+            "port": 27999,
+            "time": 1,
+            "type": "clientAdd",
+            "player": 1,
+            "nickname": "Stranger",
+            "vaporId": BOB_ID,
+            "ip": "10.0.0.9:27272",
+            "level": 1,
+            "aceRank": 0,
+        }
     )
     assert [e.type for e in parser.parse_line(line)] == [EventType.CLIENT_JOIN]
 
@@ -307,20 +343,32 @@ def test_powerups_and_objectives_report_what_happened():
     parser = _parser()
     _join(parser, 1, "Bob", BOB_ID)
     pickup = parser.parse_line(
-        _line(type="powerupPickup", player=1, powerup="Homing Missile", positionX=3572.41, positionY=639.57)
+        _line(
+            type="powerupPickup",
+            player=1,
+            powerup="Homing Missile",
+            positionX=3572.41,
+            positionY=639.57,
+        )
     )
     assert [e.type for e in pickup] == [EventType.CLIENT_ITEM_PICKUP]
     assert pickup[0].data == "Homing Missile"
     assert pickup[0].extra["position"] == (3572.41, 639.57)
 
-    auto = parser.parse_line(_line(type="powerupAutoUse", player=1, powerup="Health", positionX=1, positionY=2))
+    auto = parser.parse_line(
+        _line(type="powerupAutoUse", player=1, powerup="Health", positionX=1, positionY=2)
+    )
     assert [e.type for e in auto] == [EventType.CLIENT_ITEM_PICKUP]
 
-    used = parser.parse_line(_line(type="powerupUse", player=1, powerup="Homing Missile", positionX=1, positionY=2))
+    used = parser.parse_line(
+        _line(type="powerupUse", player=1, powerup="Homing Missile", positionX=1, positionY=2)
+    )
     assert [e.type for e in used] == [EventType.CUSTOM]
     assert used[0].extra["kind"] == "powerup_use"
 
-    defused = parser.parse_line(_line(type="powerupDefuse", player=1, powerup="Bomb", positionX=1, positionY=2, xp=10))
+    defused = parser.parse_line(
+        _line(type="powerupDefuse", player=1, powerup="Bomb", positionX=1, positionY=2, xp=10)
+    )
     assert [e.type for e in defused] == [EventType.CLIENT_ACTION]
     assert defused[0].data == "defuse"
 
@@ -335,7 +383,10 @@ def test_a_structure_is_not_a_client():
     for a Client — so any plugin reading `event.target.name` raised on it."""
     parser = _parser()
     _join(parser, 3, "Bob", BOB_ID)
-    for etype, action in (("structureDamage", "structure_damage"), ("structureDestroy", "structure_destroy")):
+    for etype, action in (
+        ("structureDamage", "structure_damage"),
+        ("structureDestroy", "structure_destroy"),
+    ):
         events = parser.parse_line(_line(type=etype, player=3, target="turret", xp=31))
         assert [e.type for e in events] == [EventType.CLIENT_ACTION]
         assert events[0].data == action
@@ -423,16 +474,24 @@ def test_commands_the_server_ran_itself_are_ignored():
     """Which includes every command this bot sends: the bot must not react to its own kicks."""
     parser = _parser()
     _join(parser, 2, "Courgette", ADMIN_ID)
-    assert parser.parse_line(
-        _line(type="consoleCommandExecute", command="kick", source=NOBODY, arguments=["Bob"])
-    ) == []
+    assert (
+        parser.parse_line(
+            _line(type="consoleCommandExecute", command="kick", source=NOBODY, arguments=["Bob"])
+        )
+        == []
+    )
 
 
 def test_an_unrecognised_console_command_is_still_reported():
     parser = _parser()
     _join(parser, 2, "Courgette", ADMIN_ID)
     events = parser.parse_line(
-        _line(type="consoleCommandExecute", command="changeMap", source=ADMIN_ID, arguments=["ball_cave"])
+        _line(
+            type="consoleCommandExecute",
+            command="changeMap",
+            source=ADMIN_ID,
+            arguments=["ball_cave"],
+        )
     )
     assert [e.type for e in events] == [EventType.CUSTOM]
     assert events[0].extra == {"kind": "console_command", "arguments": ["ball_cave"]}
@@ -487,5 +546,14 @@ def test_fields_missing_from_an_event_do_not_raise():
     crash on the event loop."""
     parser = _parser()
     _join(parser, 1, "Bob", BOB_ID)
-    for etype in ("kill", "assist", "spawn", "teamChange", "chat", "goal", "roundEnd", "pingSummary"):
+    for etype in (
+        "kill",
+        "assist",
+        "spawn",
+        "teamChange",
+        "chat",
+        "goal",
+        "roundEnd",
+        "pingSummary",
+    ):
         parser.parse_line(_line(type=etype))  # no player, no victim, no anything

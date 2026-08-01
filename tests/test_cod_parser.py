@@ -166,9 +166,7 @@ def test_damage_to_yourself():
 def test_damage_from_the_world_has_nobody_to_blame():
     """Falling damage has no attacker, so there is no event — as classically."""
     p = parser()
-    assert p.parse_line(
-        "D;GUIDBOB;2;allies;Bob;;-1;world;;none;25;MOD_FALLING;none"
-    ) == []
+    assert p.parse_line("D;GUIDBOB;2;allies;Bob;;-1;world;;none;25;MOD_FALLING;none") == []
 
 
 def test_decimal_damage_values_are_accepted():

@@ -178,7 +178,9 @@ class SourceParser(Parser):
             return False
         return not self.profile.is_bot_guid(guid)
 
-    def _ensure(self, cid: str, guid: str, name: str = "", team: str | None = None) -> Client | None:
+    def _ensure(
+        self, cid: str, guid: str, name: str = "", team: str | None = None
+    ) -> Client | None:
         """The player in this slot, created on first sight.
 
         Slots are reused, so a slot holding a *different* id is somebody else: the stale record is
@@ -413,7 +415,9 @@ class SourceParser(Parser):
         victim = self._ensure(m["v_cid"], m["v_guid"], m["v_name"], m["v_team"])
         if attacker is None or victim is None:
             return None
-        return Event(EventType.CLIENT_ASSIST, data="assisted killing", client=attacker, target=victim)
+        return Event(
+            EventType.CLIENT_ASSIST, data="assisted killing", client=attacker, target=victim
+        )
 
     @handles(rf'^{_WHO}{_AT} committed suicide with "(?P<weapon>[^"]*)"$')
     def on_suicide(self, m: "re.Match[str]") -> Event | None:

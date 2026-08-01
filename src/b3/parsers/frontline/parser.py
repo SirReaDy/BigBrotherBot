@@ -365,7 +365,9 @@ class FlParser(Parser):
         is exactly the thing an operator wants to see in the log, and the bot's own bans are recorded
         from the command side regardless.
         """
-        minutes = None if m["duration"] == PERMANENT_DURATION or m["permanent"] else int(m["duration"])
+        minutes = (
+            None if m["duration"] == PERMANENT_DURATION or m["permanent"] else int(m["duration"])
+        )
         ban = ServerBan(guid=m["guid"], name=m["name"], minutes=minutes, pb_hash=m["pb_hash"])
         return Event(EventType.CUSTOM, data=ban, extra={"kind": "server_ban", "guid": ban.guid})
 
@@ -538,7 +540,9 @@ class FlParser(Parser):
             log.info("frontline: dropped %d player(s) the reconnect made unverifiable", len(events))
         return events
 
-    @handles(r"^WELCOME! Frontlines: Fuel of War \(RCON\) VER=(?P<version>\S+) CHALLENGE=(?P<rest>.*)$")
+    @handles(
+        r"^WELCOME! Frontlines: Fuel of War \(RCON\) VER=(?P<version>\S+) CHALLENGE=(?P<rest>.*)$"
+    )
     def on_welcome(self, m: "re.Match[str]") -> Event | None:
         """Understood and quiet. The client consumes this during the login; it reaches the parser only
         if something is out of step, and a challenge is not for the log."""

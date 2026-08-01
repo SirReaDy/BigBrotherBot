@@ -121,13 +121,16 @@ async def main() -> int:  # noqa: PLR0915 - a linear script reads better than he
 
         moe = bot.clients.get_by_cid("224")
         check(moe is not None, "the bot player is on the roster")
-        check(moe is not None and moe.guid == "", "and has no identity, so bots cannot share a record")
+        check(
+            moe is not None and moe.guid == "", "and has no identity, so bots cannot share a record"
+        )
 
         badger = bot.storage.get_client_by_guid(BADGER)
         check(badger is not None, "the culprit is in the database, keyed on his Steam id")
         if badger is not None:
             check(
-                len(bot.storage.get_active_penalties(badger.require_id(), PenaltyType.TEMPBAN)) == 1,
+                len(bot.storage.get_active_penalties(badger.require_id(), PenaltyType.TEMPBAN))
+                == 1,
                 "the tempban was recorded",
             )
 
@@ -136,7 +139,9 @@ async def main() -> int:  # noqa: PLR0915 - a linear script reads better than he
             print(f"  {command}")
 
         bans = [c for c in server.received if c.startswith("sm_addban")]
-        check(bool(bans), "the ban went out through SourceMod, the only verb this engine has for one")
+        check(
+            bool(bans), "the ban went out through SourceMod, the only verb this engine has for one"
+        )
         check(all(BADGER in c for c in bans), "by Steam id, so it holds across a name change")
         check(BADGER in server.bans, "it is on the server's own ban list")
         check(bot.clients.get_by_cid("195") is None, "and he left the roster")
@@ -171,7 +176,10 @@ async def main() -> int:  # noqa: PLR0915 - a linear script reads better than he
 
         # -- maps -----------------------------------------------------------
         maps = bot.get_maps()
-        check(maps[:3] == ["buhriz", "district", "sinjar"], f"`maps *` lists what is installed ({maps[:3]})")
+        check(
+            maps[:3] == ["buhriz", "district", "sinjar"],
+            f"`maps *` lists what is installed ({maps[:3]})",
+        )
         check(
             bot.get_next_map() == "district",
             "and the next map comes from sm_nextmap rather than from that list's order, which is "

@@ -14,7 +14,15 @@ from b3.domain.client import Client
 from b3.domain.permissions import group_by_keyword
 from b3.plugins.admin import AdminPlugin
 
-BITS = {"guest": 0, "user": 1, "reg": 2, "mod": 8, "admin": 16, "senioradmin": 64, "superadmin": 128}
+BITS = {
+    "guest": 0,
+    "user": 1,
+    "reg": 2,
+    "mod": 8,
+    "admin": 16,
+    "senioradmin": 64,
+    "superadmin": 128,
+}
 
 
 def _setup(console):

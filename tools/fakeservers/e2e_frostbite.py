@@ -129,7 +129,9 @@ async def main() -> int:
 
         # The player list comes back as a structured block, not text.
         players = bot.get_players()
-        check([p.name for p in players] == ["Bravo17", "Bob"], "the player list reads by field name")
+        check(
+            [p.name for p in players] == ["Bravo17", "Bob"], "the player list reads by field name"
+        )
         check(all(p.cid == p.name for p in players), "and the name is the handle the verbs take")
 
         bot.storage.close()

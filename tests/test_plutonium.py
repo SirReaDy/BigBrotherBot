@@ -135,11 +135,14 @@ def test_a_bots_ping_is_not_a_number():
 def test_a_signed_ping_is_still_a_number():
     """The counter-case, and a regression: Arma reports -1 for a player in the lobby, so "not a
     number" must mean *not numeric*, not merely "does not start with a digit"."""
-    assert sp.parse_status(
-        "map: x\n  0    12   0   -1 110000112345678                  Bob 192.0.2.44:28960 12345\n",
-        PLUTOIW5.status_patterns,
-        PLUTOIW5.identity_field,
-    )[1] == []  # IW5's own pattern requires digits or letters there, so the row simply does not match
+    assert (
+        sp.parse_status(
+            "map: x\n  0    12   0   -1 110000112345678                  Bob 192.0.2.44:28960 12345\n",
+            PLUTOIW5.status_patterns,
+            PLUTOIW5.identity_field,
+        )[1]
+        == []
+    )  # IW5's own pattern requires digits or letters there, so the row simply does not match
 
 
 def test_names_with_spaces_survive():

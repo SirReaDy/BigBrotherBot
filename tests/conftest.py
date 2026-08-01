@@ -72,9 +72,7 @@ class FakeStorage:
         return False
 
     def get_recent_penalties(self, types=None, limit: int = 5):  # noqa: ANN001, ANN201
-        found = [
-            p for p in self.penalties if not p.inactive and (types is None or p.type in types)
-        ]
+        found = [p for p in self.penalties if not p.inactive and (types is None or p.type in types)]
         return list(reversed(found))[:limit]
 
     def disable_penalties(self, client_id: int, type_: PenaltyType | None = None) -> int:

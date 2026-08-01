@@ -143,8 +143,11 @@ def test_get_recent_penalties_across_clients(store):
     b = store.save_client(Client(guid="B", name="Bob"))
     store.add_penalty(Penalty(type=PenaltyType.BAN, client_id=a.id, reason="first"))
     store.add_penalty(Penalty(type=PenaltyType.WARNING, client_id=a.id, reason="noise"))
-    store.add_penalty(Penalty(type=PenaltyType.TEMPBAN, client_id=b.id, reason="second",
-                              time_expire=2_000_000_000))
+    store.add_penalty(
+        Penalty(
+            type=PenaltyType.TEMPBAN, client_id=b.id, reason="second", time_expire=2_000_000_000
+        )
+    )
 
     bans = store.get_recent_penalties((PenaltyType.BAN, PenaltyType.TEMPBAN), limit=5)
 
@@ -154,8 +157,9 @@ def test_get_recent_penalties_across_clients(store):
 def test_get_recent_penalties_skips_lifted_and_expired(store):
     c = store.save_client(Client(guid="C", name="Cal"))
     lifted = store.add_penalty(Penalty(type=PenaltyType.BAN, client_id=c.id, reason="lifted"))
-    store.add_penalty(Penalty(type=PenaltyType.TEMPBAN, client_id=c.id, reason="expired",
-                              time_expire=1))
+    store.add_penalty(
+        Penalty(type=PenaltyType.TEMPBAN, client_id=c.id, reason="expired", time_expire=1)
+    )
     store.disable_penalty(lifted.id)
 
     assert store.get_recent_penalties((PenaltyType.BAN, PenaltyType.TEMPBAN)) == []

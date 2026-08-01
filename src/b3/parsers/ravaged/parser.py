@@ -185,9 +185,7 @@ class RavParser(Parser):
         output as player speech would answer itself. (This server does not echo `say` on the connection
         the way Homefront and Altitude do, but it does write these lines, and the guard costs nothing.)
         """
-        return Event(
-            EventType.CUSTOM, data=_clean_chat(m["text"]), extra={"kind": "server_say"}
-        )
+        return Event(EventType.CUSTOM, data=_clean_chat(m["text"]), extra={"kind": "server_say"})
 
     @handles(r'^Server say_team "(?P<text>.*)" to team "(?P<team>.*)"$')
     def on_server_say_team(self, m: "re.Match[str]") -> Event | None:

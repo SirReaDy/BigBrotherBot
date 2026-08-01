@@ -132,7 +132,9 @@ def test_game_reads_the_servers_name_and_size_out_of_any_cvar_dump():
     """The classic bot set these from inside half a dozen parsers, and left them unset in the rest.
     Reading them wherever cvars arrive means no parser has to remember to."""
     game = Game()
-    game.start_map({"mapname": "mp_crash", "sv_hostname": "^1My Server", "sv_maxclients": "32"}, 1.0)
+    game.start_map(
+        {"mapname": "mp_crash", "sv_hostname": "^1My Server", "sv_maxclients": "32"}, 1.0
+    )
 
     assert game.hostname == "^1My Server"
     assert game.max_players == 32

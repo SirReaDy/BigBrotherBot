@@ -38,9 +38,7 @@ def build_bot(
     # This server's own directory is registered last so it lands first on sys.path: if the same
     # plugin exists in both, the copy this server installed for itself wins over the shared pool.
     if config.bot.shared_plugins_dir:
-        register_installed_plugins(
-            installed_plugins_dir(config.bot.shared_plugins_dir, conf_dir)
-        )
+        register_installed_plugins(installed_plugins_dir(config.bot.shared_plugins_dir, conf_dir))
     register_installed_plugins(installed_plugins_dir(config.bot.plugins_dir, conf_dir))
 
     bot = Bot(config, rcon=rcon)
@@ -382,7 +380,7 @@ def main(argv: list[str] | None = None) -> int:
         "(default: command.txt beside the game log)",
     )
     init.add_argument("--database", default="sqlite:///b3.sqlite", help="SQLAlchemy URL")
-    init.add_argument("--shared-plugins-dir", help='plugin pool shared with other instances')
+    init.add_argument("--shared-plugins-dir", help="plugin pool shared with other instances")
     init.add_argument("--service", action="store_true", help="also write a systemd unit file")
     init.add_argument("--service-user", default="b3", help="user the systemd unit runs as")
     init.add_argument("--force", action="store_true", help="overwrite an existing config")
@@ -614,9 +612,7 @@ def _run_plugins(config: Config, conf_dir: Path | None) -> int:
     return 0
 
 
-def _run_probe(
-    config: Config, conf_dir: Path | None, lines: int, cvar: str, hide: bool
-) -> int:
+def _run_probe(config: Config, conf_dir: Path | None, lines: int, cvar: str, hide: bool) -> int:
     """`b3 probe` — the raw truth about this server, for pasting back to whoever asked.
 
     Always exits 0: this reports, it does not judge. `b3 doctor` is the command with a verdict.
@@ -692,7 +688,7 @@ def _run_plugin(
     if getattr(args, "shared", False):
         if shared_dir is None:
             logging.error(
-                "--shared needs bot.shared_plugins_dir set in %s (e.g. \"@home/plugins\")",
+                '--shared needs bot.shared_plugins_dir set in %s (e.g. "@home/plugins")',
                 config_path,
             )
             return 1
@@ -752,9 +748,7 @@ def _run_plugin(
                         f"{rec.commit[:8]}  {rec.url}"
                     )
         elif args.plugin_cmd == "update":
-            record = pi.update(
-                args.name, plugins_dir=plugins_dir, ref=args.ref, conf_dir=conf_dir
-            )
+            record = pi.update(args.name, plugins_dir=plugins_dir, ref=args.ref, conf_dir=conf_dir)
             print(f"updated {record.name} to {record.version} ({record.ref} @ {record.commit[:8]})")
         elif args.plugin_cmd == "remove":
             pi.remove(

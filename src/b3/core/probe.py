@@ -138,7 +138,9 @@ def _status_section(
     if profile.family in FILE_RCON_FAMILIES:
         # Unreachable while the family above has no status commands, and kept as a guard: building
         # that client *clears* the command file, which a read-only command must never do.
-        out.append("skipped: this family is commanded through a file, which probing must not touch.")
+        out.append(
+            "skipped: this family is commanded through a file, which probing must not touch."
+        )
         return out
     if profile.family in PUSH_FAMILIES and rcon_factory is None:
         out.append(f"skipped: a {profile.name} server pushes its events down the rcon connection,")
@@ -261,7 +263,9 @@ def _cvar_section(
     out.append(f"reply: {scrub(raw.strip()) or '(empty)'}")
     value = parse_cvar(cvar, raw)
     if value is None:
-        out.append(f"  parsed: NOTHING. The reply does not match the shape `{cvar}` was expected in.")
+        out.append(
+            f"  parsed: NOTHING. The reply does not match the shape `{cvar}` was expected in."
+        )
         out.append("  If the server clearly answered, the reply form is what needs recording.")
     else:
         out.append(f"  parsed: {value}")

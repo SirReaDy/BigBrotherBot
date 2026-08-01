@@ -89,7 +89,7 @@ def command(
     def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
         cmd_name = name or func.__name__
         if cmd_name.startswith("cmd_"):
-            cmd_name = cmd_name[len("cmd_"):]
+            cmd_name = cmd_name[len("cmd_") :]
         func._command = {  # type: ignore[attr-defined]
             "name": cmd_name,
             "level": level,
@@ -130,9 +130,7 @@ class CommandRegistry:
 
     def unregister_plugin(self, plugin: object) -> None:
         self._commands = [c for c in self._commands if c.plugin is not plugin]
-        self._by_name = {
-            k: c for k, c in self._by_name.items() if c.plugin is not plugin
-        }
+        self._by_name = {k: c for k, c in self._by_name.items() if c.plugin is not plugin}
 
 
 class CommandProcessor:

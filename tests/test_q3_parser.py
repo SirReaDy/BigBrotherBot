@@ -240,8 +240,21 @@ def test_the_status_table_parses_with_and_without_a_guid_column():
 
 @pytest.mark.parametrize(
     "game",
-    ["q3", "oa081", "sof2", "sof2pm", "smg", "smg11", "wop", "wop15", "et", "etpro",
-     "iourt41", "iourt42", "iourt43"],
+    [
+        "q3",
+        "oa081",
+        "sof2",
+        "sof2pm",
+        "smg",
+        "smg11",
+        "wop",
+        "wop15",
+        "et",
+        "etpro",
+        "iourt41",
+        "iourt42",
+        "iourt43",
+    ],
 )
 def test_every_quake3_title_is_configurable(game):
     # Urban Terror, ET, SoF2 and World of Padman 1.5 have extra lines of their own, so each names a

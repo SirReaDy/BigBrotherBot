@@ -58,7 +58,9 @@ class EventBus:
     ) -> Subscription:
         """Register ``handler`` for ``event_type``. Returns the Subscription so it can
         be passed to :meth:`unsubscribe` later (plugin unload)."""
-        sub = Subscription(event_type, handler, is_enabled, label or getattr(handler, "__qualname__", ""))
+        sub = Subscription(
+            event_type, handler, is_enabled, label or getattr(handler, "__qualname__", "")
+        )
         self._subs.setdefault(event_type, []).append(sub)
         return sub
 

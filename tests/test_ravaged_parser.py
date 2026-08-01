@@ -133,9 +133,7 @@ def test_chat_arrives_wrapped_in_an_html_colour_tag_which_is_stripped():
     know that this engine dresses chat in HTML."""
     parser = _parser()
     _joined(parser)
-    events = parser.parse_line(
-        f"\"courgette<{COURGETTE}><1>\" say \"<FONT COLOR='#FF0000'> hi\""
-    )
+    events = parser.parse_line(f'"courgette<{COURGETTE}><1>" say "<FONT COLOR=\'#FF0000\'> hi"')
 
     assert [e.type for e in events] == [EventType.CLIENT_SAY]
     assert events[0].data == "hi"
@@ -146,7 +144,7 @@ def test_team_chat_is_prefixed_as_well_as_coloured():
     parser = _parser()
     _joined(parser)
     events = parser.parse_line(
-        f"\"courgette<{COURGETTE}><1>\" say_team \"(Team) <FONT COLOR='#66CCFF'> hi team\""
+        f'"courgette<{COURGETTE}><1>" say_team "(Team) <FONT COLOR=\'#66CCFF\'> hi team"'
     )
 
     assert [e.type for e in events] == [EventType.CLIENT_TEAM_SAY]

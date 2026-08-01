@@ -130,9 +130,7 @@ class FakeRavagedServer:
         """Send a game-log line, framed the way this server frames everything."""
         self._send(data)
 
-    def add_player(
-        self, guid: str, name: str, team: str = "1", ip: str = "192.168.0.1"
-    ) -> None:
+    def add_player(self, guid: str, name: str, team: str = "1", ip: str = "192.168.0.1") -> None:
         """Put a player on the server and announce it the way the game does — three separate lines."""
         with self._lock:
             self.players[guid] = (name, 0, 0, 0, 40)

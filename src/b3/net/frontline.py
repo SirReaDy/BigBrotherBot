@@ -307,7 +307,9 @@ class FrontlineClient:
             return []
         except FrontlineError as exc:
             self._retry_delay = min(self._retry_delay * 2, RETRY_MAX)
-            log.warning("frontline: reconnect failed (%s); next try in %.0fs", exc, self._retry_delay)
+            log.warning(
+                "frontline: reconnect failed (%s); next try in %.0fs", exc, self._retry_delay
+            )
             return []
         log.info("frontline: reconnected to %s:%s", self.host, self.port)
         return [RECONNECTED_NOTICE]

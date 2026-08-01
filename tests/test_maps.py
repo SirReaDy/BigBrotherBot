@@ -37,7 +37,7 @@ def _frostbite(console) -> None:  # noqa: ANN001
 
 
 def test_an_exact_match_is_never_ambiguous_with_a_longer_one():
-    """"Operation Metro" must resolve even when "Operation Metro 2014" is in the same rotation."""
+    """ "Operation Metro" must resolve even when "Operation Metro 2014" is in the same rotation."""
     options = [("XP0_Metro", "Operation Metro 2014"), ("MP_Subway", "Operation Metro")]
 
     assert match_names("Operation Metro", options) == ["MP_Subway"]

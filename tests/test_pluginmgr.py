@@ -193,9 +193,7 @@ def test_disabled_dependency_cascades(console):
 
 
 def test_parser_mismatch_disables_the_plugin(console):
-    loaded = _by_name(
-        load_plugins(console, _config(_entry("gamma", GammaPlugin), game="cod7"))
-    )
+    loaded = _by_name(load_plugins(console, _config(_entry("gamma", GammaPlugin), game="cod7")))
     assert loaded["gamma"].enabled is False
     assert "does not support the 'cod7' parser" in loaded["gamma"].reason
 

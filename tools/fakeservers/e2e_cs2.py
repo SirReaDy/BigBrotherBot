@@ -149,7 +149,9 @@ async def main() -> int:  # noqa: PLR0915 - a linear script reads better than he
             "so the player exists once, not once per spelling",
         )
         moe = bot.clients.get_by_cid("224")
-        check(moe is not None, "the bot player survived the sync too, its row shape being different")
+        check(
+            moe is not None, "the bot player survived the sync too, its row shape being different"
+        )
         check(moe is not None and moe.guid == "", "and still has no identity to share")
 
         # -- moderation, on a title with no ban verb ------------------------

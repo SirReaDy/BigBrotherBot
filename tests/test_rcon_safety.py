@@ -83,7 +83,7 @@ def test_a_hostile_reason_produces_one_single_line_command(tmp_path):
 
     bot.ban(bob, reason='cheating"; quit\nmap mp_crash')
 
-    assert rcon.commands == ['permban 2 cheating quit map mp_crash']
+    assert rcon.commands == ["permban 2 cheating quit map mp_crash"]
     assert "\n" not in rcon.commands[0]
 
 

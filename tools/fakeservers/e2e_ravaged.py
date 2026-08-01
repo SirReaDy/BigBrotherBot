@@ -118,7 +118,8 @@ async def main() -> int:
         check(badger is not None, "the culprit is in the database, keyed on his Steam id")
         if badger is not None:
             check(
-                len(bot.storage.get_active_penalties(badger.require_id(), PenaltyType.TEMPBAN)) == 1,
+                len(bot.storage.get_active_penalties(badger.require_id(), PenaltyType.TEMPBAN))
+                == 1,
                 "the tempban was recorded",
             )
 

@@ -155,8 +155,7 @@ class CronSpec:
             return "*" if values is None else ",".join(str(v) for v in sorted(values))
 
         return " ".join(
-            show(v)
-            for v in (self.second, self.minute, self.hour, self.day, self.month, self.dow)
+            show(v) for v in (self.second, self.minute, self.hour, self.day, self.month, self.dow)
         )
 
 

@@ -53,9 +53,7 @@ class BeParser(Parser):
 
     # -- lifecycle ----------------------------------------------------------
 
-    @handles(
-        r"^Player #(?P<cid>\d+) (?P<name>.+) \((?P<ip>[0-9.]+):(?P<port>\d+)\) connected\s*$"
-    )
+    @handles(r"^Player #(?P<cid>\d+) (?P<name>.+) \((?P<ip>[0-9.]+):(?P<port>\d+)\) connected\s*$")
     def on_connected(self, m: "re.Match[str]") -> Event:
         """``Player #0 Bravo17 (76.108.91.78:2304) connected`` — name and IP, but no GUID yet."""
         client = self._get_or_create(m["cid"], m["name"])

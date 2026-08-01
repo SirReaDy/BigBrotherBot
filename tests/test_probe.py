@@ -76,7 +76,7 @@ def test_it_shows_the_raw_reply_not_only_its_conclusion(tmp_path):
 
 
 def test_it_says_which_candidate_pattern_matched_and_which_did_not(tmp_path):
-    """"The strict shape matched 0 rows and the one without a steam column matched 1" is the sentence
+    """ "The strict shape matched 0 rows and the one without a steam column matched 1" is the sentence
     that identifies a changed table at a glance. Candidates are named by their *columns*, because
     every one of these patterns starts `^\\s*(?P<slot>...` and a regex excerpt distinguishes nothing."""
     rcon = ScriptedRcon({"status": NO_STEAM_STATUS})
@@ -100,11 +100,7 @@ def test_every_status_command_is_reported_not_just_the_winner(tmp_path):
 
 def test_rows_it_cannot_read_are_reported(tmp_path):
     """An empty server and an unrecognised table shape both parse to zero players."""
-    unknown = (
-        "map: mp_crash\n"
-        "num score ping something name\n"
-        "  0    12   47 ??        Bob\n"
-    )
+    unknown = "map: mp_crash\nnum score ping something name\n  0    12   47 ??        Bob\n"
     rcon = ScriptedRcon({"b3status": unknown, "status": unknown})
     report = _report(_config(tmp_path), rcon_factory=lambda: rcon)
 

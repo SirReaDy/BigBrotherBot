@@ -230,7 +230,9 @@ async def test_spank_kicks_loudly(console):
 # -- warnings --------------------------------------------------------------------------------
 
 
-def _warn(console, client_id: int, reason: str, *, id_: int, expire: int = NEVER_EXPIRES) -> Penalty:
+def _warn(
+    console, client_id: int, reason: str, *, id_: int, expire: int = NEVER_EXPIRES
+) -> Penalty:
     penalty = Penalty(
         type=PenaltyType.WARNING, client_id=client_id, reason=reason, id=id_, time_expire=expire
     )

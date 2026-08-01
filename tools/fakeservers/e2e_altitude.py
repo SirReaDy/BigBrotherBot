@@ -111,8 +111,10 @@ async def main() -> int:
     await pump()
 
     # A neighbouring server on the same machine, writing into the same log.
-    server.push({"type": "chat", "player": 9, "message": "!permban Courgette", "server": False},
-                port=NEIGHBOUR_PORT)
+    server.push(
+        {"type": "chat", "player": 9, "message": "!permban Courgette", "server": False},
+        port=NEIGHBOUR_PORT,
+    )
     await pump()
 
     server.say(0, "!permban Bob cheating")
@@ -130,7 +132,9 @@ async def main() -> int:
     check(bot.game.map_name == "ball_cave", "the map change was recorded (classic said 'warmup')")
     check(bot.game.gametype == "ball", "and so was the mode")
     check(EventType.CLIENT_KILL in seen, "the kill was published")
-    check(EventType.CLIENT_SUICIDE in seen, "and the world kill became a suicide, not a WORLD client")
+    check(
+        EventType.CLIENT_SUICIDE in seen, "and the world kill became a suicide, not a WORLD client"
+    )
     check(bot.storage.has_superadmin(), "!iamgod bootstrapped a superadmin")
 
     admin = bot.storage.get_client_by_guid(ADMIN_ID)
@@ -156,7 +160,9 @@ async def main() -> int:
         server.wait_for_command(f"addBan {BOB_ID} 1 forever"),
         "the ban went out by vapor id, so it survives a name change",
     )
-    check(server.wait_for_command("kick Bob"), "and a kick followed it: addBan alone leaves them in")
+    check(
+        server.wait_for_command("kick Bob"), "and a kick followed it: addBan alone leaves them in"
+    )
     check(BOB_ID in server.bans, "it is on the server's own ban list")
     check(1 not in server.players, "the fake executed the kick, so Bob is off the server")
     check(server.malformed == [], "nothing malformed was ever written to the command file")

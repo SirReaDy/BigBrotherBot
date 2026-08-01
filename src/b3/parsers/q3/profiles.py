@@ -84,12 +84,27 @@ IOURT43 = replace(_URT, name="iourt43")
 #: Every Quake3 title, by the id used in `server.game`.
 ALL: dict[str, GameProfile] = {
     p.name: p
-    for p in (Q3, OA081, SOF2, SOF2PM, SMG, SMG11, WOP, WOP15, ET, ETPRO,
-              IOURT41, IOURT42, IOURT43)
+    for p in (Q3, OA081, SOF2, SOF2PM, SMG, SMG11, WOP, WOP15, ET, ETPRO, IOURT41, IOURT42, IOURT43)
 }
 
-__all__ = ["ALL", "ET", "ETPRO", "IOURT41", "IOURT42", "IOURT43", "OA081", "Q3", "Q3_TEAMS",
-           "SMG", "SMG11", "SOF2", "SOF2PM", "WOP", "WOP15", "WORLD"]
+__all__ = [
+    "ALL",
+    "ET",
+    "ETPRO",
+    "IOURT41",
+    "IOURT42",
+    "IOURT43",
+    "OA081",
+    "Q3",
+    "Q3_TEAMS",
+    "SMG",
+    "SMG11",
+    "SOF2",
+    "SOF2PM",
+    "WOP",
+    "WOP15",
+    "WORLD",
+]
 
 # Not implemented, and read with the shared grammar alone: UrT's `auth` identity service and SoF2's
 # gametype-specific lines. A server using either sees fewer events, never wrong ones.

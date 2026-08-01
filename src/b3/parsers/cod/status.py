@@ -30,7 +30,6 @@ from b3.parsers.status import (
 )
 
 
-
 #: CoD4X 1.8 reports an extra **Steam64** column and drops the stock table's `lastmsg`, so it needs
 #: its own row pattern (transplanted from leiizko/b3_cod4x, the reference CoD4X parser). Both the
 #: `lastmsg` and the trailing `qport`/`rate` are optional here: CoD4X builds disagree about them,
@@ -198,8 +197,6 @@ COD4GR_PLAYER_LINE_RE = re.compile(
     r"(?P<rate>[0-9]+)$",
     re.IGNORECASE,
 )
-
-
 
 
 __all__ = [

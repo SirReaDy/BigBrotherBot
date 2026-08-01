@@ -196,7 +196,6 @@ class GameProfile:
     # classic B3. See `canonical_guid` above and :mod:`b3.core.steamid`.
     normalise_steam_ids: bool = False
 
-
     # Sent once when the bot connects — e.g. asking CoD4X to report Steam64 ids.
     startup_commands: tuple[str, ...] = ()
 

@@ -27,12 +27,12 @@ def resolve_path_token(value: str, conf_dir: Path | None = None) -> str:
     * ``@home/...`` -> the ~/.b3 user data directory
     """
     if value.startswith("@b3"):
-        return os.path.normpath(str(_B3_DIR) + value[len("@b3"):])
+        return os.path.normpath(str(_B3_DIR) + value[len("@b3") :])
     if value.startswith("@conf"):
         base = conf_dir if conf_dir is not None else Path.cwd()
-        return os.path.normpath(str(base) + value[len("@conf"):])
+        return os.path.normpath(str(base) + value[len("@conf") :])
     if value.startswith("@home"):
-        return os.path.normpath(str(_HOME_DIR) + value[len("@home"):])
+        return os.path.normpath(str(_HOME_DIR) + value[len("@home") :])
     return os.path.normpath(os.path.expanduser(value))
 
 
@@ -47,7 +47,7 @@ def resolve_sqlite_url(url: str, conf_dir: Path) -> str:
     prefix = "sqlite:///"
     if not url.startswith(prefix):
         return url
-    rest = url[len(prefix):]
+    rest = url[len(prefix) :]
     if not rest or rest.startswith(":"):  # :memory:
         return url
     if rest.startswith("@"):  # explicit @conf/@home/@b3 token

@@ -72,7 +72,7 @@ class Quake3Dialect:
     def strip_reply(self, data: bytes, encoding: str, errors: str = "replace") -> str:
         # Strip on bytes (the header contains 0xFF, which is not a clean text char) before decode.
         if data.startswith(self.REPLY_HEADER):
-            data = data[len(self.REPLY_HEADER):]
+            data = data[len(self.REPLY_HEADER) :]
         else:
             data = data.replace(self.REPLY_HEADER, b"")
         return data.decode(encoding, errors)

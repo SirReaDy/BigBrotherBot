@@ -181,7 +181,7 @@ class UrtParser(Q3Parser):
     # -- voice comms and voting ---------------------------------------------
 
     @handles(
-        r'^Radio:\s*(?P<cid>\d+)\s+-\s+(?P<group>\d+)\s+-\s+(?P<msg>\d+)\s+-\s+'
+        r"^Radio:\s*(?P<cid>\d+)\s+-\s+(?P<group>\d+)\s+-\s+(?P<msg>\d+)\s+-\s+"
         r'"(?P<location>.*)"\s+-\s+"(?P<text>.*)"\s*$'
     )
     def on_radio(self, m: "re.Match[str]") -> Event | None:
@@ -214,11 +214,11 @@ class UrtParser(Q3Parser):
             return None
         return Event(EventType.CLIENT_VOTE, data=m["value"], client=client)
 
-    @handles(r'^Vote(?P<outcome>Passed|Failed):\s*(?P<yes>\d+)\s+-\s+(?P<no>\d+)\s+-\s+"(?P<what>.*)"\s*$')
+    @handles(
+        r'^Vote(?P<outcome>Passed|Failed):\s*(?P<yes>\d+)\s+-\s+(?P<no>\d+)\s+-\s+"(?P<what>.*)"\s*$'
+    )
     def on_vote_result(self, m: "re.Match[str]") -> Event:
-        etype = (
-            EventType.VOTE_PASSED if m["outcome"].lower() == "passed" else EventType.VOTE_FAILED
-        )
+        etype = EventType.VOTE_PASSED if m["outcome"].lower() == "passed" else EventType.VOTE_FAILED
         return Event(etype, data={"yes": int(m["yes"]), "no": int(m["no"]), "what": m["what"]})
 
     # -- private chat and spawns ---------------------------------------------

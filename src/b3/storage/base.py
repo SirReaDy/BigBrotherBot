@@ -47,12 +47,15 @@ class Storage(Protocol):
     ) -> list[Penalty]:
         """Penalties still in force (see :meth:`Penalty.is_active`), most recent first."""
         ...
+
     def disable_penalties(self, client_id: int, type_: PenaltyType | None = None) -> int:
         """Soft-delete (lift) matching penalties by setting inactive=1. Returns count."""
         ...
+
     def disable_penalty(self, penalty_id: int | None) -> bool:
         """Lift one penalty by id (soft delete). Returns False if there was nothing to lift."""
         ...
+
     def get_recent_penalties(
         self, types: tuple[PenaltyType, ...] | None = None, limit: int = 5
     ) -> list[Penalty]:

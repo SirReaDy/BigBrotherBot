@@ -169,9 +169,7 @@ def test_absent_lockfile_reads_as_empty(tmp_path):
 
 
 def test_malformed_lockfile_entry_is_skipped(tmp_path):
-    (tmp_path / "installed.yaml").write_text(
-        "plugins:\n  broken:\n    url: u\n", encoding="utf-8"
-    )
+    (tmp_path / "installed.yaml").write_text("plugins:\n  broken:\n    url: u\n", encoding="utf-8")
     assert read_lockfile(tmp_path) == {}
 
 
@@ -202,7 +200,9 @@ def _config_file(tmp_path: Path, text: str = CONFIG_WITH_COMMENTS) -> Path:
 def test_activate_preserves_comments_and_appends(tmp_path):
     path = _config_file(tmp_path)
     activate_in_config(
-        path, name="chatlogger", module="b3_chatlogger:ChatLoggerPlugin",
+        path,
+        name="chatlogger",
+        module="b3_chatlogger:ChatLoggerPlugin",
         plugin_config="@conf/plugin_chatlogger.yaml",
     )
     text = path.read_text(encoding="utf-8")
@@ -293,7 +293,11 @@ def test_register_installed_plugins_puts_repos_on_sys_path(tmp_path, monkeypatch
         tmp_path,
         {
             "demo": InstalledPlugin(
-                name="demo", url="u", ref="v1", commit="c", version="1.0.0",
+                name="demo",
+                url="u",
+                ref="v1",
+                commit="c",
+                version="1.0.0",
                 entry_point="demo_plugin:DemoPlugin",
             )
         },
@@ -486,9 +490,7 @@ def test_install_does_not_clobber_an_existing_plugin_config(tmp_path, plugin_rep
     conf_dir = tmp_path / "conf"
     conf_dir.mkdir()
     (conf_dir / "plugin_demo.yaml").write_text("greeting: mine\n", encoding="utf-8")
-    install(
-        str(plugin_repo), plugins_dir=tmp_path / "plugins", conf_dir=conf_dir, enable=False
-    )
+    install(str(plugin_repo), plugins_dir=tmp_path / "plugins", conf_dir=conf_dir, enable=False)
     assert (conf_dir / "plugin_demo.yaml").read_text(encoding="utf-8") == "greeting: mine\n"
 
 
@@ -514,9 +516,7 @@ def test_a_repo_without_a_manifest_installs_nothing(tmp_path):
 @needs_git
 def test_update_moves_to_a_named_ref_and_back(tmp_path, plugin_repo):
     plugins_dir = tmp_path / "plugins"
-    install(
-        f"{plugin_repo}@v1.0.0", plugins_dir=plugins_dir, conf_dir=tmp_path, enable=False
-    )
+    install(f"{plugin_repo}@v1.0.0", plugins_dir=plugins_dir, conf_dir=tmp_path, enable=False)
 
     updated = update("demo", plugins_dir=plugins_dir, conf_dir=tmp_path)
     assert (updated.ref, updated.version) == ("v1.1.0", "1.1.0")
@@ -537,9 +537,7 @@ def test_remove_deletes_files_lockfile_entry_and_config_entry(tmp_path, plugin_r
     conf_dir = tmp_path / "conf"
     conf_dir.mkdir()
     config_path = _config_file(conf_dir)
-    install(
-        str(plugin_repo), plugins_dir=plugins_dir, config_path=config_path, conf_dir=conf_dir
-    )
+    install(str(plugin_repo), plugins_dir=plugins_dir, config_path=config_path, conf_dir=conf_dir)
 
     remove("demo", plugins_dir=plugins_dir, config_path=config_path)
 

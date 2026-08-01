@@ -461,9 +461,7 @@ class FakeFrontlineServer:
         if entry is None:
             self.push(f"UnBan failed! Player ProfileID or Hash is not banned: {profile_id}")
             return
-        self.push(
-            f'UnBanned Player: PlayerName="" PlayerID=-1 ProfileID={profile_id} Hash='
-        )
+        self.push(f'UnBanned Player: PlayerName="" PlayerID=-1 ProfileID={profile_id} Hash=')
 
     def change_map(self, name: str) -> None:
         with self._lock:

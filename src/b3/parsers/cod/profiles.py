@@ -242,8 +242,7 @@ PLUTOT6 = GameProfile(
 
 #: Every title we can parse, by the id used in `server.game`.
 ALL: dict[str, GameProfile] = {
-    p.name: p
-    for p in (COD, COD2, COD4, COD4X, COD4GR, COD5, COD6, COD7, COD8, PLUTOIW5, PLUTOT6)
+    p.name: p for p in (COD, COD2, COD4, COD4X, COD4GR, COD5, COD6, COD7, COD8, PLUTOIW5, PLUTOT6)
 }
 
 __all__ = [

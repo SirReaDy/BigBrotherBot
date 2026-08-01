@@ -185,7 +185,9 @@ def test_the_bots_own_output_coming_back_is_ignored():
 
 def test_an_anti_cheat_script_log_reaches_plugins():
     p = _with_players()
-    ev = one(p, f'Script Log: #0 Bravo17 ({GUID}) - #2 "bp_id") == -9999) then {{player setVariable')
+    ev = one(
+        p, f'Script Log: #0 Bravo17 ({GUID}) - #2 "bp_id") == -9999) then {{player setVariable'
+    )
     assert ev.type is EventType.CLIENT_ACTION
     assert ev.data == "battleye_script_log"
     assert ev.client.cid == "0"

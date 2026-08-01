@@ -68,6 +68,7 @@ class Console(Protocol):
     def notice(self, client: Client, reason: str = "", admin: Client | None = None) -> None:
         """Record an admin note about a player. No in-game effect."""
         ...
+
     def unban(self, client: Client, reason: str = "", admin: Client | None = None) -> None:
         """Lift every active ban on a client and tell the server to un-ban them."""
         ...

@@ -408,9 +408,7 @@ class FakeSourceServer:
                 # has to match both shapes.
                 lines.append(f'#{slot} "{name}" BOT active')
             else:
-                lines.append(
-                    f'#{slot} 2 "{name}" {guid} 33:48 {ping} 0 active 20000 {ip}:27005'
-                )
+                lines.append(f'#{slot} 2 "{name}" {guid} 33:48 {ping} 0 active 20000 {ip}:27005')
         lines.append("#end")
         return "\n".join(lines) + "\n"
 
@@ -424,7 +422,9 @@ class FakeSourceServer:
             self._write(conn, request_id, SERVERDATA_RESPONSE_VALUE, reply)
             return
         for start in range(0, len(reply), self.fragment):
-            self._write(conn, request_id, SERVERDATA_RESPONSE_VALUE, reply[start : start + self.fragment])
+            self._write(
+                conn, request_id, SERVERDATA_RESPONSE_VALUE, reply[start : start + self.fragment]
+            )
             time.sleep(0.001)
 
     @staticmethod
@@ -469,11 +469,7 @@ class FakeSourceServer:
         if self.require_challenge and challenge not in self._challenges:
             issued = random.randint(1, 0x7FFF_FFFF)
             self._challenges.add(issued)
-            return (
-                b"\xff\xff\xff\xff"
-                + bytes([S2C_CHALLENGE_REPLY])
-                + struct.pack("<i", issued)
-            )
+            return b"\xff\xff\xff\xff" + bytes([S2C_CHALLENGE_REPLY]) + struct.pack("<i", issued)
 
         if kind == A2S_INFO_REQUEST:
             return b"\xff\xff\xff\xff" + self._info_reply()

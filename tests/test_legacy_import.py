@@ -34,20 +34,72 @@ def _make_legacy_db(path) -> str:
     conn.executemany(
         "INSERT INTO clients VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
         [
-            (1, "192.0.2.4", 5, "GUIDADMIN", "PBADMIN", "Admin", 0, 0, 128, "", 1000, 1000, None, None),
+            (
+                1,
+                "192.0.2.4",
+                5,
+                "GUIDADMIN",
+                "PBADMIN",
+                "Admin",
+                0,
+                0,
+                128,
+                "",
+                1000,
+                1000,
+                None,
+                None,
+            ),
             (2, "198.51.100.8", 3, "GUIDBOB", "", "Bob", 0, 0, 0, "", 1001, 1001, None, None),
         ],
     )
-    conn.execute(
-        "INSERT INTO groups VALUES (128,'Super Admin','superadmin',100,0,0)"
-    )
+    conn.execute("INSERT INTO groups VALUES (128,'Super Admin','superadmin',100,0,0)")
     conn.executemany(
         "INSERT INTO penalties VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
         [
             (1, "Ban", 1, 2, 0, 0, "", "banned by bob", "", 1000, 1000, -1),  # valid
-            (2, "Ban", 2, 0, 0, 0, "", "system ban", "", 1001, 1001, -1),  # admin 0 -> null (silent)
-            (3, "Ban", 99, 1, 0, 0, "", "orphan client", "", 1002, 1002, -1),  # orphan client -> skip
-            (4, "Ban", 2, 77, 0, 0, "", "dangling admin", "", 1003, 1003, -1),  # admin 77 gone -> null
+            (
+                2,
+                "Ban",
+                2,
+                0,
+                0,
+                0,
+                "",
+                "system ban",
+                "",
+                1001,
+                1001,
+                -1,
+            ),  # admin 0 -> null (silent)
+            (
+                3,
+                "Ban",
+                99,
+                1,
+                0,
+                0,
+                "",
+                "orphan client",
+                "",
+                1002,
+                1002,
+                -1,
+            ),  # orphan client -> skip
+            (
+                4,
+                "Ban",
+                2,
+                77,
+                0,
+                0,
+                "",
+                "dangling admin",
+                "",
+                1003,
+                1003,
+                -1,
+            ),  # admin 77 gone -> null
         ],
     )
     conn.executemany(
@@ -82,7 +134,9 @@ def test_import_counts_and_orphan_handling(tmp_path, target):
     assert report.clients == 2
     assert report.penalties == 3  # ids 1, 2, 4 imported
     assert report.penalties_skipped_orphan == 1  # id 3 (client 99 doesn't exist)
-    assert report.penalties_admin_nulled == 1  # id 4 (admin 77 doesn't exist); id 2's admin 0 is silent
+    assert (
+        report.penalties_admin_nulled == 1
+    )  # id 4 (admin 77 doesn't exist); id 2's admin 0 is silent
     assert report.aliases == 1
     assert report.aliases_skipped_orphan == 1  # alias for client 99
     assert report.ipaliases == 1

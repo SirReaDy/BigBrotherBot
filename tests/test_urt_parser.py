@@ -190,7 +190,9 @@ def test_a_survivor_round_winner(parser):  # noqa: ANN001
 def test_the_quake3_lines_are_inherited():
     """UrtParser must be a strictly larger grammar, not a replacement for it."""
     p = UrtParser(IOURT42)
-    events = p.parse_line(r"ClientUserinfoChanged: 3 n\Bob\t\1\cl_guid\A337702493AF67BB0B0F8565CE8BC6C")
+    events = p.parse_line(
+        r"ClientUserinfoChanged: 3 n\Bob\t\1\cl_guid\A337702493AF67BB0B0F8565CE8BC6C"
+    )
     assert [e.type for e in events] == [EventType.CLIENT_UPDATE]
     assert p.clients.get_by_cid("3").name == "Bob"
 
@@ -217,8 +219,18 @@ def test_the_timestamp_prefix_is_stripped_like_every_other_line(parser):  # noqa
 
 @pytest.mark.parametrize(
     "mod",
-    ["UT_MOD_SPAS", "UT_MOD_M4", "UT_MOD_AK103", "UT_MOD_LR300", "UT_MOD_G36",
-     "UT_MOD_PSG1", "UT_MOD_SR8", "UT_MOD_MP5K", "UT_MOD_HK69", "MOD_MP40"],
+    [
+        "UT_MOD_SPAS",
+        "UT_MOD_M4",
+        "UT_MOD_AK103",
+        "UT_MOD_LR300",
+        "UT_MOD_G36",
+        "UT_MOD_PSG1",
+        "UT_MOD_SR8",
+        "UT_MOD_MP5K",
+        "UT_MOD_HK69",
+        "MOD_MP40",
+    ],
 )
 def test_a_kill_by_any_weapon_is_seen(parser, mod):  # noqa: ANN001
     """Regression: the shared kill pattern rejected any means-of-death containing a digit.

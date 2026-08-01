@@ -73,9 +73,7 @@ class CensorPlugin(Plugin):
         self.badnames = self._compile(
             config.get("badnames") or [], default, "censor_name", boundaries=False
         )
-        log.info(
-            "censor: %d bad word(s), %d bad name(s)", len(self.badwords), len(self.badnames)
-        )
+        log.info("censor: %d bad word(s), %d bad name(s)", len(self.badwords), len(self.badnames))
 
     def _compile(
         self,
@@ -102,20 +100,25 @@ class CensorPlugin(Plugin):
                 continue
             penalty = str(entry.get("penalty") or default.get("penalty") or "warning").lower()
             if penalty not in PENALTIES:
-                log.warning("censor: %r asks for unknown penalty %r; warning instead", name, penalty)
+                log.warning(
+                    "censor: %r asks for unknown penalty %r; warning instead", name, penalty
+                )
                 penalty = "warning"
             raw_duration = entry.get("duration") or default.get("duration") or 0
             try:
                 minutes = parse_duration(str(raw_duration)) if raw_duration else 0
             except ValueError:
-                log.warning("censor: %r has an invalid duration %r; ignoring it", name, raw_duration)
+                log.warning(
+                    "censor: %r has an invalid duration %r; ignoring it", name, raw_duration
+                )
                 minutes = 0
             compiled.append(
                 BadWord(
                     name=name,
                     pattern=pattern,
                     penalty=penalty,
-                    reason=str(entry.get("reason") or default.get("reason") or "") or None
+                    reason=str(entry.get("reason") or default.get("reason") or "")
+                    or None
                     or self.message(reason_key),
                     minutes=minutes,
                 )

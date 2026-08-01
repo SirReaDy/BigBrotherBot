@@ -147,7 +147,9 @@ def test_a_command_and_its_reply(server):  # noqa: ANN001
 
 def test_a_reply_split_across_packets_is_reassembled(server):  # noqa: ANN001
     """How a long ban list arrives. Each part is prefixed 0x00 <total> <index>."""
-    server.replies["bans"] = "\n".join(f"{i} 80a5885ebe2420bab5e158123456789{i} perm reason" for i in range(60))
+    server.replies["bans"] = "\n".join(
+        f"{i} 80a5885ebe2420bab5e158123456789{i} perm reason" for i in range(60)
+    )
     server.max_packet = 200
     client = _client(server)
     try:
@@ -257,7 +259,9 @@ def test_reading_returns_everything_since_last_time(server):  # noqa: ANN001
 def test_chat_is_paced_because_the_server_drops_a_burst(server):  # noqa: ANN001
     """An Arma server silently discards rapid `say`s. Queueing beats sleeping on the event loop."""
     clock = FakeClock(start=1000.0)
-    client = BattleyeClient(*server.address, "test", timeout=ROUND_TRIP, clock=clock, say_interval=0.8)
+    client = BattleyeClient(
+        *server.address, "test", timeout=ROUND_TRIP, clock=clock, say_interval=0.8
+    )
     client.open()
     try:
         client.write("say -1 line one")
@@ -299,7 +303,9 @@ def test_a_command_flushes_queued_chat_first(server):  # noqa: ANN001
 def test_a_keepalive_goes_out_when_the_line_is_quiet(server):  # noqa: ANN001
     """BattlEye hangs up after about 45 seconds of silence."""
     clock = FakeClock(start=1000.0)
-    client = BattleyeClient(*server.address, "test", timeout=ROUND_TRIP, clock=clock, keepalive=25.0)
+    client = BattleyeClient(
+        *server.address, "test", timeout=ROUND_TRIP, clock=clock, keepalive=25.0
+    )
     client.open()
     try:
         client.read_lines()
@@ -384,7 +390,9 @@ def test_it_reconnects_and_keeps_working():
     fake = FakeBattleyeServer(password="test", resend_unacked_after=99).start()
     port = fake.address[1]
     clock = FakeClock(start=1000.0)
-    client = BattleyeClient(*fake.address, "test", timeout=ROUND_TRIP, clock=clock, retry_interval=5.0)
+    client = BattleyeClient(
+        *fake.address, "test", timeout=ROUND_TRIP, clock=clock, retry_interval=5.0
+    )
     client.open()
     try:
         fake.stop()
@@ -435,7 +443,9 @@ def test_reconnecting_is_backed_off_not_hammered():
 def test_a_rejected_password_on_reconnect_stops_hammering(server):  # noqa: ANN001
     """It will not fix itself, so back off to the ceiling and say so once, loudly."""
     clock = FakeClock(start=1000.0)
-    client = BattleyeClient(*server.address, "test", timeout=ROUND_TRIP, clock=clock, retry_max=300.0)
+    client = BattleyeClient(
+        *server.address, "test", timeout=ROUND_TRIP, clock=clock, retry_max=300.0
+    )
     client.open()
     try:
         server.accept_login = False

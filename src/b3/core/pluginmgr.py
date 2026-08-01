@@ -90,9 +90,7 @@ def resolve_plugin_class(entry: PluginEntry) -> type[Plugin]:
         and (obj.__module__ == module.__name__ or obj.__module__.startswith(prefix))
     ]
     if not candidates:
-        raise PluginLoadError(
-            f"plugin {entry.name!r}: no Plugin subclass found in {module_name!r}"
-        )
+        raise PluginLoadError(f"plugin {entry.name!r}: no Plugin subclass found in {module_name!r}")
     if len(candidates) > 1:
         names = ", ".join(sorted(c.__name__ for c in candidates))
         raise PluginLoadError(

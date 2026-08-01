@@ -60,4 +60,12 @@ RAVAGED = GameProfile(
 
 ALL: dict[str, GameProfile] = {RAVAGED.name: RAVAGED}
 
-__all__ = ["ALL", "BIG_COLOUR", "PERMANENT_DAYS", "PRIVATE_COLOUR", "RAVAGED", "RAVAGED_TEAMS", "SAY_COLOUR"]
+__all__ = [
+    "ALL",
+    "BIG_COLOUR",
+    "PERMANENT_DAYS",
+    "PRIVATE_COLOUR",
+    "RAVAGED",
+    "RAVAGED_TEAMS",
+    "SAY_COLOUR",
+]

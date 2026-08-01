@@ -172,8 +172,10 @@ def test_a_missing_plugin_config_file_is_reported(tmp_path):
 def test_no_plugins_configured_is_a_warning(tmp_path):
     config = _config(tmp_path)
     config.plugins = []
-    assert _named(run_checks(config, tmp_path, rcon_factory=_rcon(STATUS_REPLY)), "plugins").status \
+    assert (
+        _named(run_checks(config, tmp_path, rcon_factory=_rcon(STATUS_REPLY)), "plugins").status
         is Status.WARN
+    )
 
 
 def test_an_unknown_time_zone_warns_rather_than_stopping(tmp_path):
@@ -193,7 +195,8 @@ def test_one_failure_never_hides_the_next(tmp_path):
     from b3.net.rcon import RconError
 
     failed = {
-        c.name for c in run_checks(config, tmp_path, rcon_factory=_rcon(error=RconError("x")))
+        c.name
+        for c in run_checks(config, tmp_path, rcon_factory=_rcon(error=RconError("x")))
         if c.failed
     }
     assert {"game", "database", "game log", "rcon"} <= failed

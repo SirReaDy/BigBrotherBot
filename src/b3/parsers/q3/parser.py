@@ -46,8 +46,18 @@ CTF_ACTIONS = {
 CTF_FLAG_COLOURS = {"1": "RED", "2": "BLUE"}
 
 #: Means-of-death strings that mean the player did it to themselves.
-SELF_INFLICTED = frozenset({"MOD_SUICIDE", "MOD_FALLING", "MOD_WATER", "MOD_LAVA", "MOD_SLIME",
-                            "MOD_CRUSH", "MOD_TRIGGER_HURT", "MOD_TARGET_LASER"})
+SELF_INFLICTED = frozenset(
+    {
+        "MOD_SUICIDE",
+        "MOD_FALLING",
+        "MOD_WATER",
+        "MOD_LAVA",
+        "MOD_SLIME",
+        "MOD_CRUSH",
+        "MOD_TRIGGER_HURT",
+        "MOD_TARGET_LASER",
+    }
+)
 
 
 def parse_infostring(text: str) -> dict[str, str]:
@@ -202,9 +212,7 @@ class Q3Parser(Parser):
         """
         acid, vcid = m["acid"], m["vcid"]
         victim = self._get_or_create(vcid)
-        kill = KillData(
-            weapon=m["weapon"], damage=100, hit_location="", means_of_death=m["mod"]
-        )
+        kill = KillData(weapon=m["weapon"], damage=100, hit_location="", means_of_death=m["mod"])
 
         if acid == self.profile.world_cid or acid == vcid or m["mod"] in SELF_INFLICTED:
             return Event(EventType.CLIENT_SUICIDE, data=kill, client=victim, target=victim)
@@ -275,9 +283,7 @@ class Q3Parser(Parser):
 
     @handles(r"^Award:\s*(?P<cid>\d+)\s+(?P<award>.+?)\s*$")
     def on_award(self, m: "re.Match[str]") -> Event:
-        return Event(
-            EventType.CLIENT_ACTION, data=m["award"], client=self._get_or_create(m["cid"])
-        )
+        return Event(EventType.CLIENT_ACTION, data=m["award"], client=self._get_or_create(m["cid"]))
 
     @handles(r"^CTF:\s+(?P<cid>\d+)\s+(?P<fid>\d+)\s+(?P<type>\d+):\s*(?P<text>.*)$")
     def on_ctf(self, m: "re.Match[str]") -> Event | None:
@@ -291,7 +297,9 @@ class Q3Parser(Parser):
         action = CTF_ACTIONS.get(m["type"], f"flag_action_{m['type']}")
         if action == "flag_returned":
             # Returned by the game rather than credited to a player, as `Flag Return:` is.
-            return Event(EventType.GAME_FLAG_RETURNED, data=CTF_FLAG_COLOURS.get(m["fid"], m["fid"]))
+            return Event(
+                EventType.GAME_FLAG_RETURNED, data=CTF_FLAG_COLOURS.get(m["fid"], m["fid"])
+            )
         return self._action(m["cid"], action)
 
     def _action(self, cid: str, action: str) -> Event | None:

@@ -153,9 +153,7 @@ async def test_a_failing_command_is_still_audited(console):
 
     seen = []
     console.bus.subscribe(EventType.ADMIN_COMMAND, lambda e: seen.append(e))
-    console.command_registry.register(
-        Command(name="boom", handler=lambda ctx: 1 / 0, min_level=0)
-    )
+    console.command_registry.register(Command(name="boom", handler=lambda ctx: 1 / 0, min_level=0))
     proc = CommandProcessor(console.command_registry, console)
 
     await proc.handle(_admin(), "!boom")

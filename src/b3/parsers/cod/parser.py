@@ -153,7 +153,9 @@ class CodParser(Parser):
         etype = EventType.CLIENT_KILL_TEAM if is_teamkill else EventType.CLIENT_KILL
         return Event(etype, data=kill, client=attacker, target=victim)
 
-    @handles(r"^(?P<action>say|sayteam);(?P<guid>[^;]*);(?P<cid>-?\d+);(?P<name>[^;]*);(?P<text>.*)$")
+    @handles(
+        r"^(?P<action>say|sayteam);(?P<guid>[^;]*);(?P<cid>-?\d+);(?P<name>[^;]*);(?P<text>.*)$"
+    )
     def on_say(self, m: "re.Match[str]") -> Event:
         text = m["text"]
         if text[:1] == CHAT_PREFIX_BYTE:
@@ -232,7 +234,9 @@ class CodParser(Parser):
         etype = EventType.CLIENT_DAMAGE_TEAM if team_damage else EventType.CLIENT_DAMAGE
         return Event(etype, data=damage, client=attacker, target=victim)
 
-    @handles(r"^A;(?P<guid>[^;]*);(?P<cid>-?\d+);(?P<team>[a-z]*);(?P<name>[^;]*);(?P<action>[\w-]+)$")
+    @handles(
+        r"^A;(?P<guid>[^;]*);(?P<cid>-?\d+);(?P<team>[a-z]*);(?P<name>[^;]*);(?P<action>[\w-]+)$"
+    )
     def on_action(self, m: "re.Match[str]") -> Event:
         """A map objective: a flag taken, a bomb planted. The data is the action's name."""
         client = self._get_or_create(m["cid"], m["name"], self._valid_guid(m["guid"]))

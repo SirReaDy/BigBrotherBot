@@ -494,8 +494,16 @@ def test_a_valid_steam_id_passes_without_complaint(caplog):
 
 @pytest.mark.parametrize(
     ("game", "guid_len"),
-    [("cod2", 6), ("cod4", 32), ("cod4gr", 10), ("cod4x", 17), ("cod5", 8), ("cod6", 16),
-     ("cod7", 5), ("cod8", 16)],
+    [
+        ("cod2", 6),
+        ("cod4", 32),
+        ("cod4gr", 10),
+        ("cod4x", 17),
+        ("cod5", 8),
+        ("cod6", 16),
+        ("cod7", 5),
+        ("cod8", 16),
+    ],
 )
 def test_every_cod_title_is_configurable_and_keeps_its_guid_length(tmp_path, game, guid_len):
     """One parser, eight titles: the differences are data, which is the claim to hold up."""

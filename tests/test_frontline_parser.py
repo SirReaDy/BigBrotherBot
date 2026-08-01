@@ -63,7 +63,9 @@ def _row(
     return "\t".join(values[c] for c in PLAYER_COLUMNS)
 
 
-def _playerlist(*rows: str, map_name: str = "CQ-Gnaw", count: int | None = None, round: str = "1/3") -> str:
+def _playerlist(
+    *rows: str, map_name: str = "CQ-Gnaw", count: int | None = None, round: str = "1/3"
+) -> str:
     stated = len(rows) if count is None else count
     header = (
         f"PlayerList: Map={map_name} Time=739 Players={stated}/32 Tickets=500,500 Round={round}"
@@ -254,9 +256,7 @@ def test_the_ticket_pair_is_read():
 
 def test_a_header_missing_a_field_still_yields_the_roster():
     parser = _parser()
-    listing = "\n".join(
-        ["PlayerList: Players=1/32", HEADERS, _row("1", "Courgette", COURGETTE)]
-    )
+    listing = "\n".join(["PlayerList: Players=1/32", HEADERS, _row("1", "Courgette", COURGETTE)])
     events = parser.parse_line(listing)
     assert EventType.CLIENT_JOIN in [e.type for e in events]
 
@@ -359,9 +359,7 @@ def test_the_kick_half_of_a_ban_is_understood_and_quiet():
 
 def test_an_unban_is_published():
     parser = _parser()
-    events = parser.parse_line(
-        'UnBanned Player: PlayerName="" PlayerID=-1 ProfileID=1561500 Hash='
-    )
+    events = parser.parse_line('UnBanned Player: PlayerName="" PlayerID=-1 ProfileID=1561500 Hash=')
     assert [e.type for e in events] == [EventType.CUSTOM]
     assert events[0].extra["kind"] == "server_unban"
     assert events[0].data == COURGETTE
@@ -372,9 +370,7 @@ def test_a_refused_unban_is_reported_rather_than_ignored():
     that worked: the bot clears its own record either way and nobody finds out until the player
     walks back in."""
     parser = _parser()
-    events = parser.parse_line(
-        "UnBan failed! Player ProfileID or Hash is not banned: 1561500"
-    )
+    events = parser.parse_line("UnBan failed! Player ProfileID or Hash is not banned: 1561500")
     assert [e.type for e in events] == [EventType.CUSTOM]
     assert events[0].extra["kind"] == "server_unban_failed"
 

@@ -508,7 +508,9 @@ def _check_source_rcon(
             f"message and the whole of !ban go through it on this engine, so the bot would run and "
             "silently do nothing",
         )
-    return Check("rcon", Status.OK, f"logged in, and {required.name if required else 'rcon'} answers")
+    return Check(
+        "rcon", Status.OK, f"logged in, and {required.name if required else 'rcon'} answers"
+    )
 
 
 def _check_homefront_rcon(config: Config) -> Check:
@@ -671,9 +673,7 @@ def _check_plugins(config: Config, conf_dir: Path | None) -> list[Check]:
 
             path = Path(resolve_path_token(entry.config, conf_dir))
             if not path.is_file():
-                checks.append(
-                    Check(label, Status.FAIL, f"config file not found: {path}", "")
-                )
+                checks.append(Check(label, Status.FAIL, f"config file not found: {path}", ""))
                 continue
         state = " (disabled)" if entry.disabled else ""
         checks.append(Check(label, Status.OK, f"imports cleanly{state}"))

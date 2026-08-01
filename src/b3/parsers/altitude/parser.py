@@ -605,7 +605,9 @@ class AltParser(Parser):
         if unknown:
             # Players who were already flying when the bot started. There is nothing to ask, so they
             # stay unknown until they do something the log names them in.
-            log.debug("altitude: %d player(s) in the ping report are not in the roster", len(unknown))
+            log.debug(
+                "altitude: %d player(s) in the ping report are not in the roster", len(unknown)
+            )
         return players
 
 

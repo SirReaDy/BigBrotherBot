@@ -160,9 +160,7 @@ def by_family() -> dict[str, list[str]]:
     return {family: sorted(ids) for family, ids in sorted(grouped.items())}
 
 
-def parser_for(
-    profile: GameProfile, clients: ClientManager | None = None, port: int = 0
-) -> Parser:
+def parser_for(profile: GameProfile, clients: ClientManager | None = None, port: int = 0) -> Parser:
     """Build the parser this profile's family needs.
 
     ``port`` is set on the parser afterwards rather than passed in, so that the one family that
