@@ -1,11 +1,5 @@
-# The checks that have been run by hand until now, run by the repository instead.
-#
-# Everything here is already part of the project's definition of done: ruff, mypy --strict, the test
-# suite, the end-to-end drivers, and the markdown links. Nothing new is being demanded of a change;
-# what changes is that nobody has to remember, and a pull request says so before it is merged.
-#
-# The jobs are separate on purpose. "ruff failed" and "the Frostbite reassembly broke" want different
-# people looking at them, and a single job would report only whichever failed first.
+# ruff, mypy --strict, the test suite, the end-to-end drivers and the markdown links.
+# One job each, so a failure names which of them it was.
 
 name: CI
 
@@ -15,8 +9,7 @@ on:
   pull_request:
   workflow_dispatch: # so a run can be forced without pushing anything
 
-# Read-only. Nothing here comments, pushes, or publishes; the docs site (TODO 5) will need its own
-# workflow with `pages: write`, and keeping this one unable to write is the point of saying so.
+# Read-only: nothing here comments, pushes or publishes.
 permissions:
   contents: read
 
@@ -38,7 +31,17 @@ jobs:
           cache: pip
           cache-dependency-path: pyproject.toml
       - run: python -m pip install -e ".[dev]"
-      - run: python -m ruff check src tests tools
+      - name: Lint
+        run: python -m ruff check src tests tools
+      # Runs even when Lint failed, so one push reports both.
+      - name: Format
+        if: ${{ !cancelled() }}
+        shell: bash
+        run: |
+          if ! python -m ruff format --check src tests tools; then
+            echo "::error::Run 'python -m ruff format src tests tools' and commit the result."
+            exit 1
+          fi
 
   types:
     name: mypy --strict
@@ -95,13 +98,8 @@ jobs:
           cache: pip
           cache-dependency-path: pyproject.toml
       - run: python -m pip install -e ".[dev]"
-      # Each driver runs a real bot against a fake server that speaks the real protocol, and checks
-      # what the commands *accomplished* rather than what was sent. That distinction has caught bugs
-      # every unit test passed: a ban that was recorded, appeared in the server's ban list, and left
-      # the player playing. Each exits non-zero and names the check that failed.
-      #
-      # Run in one job rather than a matrix: they are seconds each, apart from Ravaged, which waits
-      # out real back-off timers.
+      # Each driver runs a real bot against a fake server and checks what the commands
+      # accomplished, not what was sent. Each exits non-zero and names the check that failed.
       - name: Run every e2e driver
         shell: bash
         env:
@@ -124,8 +122,5 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      # No install: the checker is stdlib only, so this job stays quick.
-      #
-      # It exists because the README was split into docs/, which turned its internal anchors into
-      # links between files. A wrong one renders as an ordinary link and silently goes nowhere.
+      # No install: the checker is stdlib only.
       - run: python tools/check_links.py
