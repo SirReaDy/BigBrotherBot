@@ -2,15 +2,15 @@
 
 The classic tree carried one parser class per title — `cod2.py` through `cod8.py`, plus `cod4.py`,
 `cod4x18.py` and `cod4gr.py` — and between them they overrode almost nothing but strings: a GUID
-length, a `_commands` dict, a status-line regex. That observation is what :class:`GameProfile` was
-built on, and this module is the payoff: eight titles, one parser, no subclasses.
+length, a `_commands` dict, a status-line regex. :class:`GameProfile` holds those strings instead,
+so every title here shares one parser and no subclasses are needed.
 
-They are all here rather than one file per title because each is a handful of lines; splitting
-them across modules made the two we happened to write first look more important than they are.
+They live in one module rather than one file per title because each is a handful of lines.
 
 What each title changes:
 
-* **cod2** — the original; short GUIDs, and it wants `g_logsync 1` rather than 3.
+* **cod** — Call of Duty 1. Every verb it uses is this file's default.
+* **cod2** — short GUIDs, and it wants `g_logsync 1` rather than 3.
 * **cod4** — the stock Infinity-Ward build: 32-character GUIDs.
 * **cod4x** — CoD4X 1.8, what nearly every live CoD4 server runs: Steam64 identity and real ban
   verbs. See the notes on it below.
@@ -58,16 +58,31 @@ _IW_TEAMS = {"allies": "blue", "axis": "red", "world": "world"}
 #: An objective explosion, not a team kill — one of the oldest fixes in the classic tree.
 _NOT_TEAMKILL = frozenset({"briefcase_bomb_mp"})
 
+#: How much of a chat line a Call of Duty console displays. Anything past it is dropped by the
+#: engine, so a longer line means a reply cut off mid-sentence. The two Plutonium titles set lower
+#: values of their own (43 and 72); where both apply the smaller wins.
+COD_LINE_LENGTH = 65
+
+#: Call of Duty 1. Identity is the short CD-key hash rather than an IP, matching CoD2, and every
+#: verb is this module's default — those defaults were taken from this title in the first place.
+COD = GameProfile(
+    name="cod",
+    guid_min_length=6,
+    line_length=COD_LINE_LENGTH,
+    startup_commands=LOGSYNC,
+)
 
 COD2 = GameProfile(
     name="cod2",
     guid_min_length=6,
+    line_length=COD_LINE_LENGTH,
     startup_commands=LOGSYNC_COD2,
 )
 
 COD4 = GameProfile(
     name="cod4",
     guid_min_length=32,
+    line_length=COD_LINE_LENGTH,
     teams=_IW_TEAMS,
     non_teamkill_weapons=_NOT_TEAMKILL,
     startup_commands=LOGSYNC,
@@ -78,6 +93,7 @@ COD4X = GameProfile(
     # A Steam64 id is 17 digits. Stock CoD4's 32 would reject every CoD4X player, and 0 (what the
     # reference parser uses) would accept the "0" the engine reports before a client is identified.
     guid_min_length=17,
+    line_length=COD_LINE_LENGTH,
     teams=_IW_TEAMS,
     non_teamkill_weapons=_NOT_TEAMKILL,
     startup_commands=("g_logsync 3", "sv_usesteam64id 1"),
@@ -104,6 +120,7 @@ COD4X = GameProfile(
 COD4GR = GameProfile(
     name="cod4gr",
     guid_min_length=10,
+    line_length=COD_LINE_LENGTH,
     teams=_IW_TEAMS,
     non_teamkill_weapons=_NOT_TEAMKILL,
     status_patterns=(COD4GR_PLAYER_LINE_RE,),
@@ -130,6 +147,7 @@ TREYARCH_ACTIONS = {
 COD5 = GameProfile(
     name="cod5",
     guid_min_length=8,
+    line_length=COD_LINE_LENGTH,
     startup_commands=LOGSYNC_COD2,  # cod5 inherited cod2's logsync value
     action_map=TREYARCH_ACTIONS,
 )
@@ -139,6 +157,7 @@ COD5 = GameProfile(
 _MODERN_WARFARE = GameProfile(
     name="",  # each title names itself below
     guid_min_length=16,
+    line_length=COD_LINE_LENGTH,
     ban_template="clientkick %(cid)s",
     status_patterns=(COD6_PLAYER_LINE_RE,),
     startup_commands=LOGSYNC,
@@ -150,6 +169,7 @@ COD8 = replace(_MODERN_WARFARE, name="cod8")
 COD7 = GameProfile(
     name="cod7",
     guid_min_length=5,
+    line_length=COD_LINE_LENGTH,
     kick_template='clientkick %(cid)s "%(reason)s"',
     ban_template="banclient %(cid)s",
     unban_template='unbanuser "%(target)s"',
@@ -167,19 +187,17 @@ COD7 = GameProfile(
     rcon_dialect="cod7",  # Black Ops frames its RCON packets differently; see b3.net.rcon
 )
 
-#: Plutonium — the client the modern Call of Duty scene runs, and the same kind of addition `cod4x`
-#: was: titles the classic bot never had.
+#: Plutonium, the client the modern Call of Duty scene runs. Neither title existed in the classic
+#: tree.
 #:
-#: **The verbs and table shapes here come from IW4M-Admin, not from a B3 fork.** The B3 parsers for
+#: The verbs and table shapes come from IW4M-Admin rather than from a B3 fork: the B3 parsers for
 #: these titles (`xerxes-at/b3-parser-plutonium`, 2018) had IW5's kick verb wrong and its status
-#: columns in the wrong order; IW4M-Admin is the tool this scene actually uses and its parsers are
-#: maintained — they were ported from JavaScript to C# in June 2026 — so they are the better source.
+#: columns in the wrong order, where IW4M-Admin is actively maintained against these servers.
 #:
-#: **Neither title has a ban verb**, and that is a finding rather than an omission: IW4M-Admin maps
-#: `Ban` *and* `TempBan` to the kick verb on both, its history records `tempbanclient` being *removed*
-#: from the sibling TeknoMW3 parser, and Plutonium's own admin script keeps bans in its own JSON file
-#: and enforces them by kicking. So a ban here is a kick, re-applied from our database on reconnect —
-#: the same position MW2/MW3 are in.
+#: Neither title has a working ban verb. IW4M-Admin maps both `Ban` and `TempBan` to the kick verb
+#: on each, its history records `tempbanclient` being removed from the sibling TeknoMW3 parser, and
+#: Plutonium's own admin script keeps bans in a JSON file and enforces them by kicking. So a ban
+#: here is a kick re-applied from our database on reconnect, as it is on MW2 and MW3.
 PLUTOIW5 = GameProfile(
     name="plutoiw5",
     # A guid is 15+ characters here (IW4M accepts 8-32), and an AI's is either a long shared prefix or
@@ -225,11 +243,13 @@ PLUTOT6 = GameProfile(
 #: Every title we can parse, by the id used in `server.game`.
 ALL: dict[str, GameProfile] = {
     p.name: p
-    for p in (COD2, COD4, COD4X, COD4GR, COD5, COD6, COD7, COD8, PLUTOIW5, PLUTOT6)
+    for p in (COD, COD2, COD4, COD4X, COD4GR, COD5, COD6, COD7, COD8, PLUTOIW5, PLUTOT6)
 }
 
 __all__ = [
     "ALL",
+    "COD",
+    "COD_LINE_LENGTH",
     "COD2",
     "COD4",
     "COD4GR",
