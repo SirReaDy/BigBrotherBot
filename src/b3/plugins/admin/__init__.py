@@ -306,9 +306,8 @@ class AdminPlugin(Plugin):
         if not tokens:
             ctx.reply(self.message("usage", usage=f"{ctx.command.name} <player> [reason]"))
             return None, ""
-        target = self.console.find_client(tokens[0])
+        target = self.resolve_client(ctx, tokens[0])
         if target is None:
-            ctx.reply(self.message("player_not_found", handle=tokens[0]))
             return None, ""
         return target, " ".join(tokens[1:])
 
@@ -385,11 +384,8 @@ class AdminPlugin(Plugin):
         if len(tokens) < 2:
             ctx.reply(self.message("usage", usage="tempban <player> <duration> [reason]"))
             return
-        target = self.console.find_client(tokens[0])
-        if target is None:
-            ctx.reply(self.message("player_not_found", handle=tokens[0]))
-            return
-        if not self._may_act_on(ctx, target):
+        target = self.resolve_client(ctx, tokens[0])
+        if target is None or not self._may_act_on(ctx, target):
             return
         try:
             minutes = parse_duration(tokens[1])
@@ -1027,9 +1023,8 @@ class AdminPlugin(Plugin):
         if len(tokens) < 2:
             ctx.reply(self.message("usage", usage="runas <player> <!command>"))
             return
-        target = self.console.find_client(tokens[0])
+        target = self.resolve_client(ctx, tokens[0])
         if target is None:
-            ctx.reply(self.message("player_not_found", handle=tokens[0]))
             return
         text = " ".join(tokens[1:])
         if text[0] not in "!@&":
@@ -1202,9 +1197,8 @@ class AdminPlugin(Plugin):
             return
         target = ctx.client
         if len(tokens) > 1:
-            found = self.console.find_client(tokens[1])
+            found = self.resolve_client(ctx, tokens[1])
             if found is None:
-                ctx.reply(self.message("player_not_found", handle=tokens[1]))
                 return
             if found is not ctx.client and not self._may_act_on(ctx, found):
                 return
@@ -1221,9 +1215,8 @@ class AdminPlugin(Plugin):
         tokens = ctx.arg_list()
         target = ctx.client
         if tokens:
-            found = self.console.find_client(tokens[0])
+            found = self.resolve_client(ctx, tokens[0])
             if found is None:
-                ctx.reply(self.message("player_not_found", handle=tokens[0]))
                 return
             if found is not ctx.client and not self._may_act_on(ctx, found):
                 return

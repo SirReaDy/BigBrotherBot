@@ -43,6 +43,9 @@ DEFAULT_MESSAGES: dict[str, str] = {
     "player_not_found": "no player found matching '{handle}'",
     "stored_player_not_found": "no stored player found matching '{handle}'",
     "ambiguous_target": "{count} players match — be more specific or use @id: {candidates}",
+    # Connected players are named by slot rather than @dbid: the slot is on screen and in `!status`,
+    # and a player who has just joined may not have a database id yet.
+    "ambiguous_connected": "{count} players match — be more specific or use the slot: {candidates}",
     # -- moderation --------------------------------------------------------
     "kicked": "{name} was kicked ({reason})",
     "kicked_no_reason": "{name} was kicked",

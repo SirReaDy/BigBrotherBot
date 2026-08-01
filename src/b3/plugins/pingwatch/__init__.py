@@ -126,9 +126,8 @@ class PingwatchPlugin(Plugin):
         if not handle:
             ctx.reply(self.message("usage", usage="ci <player>"))
             return
-        target = self.console.find_client(handle)
+        target = self.resolve_client(ctx, handle)
         if target is None:
-            ctx.reply(self.message("player_not_found", handle=handle))
             return
 
         ping = self._ping_of(target.cid)

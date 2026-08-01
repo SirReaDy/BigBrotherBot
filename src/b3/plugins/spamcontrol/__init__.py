@@ -140,9 +140,8 @@ class SpamcontrolPlugin(Plugin):
         target = ctx.client
         handle = ctx.args.strip()
         if handle:
-            found = self.console.find_client(handle)
+            found = self.resolve_client(ctx, handle)
             if found is None:
-                ctx.reply(self.message("player_not_found", handle=handle))
                 return
             target = found
         ctx.reply(self.message("spamins", name=target.name, points=round(self.score(target), 1)))

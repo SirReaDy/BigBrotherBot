@@ -15,10 +15,11 @@ from collections.abc import Callable
 from typing import Any
 
 from b3.core.bus import Subscription
-from b3.core.commands import Command
+from b3.core.commands import Command, CommandContext
 from b3.core.console import Console
 from b3.core.events import EventType
 from b3.core.scheduler import ScheduledTask
+from b3.domain.client import Client
 
 log = logging.getLogger(__name__)
 
@@ -103,6 +104,22 @@ class Plugin(ABC):
     def message(self, key: str, **values: Any) -> str:
         """Look up an operator-customisable message template (see :mod:`b3.core.messages`)."""
         return self.console.messages.get(key, **values)
+
+    def resolve_client(self, ctx: CommandContext, handle: str) -> Client | None:
+        """Resolve a handle an admin typed to exactly one connected player, or refuse and explain.
+
+        ``!ban bob`` with "bob" and "bobby" both in the server lists the candidates and does nothing
+        until the admin names a slot, rather than acting on whichever the roster lists first.
+        """
+        found = self.console.find_clients(handle)
+        if not found:
+            ctx.reply(self.message("player_not_found", handle=handle))
+            return None
+        if len(found) > 1:
+            listed = ", ".join(f"{c.name} [{c.cid}]" for c in found)
+            ctx.reply(self.message("ambiguous_connected", count=len(found), candidates=listed))
+            return None
+        return found[0]
 
     def storage_engine(self) -> object:
         """The SQLAlchemy engine behind the bot's storage — for plugins that own tables.

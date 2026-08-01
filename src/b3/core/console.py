@@ -73,8 +73,13 @@ class Console(Protocol):
         ...
 
     # lookup + reply routing
+    def find_clients(self, handle: str) -> list[Client]:
+        """Every *connected* player a handle could mean — exact cid, then exact name, then substring."""
+        ...
+
     def find_client(self, handle: str) -> Client | None:
-        """Resolve a handle among *connected* players (slot id, partial name) or by @dbid."""
+        """The best guess for a handle. Commands should use :meth:`find_clients` and refuse when
+        it is ambiguous; this is for callers with no admin to ask."""
         ...
 
     def lookup_clients(self, term: str) -> list[Client]:

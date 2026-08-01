@@ -132,6 +132,7 @@ class FakeConsole:
         self.exit_code: int | None = None
         self.reloads = 0
         self._by_handle: dict[str, Client] = {}
+        self._connected: dict[str, list[Client]] = {}  # handles that match several players
         self._lookup: dict[str, list[Client]] = {}
         # Loaded plugins, as the real Console exposes them (tests populate this when they need it).
         self.plugins: dict[str, object] = {}
@@ -236,8 +237,15 @@ class FakeConsole:
                 self.storage.disable_penalties(client.id, type_)
 
     # lookup + reply
+    def find_clients(self, handle: str) -> list[Client]:
+        if handle in self._connected:
+            return self._connected[handle]
+        found = self._by_handle.get(handle)
+        return [found] if found is not None else []
+
     def find_client(self, handle: str) -> Client | None:
-        return self._by_handle.get(handle)
+        matches = self.find_clients(handle)
+        return matches[0] if matches else None
 
     def lookup_clients(self, term: str) -> list[Client]:
         if term in self._lookup:
@@ -247,6 +255,10 @@ class FakeConsole:
 
     def register_client(self, handle: str, client: Client) -> None:
         self._by_handle[handle] = client
+
+    def register_clients(self, handle: str, clients: list[Client]) -> None:
+        """Make a handle match several connected players."""
+        self._connected[handle] = clients
 
     def register_lookup(self, term: str, clients: list[Client]) -> None:
         self._lookup[term] = clients

@@ -996,20 +996,40 @@ class Bot:
 
     # -- Console: lookup ---------------------------------------------------
 
-    def find_client(self, handle: str) -> Client | None:
-        # @<dbid> -> database lookup
+    def find_clients(self, handle: str) -> list[Client]:
+        """Every connected player a handle could mean, most specific match first.
+
+        Callers with someone to ask should prefer this to :meth:`find_client`: with "bob" and
+        "bobby" both in the server, taking the first substring match acts on whichever the roster
+        happens to list first.
+        """
+        # @<dbid> -> database lookup. An id names one player or none.
         if handle.startswith("@"):
             try:
-                return self.storage.get_client_by_id(int(handle[1:]))
+                found = self.storage.get_client_by_id(int(handle[1:]))
             except ValueError:
-                return None
+                return []
+            return [found] if found is not None else []
         # exact slot id
         by_cid = self.clients.get_by_cid(handle)
         if by_cid is not None:
-            return by_cid
-        # case-insensitive name match among connected players
+            return [by_cid]
         needle = handle.lower()
-        matches = [c for c in self.clients.connected() if needle in c.name.lower()]
+        connected = self.clients.connected()
+        # An exact name wins outright, or "bob" could not be named while "bobby" is connected:
+        # every handle for bob is also a handle for bobby.
+        exact = [c for c in connected if c.name.lower() == needle]
+        if exact:
+            return exact
+        return [c for c in connected if needle in c.name.lower()]
+
+    def find_client(self, handle: str) -> Client | None:
+        """The best guess for a handle, for callers that cannot ask for a more specific one.
+
+        A command typed by an admin should use :meth:`find_clients` and refuse when the handle is
+        ambiguous.
+        """
+        matches = self.find_clients(handle)
         return matches[0] if matches else None
 
     def lookup_clients(self, term: str) -> list[Client]:
@@ -1027,8 +1047,10 @@ class Bot:
             except ValueError:
                 return []
             return [found] if found is not None else []
-        # Prefer a connected player's database record, then fall back to a stored-name/alias search.
-        connected = self.find_client(term)
-        if connected is not None and connected.id is not None:
-            return [connected]
+        # Prefer connected players' database records, then fall back to a stored-name/alias search.
+        # Every match rather than the best one, so the caller can refuse an ambiguous handle for a
+        # connected pair as it already does for two stored names.
+        connected = [c for c in self.find_clients(term) if c.id is not None]
+        if connected:
+            return connected
         return self.storage.search_clients(term)
