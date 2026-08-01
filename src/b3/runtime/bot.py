@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from dataclasses import replace
 from datetime import timezone, tzinfo
 from pathlib import Path
 from typing import Protocol
@@ -782,6 +783,11 @@ class Bot:
         live: set[str] = set()
         for info in players:
             live.add(info.cid)
+            # The other half of `GameProfile.canonical_guid`, the log path being the first: a title
+            # that spells one account two ways usually does it once per source, and CS2 does exactly
+            # that -- `[U:1:N]` in the log, a Steam64 in this table. Both have to arrive here in the
+            # same spelling or the comparison below reads the player as a stranger in their slot.
+            info = replace(info, guid=self.profile.canonical_guid(info.guid))
             client = self.clients.get_by_cid(info.cid)
             if client is not None and client.guid and info.guid:
                 if not client.guid.lower().startswith(info.guid.lower()):

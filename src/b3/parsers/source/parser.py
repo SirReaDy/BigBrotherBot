@@ -188,7 +188,12 @@ class SourceParser(Parser):
         cid = cid.strip()
         if not cid:
             return None
-        guid = guid.strip()
+        # Folded to one spelling before anything is compared or stored, because the comparison two
+        # lines down decides whether this is the same player: CS2 writes `[U:1:N]` here and answers
+        # `status` with a Steam64, so without this the sync below would read every player as a
+        # stranger who had taken their slot, and drop the record it had just built. A no-op on every
+        # title that reports one form (see `GameProfile.canonical_guid`).
+        guid = self.profile.canonical_guid(guid.strip())
         client = self.clients.get_by_cid(cid)
         if client is not None and guid and client.guid and client.guid != guid:
             self.clients.remove(cid)

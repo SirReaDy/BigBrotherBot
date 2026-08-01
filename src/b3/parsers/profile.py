@@ -15,6 +15,8 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 
+from b3.core import steamid
+
 
 @dataclass(frozen=True, slots=True)
 class RequiredMod:
@@ -79,6 +81,21 @@ class GameProfile:
         if guid in self.bot_guids:
             return True
         return bool(self.bot_guid_prefixes) and guid.startswith(self.bot_guid_prefixes)
+
+    def canonical_guid(self, guid: str) -> str:
+        """Fold the spellings of one identity into the one this bot stores.
+
+        Only Counter-Strike 2 needs it so far, and it needs it badly: that engine writes ``[U:1:N]``
+        in its log while ``status`` answers with a 17-digit Steam64, so without this the same player
+        is two records, and a database imported from classic B3 -- keyed on the third spelling,
+        ``STEAM_1:Y:Z`` -- matches neither. See :mod:`b3.core.steamid` for the arithmetic and for why
+        the legacy form is the one kept.
+
+        A no-op unless the title asks for it, so no other family pays for it.
+        """
+        if not self.normalise_steam_ids:
+            return guid
+        return steamid.canonical(guid)
 
     def map_display(self, map_id: str) -> str:
         """The name to show a player for a map id, or the id itself if the title has no table.
@@ -173,6 +190,12 @@ class GameProfile:
     # is truncated by the parser, and the runtime kicks the player unless `server.allow_long_names`
     # is set.
     name_max_length: int = 0
+    # Whether this title reports one Steam account under more than one spelling, so that they have
+    # to be folded together before anything is keyed on the result. Counter-Strike 2 does: `[U:1:N]`
+    # in the log, a 17-digit Steam64 in `status`, and `STEAM_1:Y:Z` in any database imported from
+    # classic B3. See `canonical_guid` above and :mod:`b3.core.steamid`.
+    normalise_steam_ids: bool = False
+
 
     # Sent once when the bot connects — e.g. asking CoD4X to report Steam64 ids.
     startup_commands: tuple[str, ...] = ()
