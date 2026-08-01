@@ -1,0 +1,17 @@
+# Puts a "Sponsor" button at the top of this repository, next to Watch and Fork.
+# Docs: https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/displaying-a-sponsor-button-in-your-repository
+
+# GitHub Sponsors. Up to four usernames or organisations, as a list.
+github: SirReaDy
+
+# Other platforms GitHub understands, if you ever add one. Each takes a single
+# username unless noted; delete the line rather than leaving it empty.
+# patreon: username
+# open_collective: project
+# ko_fi: username
+# buy_me_a_coffee: username
+# liberapay: username
+# polar: username
+# thanks_dev: u/gh/username
+# tidelift: pypi/b3ng
+# custom: ["https://example.com/donate"]   # up to four URLs
