@@ -91,6 +91,5 @@ ALL: dict[str, GameProfile] = {
 __all__ = ["ALL", "ET", "ETPRO", "IOURT41", "IOURT42", "IOURT43", "OA081", "Q3", "Q3_TEAMS",
            "SMG", "SMG11", "SOF2", "SOF2PM", "WOP", "WOP15", "WORLD"]
 
-# Urban Terror's own lines now have a parser (b3.parsers.q3.urt). What is still shared-grammar-only
-# is tracked in TODO.md §1.3 and §1.4: UrT's `auth` identity service, and SoF2's gametype lines.
-# A server relying on those sees fewer events, never wrong ones.
+# Not implemented, and read with the shared grammar alone: UrT's `auth` identity service and SoF2's
+# gametype-specific lines. A server using either sees fewer events, never wrong ones.

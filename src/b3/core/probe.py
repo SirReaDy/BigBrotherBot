@@ -200,7 +200,10 @@ def _one_status_command(
         out.append("parsed 0 players.")
         rows = unparsed_rows(raw, profile.status_patterns)
         if rows:
-            out.append(f"  {len(rows)} row(s) look like players but match no pattern. THIS IS THE BUG:")
+            out.append(
+                f"  {len(rows)} row(s) look like players but match no known pattern. "
+                f"This is what needs a new status pattern:"
+            )
             out.extend(f"  ! {scrub(row)}" for row in rows)
         else:
             out.append("  and no row looked like a player, so the server is probably empty.")

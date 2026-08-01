@@ -142,7 +142,7 @@ DEFAULT_MESSAGES: dict[str, str] = {
     "plugin_disabled": "plugin '{name}' disabled",
     "plugin_already": "plugin '{name}' is already {state}",
     "plugin_info": "{name}: {state}{reason}, {commands} command(s)",
-    "plugin_protected": "'{name}' cannot be disabled from in-game — see TODO.md §4.4",
+    "plugin_protected": "'{name}' cannot be disabled from in-game: it provides this command",
     "warninfo": "{name} has {count} warning(s), latest: {reason}",
     "warninfo_none": "{name} has no active warnings",
     "warn_removed": "removed {name}'s latest warning ({reason})",

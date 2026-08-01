@@ -35,10 +35,10 @@ _BASE = GameProfile(
     ban_template="ban %(cid)s 0 %(reason)s",
     tempban_template="ban %(cid)s %(minutes)s %(reason)s",
     tempban_max_minutes=0,  # no engine ceiling
-    # BattlEye's `removeBan` takes a *ban list index*, not a player id, so an unban needs the list
-    # read first. Not expressible as a template — see TODO.md §2.4. None means the bot lifts the
-    # penalty in its own database (which is what stops enforcement) and says the server side needs
-    # doing by hand.
+    # BattlEye's `removeBan` takes a ban list index, not a player id, so an unban has to read the
+    # list first and cannot be expressed as a template; `BattleyeClient.remove_ban` does it instead.
+    # None here means the bot lifts the penalty in its own database, which is what stops
+    # enforcement.
     unban_template=None,
     # There is no log file: the RCON socket is the event stream (b3.net.battleye).
     status_commands=("players",),

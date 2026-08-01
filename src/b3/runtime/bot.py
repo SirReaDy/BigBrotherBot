@@ -488,8 +488,8 @@ class Bot:
         (twenty lines) used to stall the loop for seconds: the scheduler missed ticks and log lines
         queued up behind it. Nothing reads a `say` reply, so nothing needs to wait for one.
 
-        Falls back to a round trip on an RCON object with no `write` — the fakes in the test suite,
-        and any transport predating this. See TODO.md §1.7 for what is deliberately still blocking.
+        Falls back to a round trip on an RCON object with no `write`, which covers the fakes in the
+        test suite and any transport that does not implement one.
         """
         if self._rcon is None:
             log.debug("rcon (no transport): %s", cmd)
@@ -1064,9 +1064,9 @@ class Bot:
                     client.name,
                 )
                 return
-            # Our record is lifted either way, so the bot will not re-apply the ban — but the server
-            # keeps its own entry, and saying so is the whole point: silently doing half the job is
-            # how a player stays banned by a server nobody remembers banning them on.
+            # Our record is lifted either way, so the bot will not re-apply the ban, but the server
+            # keeps its own entry. Reporting that is what stops a player staying banned by a server
+            # ban nobody remembers making.
             log.warning(
                 "%s cannot lift a ban over rcon; %s is unbanned in b3 but may still be on the "
                 "server's own ban list — remove it there with the game's own tools",

@@ -283,8 +283,8 @@ class CodParser(Parser):
         Identity comes from the guid and slot only — deliberately not from the name column. The
         classic parser reused its generic chat pattern here, which lined the *team* field up with
         the name group and so renamed the player to "allies" on every objective. The trailing
-        fields are ignored: their layout differs per action and no captured sample of them exists
-        (see TODO.md §1.2), so this reports *that* the action happened, not its details.
+        fields are ignored: their layout differs per action and no captured sample of them exists,
+        so this reports that the action happened rather than its details.
         """
         action = self.profile.action_map.get(m["action"].lower())
         if action is None:

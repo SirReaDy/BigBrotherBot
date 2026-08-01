@@ -21,9 +21,9 @@ not a slot, so the name *is* the handle, and it goes in ``cid``. The EA GUID arr
 ``player.onAuthenticated``, and that is the join the rest of the bot acts on — before it there is no
 identity to match a ban against.
 
-Deliberately not ported: the PunkBuster message grammar (a dozen regexes over
-``punkBuster.onMessage`` text, which is really PunkBuster support rather than Frostbite support — see
-TODO.md §4.1), and the per-title scoreboard and squad plumbing that exists to serve `poweradmin*`.
+Not implemented: the PunkBuster message grammar (a dozen regexes over ``punkBuster.onMessage`` text,
+which belongs with PunkBuster support rather than here), and the per-title scoreboard and squad
+plumbing that exists to serve the `poweradmin` plugins.
 """
 
 from __future__ import annotations
@@ -277,9 +277,9 @@ class FbParser(Parser):
     def _on_punkbuster(self, words: Sequence[str]) -> Event | None:
         """``punkBuster.onMessage <text>``.
 
-        Passed through rather than parsed. PunkBuster's own message grammar is a dozen regexes and
-        belongs with PunkBuster support (TODO.md §4.1); this at least means a plugin can read it, and
-        that the messages are not silently discarded in the meantime.
+        Passed through rather than parsed: PunkBuster's message grammar is a dozen regexes and
+        belongs with PunkBuster support. Publishing the raw text means a plugin can read it and the
+        messages are not discarded.
         """
         return Event(EventType.CUSTOM, data=words[0] if words else "", extra={"kind": "punkbuster"})
 

@@ -1121,9 +1121,9 @@ class AdminPlugin(Plugin):
             return
 
         if action == "disable":
-            # Refusing to disable *this* plugin from in-game is not squeamishness: `!plugin` lives
-            # here, so switching it off would remove the only way to switch anything back on, and
-            # every moderation command with it. It stays a config-and-restart decision.
+            # `!plugin` lives in this plugin, so disabling it from in-game would remove the only
+            # way to enable anything again, along with every moderation command. Disabling it stays
+            # a config-and-restart decision.
             if plugin is self:
                 ctx.reply(self.message("plugin_protected", name=name))
                 return

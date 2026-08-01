@@ -76,7 +76,8 @@ NOT_SUPERUSER = "You must be a superuser to run this command."
 #: A frame's payload cannot plausibly be longer than this; past it the stream is out of step.
 MAX_PAYLOAD = 1_000_000
 #: Receives per pump, so a chatty server cannot hold the event loop. Bounded by reads rather than by
-#: the clock, for the reason recorded in TODO §2.4.
+#: the clock: a loop whose exit depends on time while its blocking depends on a socket never
+#: terminates against an injected clock, and is fragile in production too.
 MAX_PUMP = 32
 #: How long to wait for one command's reply before giving up on it.
 COMMAND_TIMEOUT = 2.0

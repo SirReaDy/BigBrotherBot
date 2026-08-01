@@ -14,8 +14,8 @@ is more useful than objectives:
   name, and a name full of colour codes is a poor key.
 * ``warmup:`` and ``restartgame:`` — the two round-boundary lines the classic parser mapped.
 
-Not ported, and tracked in TODO.md §1.4: ETPro's own ``Etpro:``/``Qmm:``/``PrivMsg`` lines, which
-serve an ETPro-specific admin mod rather than the bot.
+Not implemented: ETPro's ``Etpro:``/``Qmm:``/``PrivMsg`` lines, which serve an ETPro-specific admin
+mod rather than the bot.
 """
 
 from __future__ import annotations
@@ -55,7 +55,7 @@ class EtParser(Q3Parser):
 
         Attacker first, matching the kill line: id Tech 3 logs these as
         ``G_LogPrintf("...: %i %i %i", killer, victim, mod)``. The classic ``et.py`` read its kill
-        and gib lines the other way round, which inverted every ET kill — see TODO.md §1.4.
+        and gib lines victim-first, which inverted every ET kill.
         """
         attacker = self.clients.get_by_cid(m["acid"])
         victim = self.clients.get_by_cid(m["vcid"])

@@ -7,8 +7,8 @@ stream of server messages the game sends unprompted (chat, connects, disconnects
 So :class:`BattleyeClient` is deliberately *both* of the bot's input contracts at once — it satisfies
 ``RconClient`` (``command``/``write``/``close``) and ``LogSource`` (``open``/``read_lines``/``close``).
 Nothing in the runtime changes: the live loop keeps polling a log source, the admin commands keep
-sending RCON, and neither needs to know that this time they are the same socket. That answers the
-open design question for Frostbite too, which pushes events the same way — see TODO.md §2.1.
+sending RCON, and neither needs to know that this time they are the same socket. Frostbite, which
+pushes events the same way, reuses the pattern.
 
 **Single-threaded on purpose.** The classic implementation ran four threads (poll, read, write, plus
 the connection itself) with a lock and three queues, and its own comments record the trouble that

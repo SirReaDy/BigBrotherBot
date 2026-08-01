@@ -80,7 +80,7 @@ RECONNECTED_NOTICE = "RECONNECTED"
 MAX_PAYLOAD = 1_000_000
 #: How many receives one `read_lines` will make before returning, so a chatty server cannot hold the
 #: event loop. The clock is not the bound: a loop bounded by time and blocked by a socket is fragile
-#: even when it works (see TODO §2.4).
+#: even when it works, and never terminates against an injected clock.
 MAX_PUMP = 32
 
 
