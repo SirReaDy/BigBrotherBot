@@ -24,6 +24,19 @@ from b3.net.battleye import (
 )
 from tools.fakeservers.battleye import FakeBattleyeServer
 
+#: Socket budget for a round trip that is **expected to answer**. Deliberately far larger than a
+#: local round trip needs. The reply comes from a thread in this same process, so the wait is thread
+#: scheduling and the GIL rather than any network: normally under a millisecond, but with no upper
+#: bound on a loaded machine, which is what a CI runner sharing a core is. Nothing waits for this on
+#: the happy path, so a large value costs no test time at all.
+#:
+#: It is the wrong knob for anything asserting that a timeout *happens* -- use `NO_ANSWER` there.
+ROUND_TRIP = 5.0
+
+#: Socket budget where **timing out is the assertion**. Short on purpose, because the test pays this
+#: in real seconds every run.
+NO_ANSWER = 0.3
+
 
 @pytest.fixture
 def server():  # noqa: ANN201
@@ -34,7 +47,7 @@ def server():  # noqa: ANN201
 
 
 def _client(server, **kwargs):  # noqa: ANN001, ANN202
-    client = BattleyeClient(*server.address, "test", timeout=2.0, **kwargs)
+    client = BattleyeClient(*server.address, "test", timeout=ROUND_TRIP, **kwargs)
     client.open()
     return client
 
@@ -100,14 +113,14 @@ def test_a_successful_login(server):  # noqa: ANN001
 
 def test_a_rejected_password_says_so(server):  # noqa: ANN001
     """The distinction an operator actually needs: refused, not merely silent."""
-    client = BattleyeClient(*server.address, "wrong", timeout=1.0)
+    client = BattleyeClient(*server.address, "wrong", timeout=ROUND_TRIP)
     with pytest.raises(BattleyeAuthError):
         client.open()
     assert not client.connected
 
 
 def test_nothing_listening_times_out_instead():
-    client = BattleyeClient("127.0.0.1", 1, "test", timeout=0.3)
+    client = BattleyeClient("127.0.0.1", 1, "test", timeout=NO_ANSWER)
     with pytest.raises(BattleyeTimeout):
         client.open()
 
@@ -147,7 +160,7 @@ def test_a_reply_split_across_packets_is_reassembled(server):  # noqa: ANN001
 
 def test_a_command_with_no_answer_times_out(server):  # noqa: ANN001
     server.replies["silent"] = ""
-    client = BattleyeClient(*server.address, "test", timeout=0.4)
+    client = BattleyeClient(*server.address, "test", timeout=NO_ANSWER)
     client.open()
     try:
         # An empty reply is still a reply; make the server not answer at all instead.
@@ -196,7 +209,7 @@ def test_a_resent_message_is_not_acted_on_twice():
     """The consequence if it were: a chat line runs twice, and `!ban` with it."""
     fake = FakeBattleyeServer(password="test", resend_unacked_after=0.05).start()
     try:
-        client = BattleyeClient(*fake.address, "test", timeout=1.0)
+        client = BattleyeClient(*fake.address, "test", timeout=ROUND_TRIP)
         client.open()
         try:
             # Push, then let the server retransmit before the client has a chance to acknowledge.
@@ -244,7 +257,7 @@ def test_reading_returns_everything_since_last_time(server):  # noqa: ANN001
 def test_chat_is_paced_because_the_server_drops_a_burst(server):  # noqa: ANN001
     """An Arma server silently discards rapid `say`s. Queueing beats sleeping on the event loop."""
     clock = FakeClock(start=1000.0)
-    client = BattleyeClient(*server.address, "test", timeout=1.0, clock=clock, say_interval=0.8)
+    client = BattleyeClient(*server.address, "test", timeout=ROUND_TRIP, clock=clock, say_interval=0.8)
     client.open()
     try:
         client.write("say -1 line one")
@@ -269,7 +282,7 @@ def test_chat_is_paced_because_the_server_drops_a_burst(server):  # noqa: ANN001
 def test_a_command_flushes_queued_chat_first(server):  # noqa: ANN001
     """So "banning Bob" cannot arrive after the ban it announces."""
     clock = FakeClock(start=1000.0)
-    client = BattleyeClient(*server.address, "test", timeout=1.0, clock=clock)
+    client = BattleyeClient(*server.address, "test", timeout=ROUND_TRIP, clock=clock)
     client.open()
     try:
         client.write("say -1 banning Bob")
@@ -286,7 +299,7 @@ def test_a_command_flushes_queued_chat_first(server):  # noqa: ANN001
 def test_a_keepalive_goes_out_when_the_line_is_quiet(server):  # noqa: ANN001
     """BattlEye hangs up after about 45 seconds of silence."""
     clock = FakeClock(start=1000.0)
-    client = BattleyeClient(*server.address, "test", timeout=1.0, clock=clock, keepalive=25.0)
+    client = BattleyeClient(*server.address, "test", timeout=ROUND_TRIP, clock=clock, keepalive=25.0)
     client.open()
     try:
         client.read_lines()
@@ -327,7 +340,7 @@ def _drain(client, *, expect: int = 1, rounds: int = 20):  # noqa: ANN001, ANN20
 def test_silence_after_a_keepalive_is_treated_as_a_lost_connection(server):  # noqa: ANN001
     clock = FakeClock(start=1000.0)
     client = BattleyeClient(
-        *server.address, "test", timeout=0.3, clock=clock, keepalive=25.0, dead_after=90.0
+        *server.address, "test", timeout=NO_ANSWER, clock=clock, keepalive=25.0, dead_after=90.0
     )
     client.open()
     try:
@@ -347,8 +360,11 @@ def test_silence_after_a_keepalive_is_treated_as_a_lost_connection(server):  # n
 def test_a_quiet_server_with_nobody_on_it_is_not_a_lost_connection(server):  # noqa: ANN001
     """An empty Arma server says nothing for hours. That must not look like a fault."""
     clock = FakeClock(start=1000.0)
+    # ROUND_TRIP, not NO_ANSWER: past `dead_after` the client proves liveness with a real command,
+    # and this test is asserting that the command *answers*. A tight budget here made the test
+    # depend on how busy the machine was, which is not what it is about.
     client = BattleyeClient(
-        *server.address, "test", timeout=0.3, clock=clock, keepalive=25.0, dead_after=90.0
+        *server.address, "test", timeout=ROUND_TRIP, clock=clock, keepalive=25.0, dead_after=90.0
     )
     client.open()
     try:
@@ -368,7 +384,7 @@ def test_it_reconnects_and_keeps_working():
     fake = FakeBattleyeServer(password="test", resend_unacked_after=99).start()
     port = fake.address[1]
     clock = FakeClock(start=1000.0)
-    client = BattleyeClient(*fake.address, "test", timeout=0.3, clock=clock, retry_interval=5.0)
+    client = BattleyeClient(*fake.address, "test", timeout=ROUND_TRIP, clock=clock, retry_interval=5.0)
     client.open()
     try:
         fake.stop()
@@ -419,7 +435,7 @@ def test_reconnecting_is_backed_off_not_hammered():
 def test_a_rejected_password_on_reconnect_stops_hammering(server):  # noqa: ANN001
     """It will not fix itself, so back off to the ceiling and say so once, loudly."""
     clock = FakeClock(start=1000.0)
-    client = BattleyeClient(*server.address, "test", timeout=0.3, clock=clock, retry_max=300.0)
+    client = BattleyeClient(*server.address, "test", timeout=ROUND_TRIP, clock=clock, retry_max=300.0)
     client.open()
     try:
         server.accept_login = False
@@ -435,7 +451,7 @@ def test_a_rejected_password_on_reconnect_stops_hammering(server):  # noqa: ANN0
 def test_chat_queued_for_a_dead_session_is_discarded(server):  # noqa: ANN001
     """Sending it to the next session would announce something that happened before a restart."""
     clock = FakeClock(start=1000.0)
-    client = BattleyeClient(*server.address, "test", timeout=0.3, clock=clock)
+    client = BattleyeClient(*server.address, "test", timeout=ROUND_TRIP, clock=clock)
     client.open()
     try:
         client.write("say -1 first")  # goes out immediately

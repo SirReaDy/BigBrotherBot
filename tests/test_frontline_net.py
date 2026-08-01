@@ -34,6 +34,13 @@ from b3.net.frontline import (
 )
 from tools.fakeservers.frontline import FakeFrontlineServer, expected_response
 
+#: Socket budget for an exchange that is **expected to answer** (or to be refused by a hangup, which
+#: arrives just as promptly). The reply comes from a thread in this process, so the wait is thread
+#: scheduling rather than a network, and a tight budget only makes the test depend on how busy the
+#: machine is. Not for anything asserting that a *timeout* happens, and not for a read loop that
+#: expects silence, which pays this budget on every pass.
+ROUND_TRIP = 5.0
+
 COURGETTE = "1561500"
 
 
@@ -47,6 +54,9 @@ def server():
 def _client(fake: FakeFrontlineServer, **kwargs) -> FrontlineClient:
     kwargs.setdefault("ping_interval", 0.0)  # off unless a test is about it
     kwargs.setdefault("playerlist_interval", 0.0)
+    # Not ROUND_TRIP: most tests here read in a loop expecting silence, and every such pass waits
+    # out the whole budget, so raising it multiplies the file's runtime rather than making anything
+    # more robust. 0.4s is ample for a reply from a thread in this process.
     return FrontlineClient(fake.address[0], fake.address[1], "test", timeout=0.4, **kwargs)
 
 
@@ -122,7 +132,7 @@ def test_the_challenge_is_read_rather_than_assumed(server):
 def test_a_wrong_password_is_reported_as_a_refusal_and_not_as_a_network_fault(server):
     """This engine says nothing when it refuses: it hangs up. Reporting that as a connection problem
     would send an operator to check a firewall that is working perfectly."""
-    client = FrontlineClient(server.address[0], server.address[1], "wrong", timeout=0.4)
+    client = FrontlineClient(server.address[0], server.address[1], "wrong", timeout=ROUND_TRIP)
     with pytest.raises(FrontlineAuthError) as excinfo:
         client.open()
     assert "closed the connection" in str(excinfo.value)
@@ -131,7 +141,7 @@ def test_a_wrong_password_is_reported_as_a_refusal_and_not_as_a_network_fault(se
 
 def test_a_wrong_user_fails_the_same_way_which_is_why_doctor_mentions_both(server):
     client = FrontlineClient(
-        server.address[0], server.address[1], "test", user="root", timeout=0.4
+        server.address[0], server.address[1], "test", user="root", timeout=ROUND_TRIP
     )
     with pytest.raises(FrontlineAuthError):
         client.open()
