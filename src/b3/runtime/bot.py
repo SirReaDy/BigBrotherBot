@@ -902,6 +902,19 @@ class Bot:
     def _ask(self, cmd: str) -> str:
         return "" if self._rcon is None else self._rcon.command(cmd)
 
+    def send_rcon(self, command: str) -> str:
+        """Send an operator-written rcon line and return the reply — see `Console.send_rcon`.
+
+        Logged at info, unlike the verbs above: a command whose text came out of a config file is one
+        nobody here can validate, so the log is the only record of what was actually sent when it
+        turns out to have done something surprising.
+        """
+        text = command.strip()
+        if not text:
+            return ""
+        log.info("%s: sending operator-defined command %r", self.profile.name, text)
+        return self._ask(text)
+
     def get_players(self) -> list[PlayerInfo]:
         if self._rcon is None:
             return []

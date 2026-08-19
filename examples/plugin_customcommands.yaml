@@ -1,0 +1,60 @@
+# customcommands — commands you define here, without writing a plugin.
+#
+# Point at it from the main config:
+#
+#   plugins:
+#     - name: customcommands
+#       config: "@conf/plugin_customcommands.yaml"
+#
+# Each entry is `name: the rcon line to send`, grouped by the level needed to use it. The group is a
+# keyword (guest user reg mod admin fulladmin senioradmin superadmin) or a number 0-100.
+#
+# A command name must start with a letter, be at least two characters, and not already exist — a
+# collision is refused at startup with the name of the plugin that owns it, rather than one command
+# quietly shadowing another.
+#
+# Placeholders. A command takes at most **one** argument (the text after its name), so at most one of
+# the `<ARG...>` forms may appear:
+#
+#   <ARG>                          required; whatever the player typed
+#   <ARG:OPT:something>            optional; `something` when they typed nothing
+#   <ARG:FIND_PLAYER:PID>          required; a player, resolved as everywhere else, as their slot id
+#   <ARG:FIND_PLAYER:GUID|PBID|NAME|B3ID>   ...or their guid, PunkBuster id, name, or @database-id
+#   <ARG:FIND_MAP>                 required; a map, matched against the rotation
+#
+# And, needing no argument:
+#
+#   <PLAYER:PID|GUID|PBID|NAME|B3ID>              whoever typed the command
+#   <PLAYER:ADMINGROUP_SHORT|ADMINGROUP_LONG|ADMINGROUP_LEVEL>
+#   <LAST_KILLER:...>              the last player to kill them (same fields)
+#   <LAST_VICTIM:...>              the last player they killed
+#
+# Anything else shaped like a placeholder is refused when the command is loaded, because the classic
+# bot's habit of sending an unrecognised one to the server as literal text produced a command that
+# looked configured and did nothing at all.
+#
+# Everything substituted is sanitised before it reaches the command line, so a player named
+# `bob"; quit` cannot turn somebody else's command into two.
+
+commands:
+  guest:
+    # No argument at all: just a line of rcon.
+    teams: "say red versus blue"
+    # An optional argument with a default.
+    greet: "say hello <ARG:OPT:everyone>"
+
+  mod:
+    # A player, by slot: works on the engines whose verbs take one.
+    slap: "slap <ARG:FIND_PLAYER:PID>"
+
+  admin:
+    # The map an admin typed, matched against the rotation first.
+    warpto: "map <ARG:FIND_MAP>"
+
+# Optional: what `!help <command>` says about each of them. Without an entry the help line is just the
+# command and the argument it takes.
+help:
+  teams: "remind everybody which teams exist"
+  greet: "say hello to somebody, or to the server"
+  slap: "slap a player about"
+  warpto: "load a map right now"

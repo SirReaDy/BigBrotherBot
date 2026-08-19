@@ -104,6 +104,21 @@ class Console(Protocol):
     def get_cvar(self, name: str) -> str | None: ...
     def set_cvar(self, name: str, value: str) -> None: ...
 
+    def send_rcon(self, command: str) -> str:
+        """Send a command **an operator wrote** to the game server, and return its reply.
+
+        Deliberately the last thing on this port, and deliberately narrow in what it is for: the
+        engine-specific verbs a plugin needs are already here as `kick`, `ban`, `change_map` and the
+        rest, and a plugin reaching for raw rcon instead of those is a plugin that will only work on
+        one game. This exists for `customcommands`, whose entire purpose is to run a line of rcon the
+        *operator* typed into their own config file — which nothing else can express.
+
+        The caller is responsible for what it puts in the string. Anything a **player** supplied has
+        to go through `b3.core.util.sanitize_rcon_value` first, or a name containing a quote or a
+        semicolon becomes a second command.
+        """
+        ...
+
     def say_dead(self, text: str) -> None:
         """Say something only the players waiting to respawn will see.
 

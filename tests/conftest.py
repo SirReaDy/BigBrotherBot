@@ -131,6 +131,9 @@ class FakeConsole:
         #: every engine here; a test for the two that take more replaces it with their profile.
         self.map_profile = GameProfile(name="fake")
         self.rotations = 0
+        #: Operator-defined rcon lines sent through `send_rcon`, and canned replies for them.
+        self.rcon_sent: list[str] = []
+        self.rcon_replies: dict[str, str] = {}
         self.kicked: list[tuple[Client, str, Client | None]] = []
         self.banned: list[tuple[Client, str, Client | None]] = []
         self.tempbanned: list[tuple[Client, int, str, Client | None]] = []
@@ -206,6 +209,10 @@ class FakeConsole:
     def request_screenshot(self, client: Client) -> bool:
         self.screenshots.append(client)
         return self.punkbuster
+
+    def send_rcon(self, command: str) -> str:
+        self.rcon_sent.append(command)
+        return self.rcon_replies.get(command, "")
 
     def rotate_map(self) -> None:
         self.rotations += 1

@@ -20,6 +20,7 @@ list, each with an optional config of its own (see `examples/`):
 | `afk` | asks players who look absent whether they are, and removes the silent ones | — |
 | `banlist` | applies ban lists from a file or a URL, with whitelists that win | `!banlistinfo` `!banlistupdate` `!banlistcheck` |
 | `cmdmanager` | command levels, aliases and per-player grants, at runtime | `!cmdlevel` `!cmdalias` `!cmdgrant` `!cmdrevoke` `!cmduse` |
+| `customcommands` | commands you define in config, sending rcon lines of your own | whatever you name |
 
 ### tk — team damage
 
@@ -118,6 +119,21 @@ plugin's own tables, so it survives a restart *and* leaves your config files alo
 the new level back into the owning plugin's `.ini`, comments and all. Overrides are re-applied when a
 plugin is enabled again, which would otherwise reset its commands to the levels in their code.
 Config: `examples/plugin_cmdmanager.yaml` (documentation only — there is nothing to set).
+
+### customcommands — your own commands, from config
+
+Write a name, a level and the rcon line to send, and the bot registers a command like any other. The
+line may carry placeholders: `<ARG>` (or `<ARG:OPT:default>`) for what the player typed,
+`<ARG:FIND_PLAYER:PID>` for a player resolved the way every other command resolves one — also
+`GUID`, `PBID`, `NAME`, `B3ID` — `<ARG:FIND_MAP>` for a map matched against the rotation, and
+`<PLAYER:...>`, `<LAST_KILLER:...>`, `<LAST_VICTIM:...>` for the caller, whoever last killed them and
+whoever they last killed. One argument per command, since that is all a command has.
+
+**Everything substituted is sanitised.** The classic pasted a player's name into the rcon line
+untouched, so a player called `bob"; quit` could turn an admin's `!slap` into two commands. A
+placeholder this bot does not recognise is also refused when the command is *loaded* rather than sent
+to the server as literal text — the classic's version of that was a command which looked configured
+and did nothing on every use. Config: `examples/plugin_customcommands.yaml`.
 
 Anything else is a git install — see [Plugins](cli.md#plugins) and
 [Writing an installable plugin](#writing-an-installable-plugin).
