@@ -21,9 +21,10 @@ it is just a challenge nobody answers. Both paths here send, and re-send with, w
 they are given.
 
 **Replies can be split across datagrams** (a long ``A2S_RULES`` almost always is), and a split reply
-may additionally be bzip2-compressed. Reassembly is implemented; compression is *detected and
-reported* rather than guessed at, because a mangled cvar table is worse than a missing one and no
-server seen here compresses.
+may additionally be bzip2-compressed. Both are handled. The compressed case is checked rather than
+trusted: the fragment header states the decompressed length and its CRC32, so a reply that comes out
+wrong is refused instead of reported. That check is what makes decompressing safe to do at all — the
+worry was never bzip2, it was serving a mangled cvar table as though it were the server's answer.
 """
 
 from __future__ import annotations
@@ -33,6 +34,7 @@ import logging
 import socket
 import struct
 import time
+import zlib
 from dataclasses import dataclass, field
 
 log = logging.getLogger(__name__)
@@ -183,6 +185,12 @@ class PlayerEntry:
 class _Fragment:
     total: int = 0
     compressed: bool = False
+    #: Length and CRC32 of the decompressed payload, stated in the first fragment's header. They are
+    #: what makes decompression safe to act on: a reply that comes out wrong is *detectable*, so the
+    #: choice is between the right answer and no answer rather than between an answer and a
+    #: plausible-looking mangled one.
+    size: int = 0
+    crc: int = 0
     parts: dict[int, bytes] = field(default_factory=dict)
 
 
@@ -383,34 +391,68 @@ class A2SClient:
                 fragment_id = this_id
                 # The top bit of the id says the payload is bzip2-compressed.
                 fragment = _Fragment(total=total, compressed=bool(this_id & 0x8000_0000))
-                if fragment.compressed:
-                    reader.long()  # decompressed size
-                    reader.long()  # crc32
             elif this_id != fragment_id:
                 raise A2SError("fragments from two different replies arrived together")
+            # The decompressed size and checksum ride on **fragment zero only**, not on whichever
+            # fragment happens to arrive first. Reading them off the first one seen works right up
+            # until a datagram overtakes another — at which point two payload words are eaten as a
+            # header and the reply is quietly corrupt, which is the failure this whole check exists
+            # to prevent.
+            if fragment.compressed and number == 0:
+                fragment.size = reader.long()
+                # Signed on the wire; a CRC32 is not. Without the mask a checksum with its top bit
+                # set arrives negative and never matches, so every compressed reply would be rejected
+                # as corrupt — the same signedness mistake the A2S_INFO fields carried.
+                fragment.crc = reader.long() & 0xFFFF_FFFF
             fragment.parts[number] = reader.rest()
 
             if len(fragment.parts) == fragment.total:
                 joined = b"".join(fragment.parts[i] for i in sorted(fragment.parts))
                 if fragment.compressed:
-                    raise A2SCompressedError(
-                        f"{self.host}:{self.port} sent a bzip2-compressed reply, which is "
-                        "reassembled here but not decompressed; report this with the game and "
-                        "version so it can be verified against a real server"
-                    )
+                    joined = self._decompress(fragment, joined)
                 whole = _Reader(joined)
                 if whole.long() != WHOLE:
                     raise A2SError("reassembled reply does not start with a whole-packet header")
                 return whole
         raise A2SError(f"{self.host}:{self.port} never completed a split reply")
 
+    def _decompress(self, fragment: _Fragment, payload: bytes) -> bytes:
+        """Unpack a bzip2 reply, and refuse it unless it comes out exactly as the server said.
+
+        The header states the decompressed length and its CRC32, so both are checked. That is what
+        changed the answer here: the original objection to decompressing was that a mangled cvar
+        table is worse than a missing one — true, and no longer a risk, because a mangled one cannot
+        pass a checksum. What is left is a straight choice between the right answer and no answer.
+
+        Rare in practice: a server only compresses when the reply is long, which in this bot means a
+        big `A2S_RULES`. None seen here has done it, which is why this stayed unwired for so long.
+        """
+        try:
+            plain = decompress(payload)
+        except OSError as exc:
+            raise A2SCompressedError(
+                f"{self.host}:{self.port} sent a bzip2 reply that will not decompress: {exc}"
+            ) from exc
+        if fragment.size and len(plain) != fragment.size:
+            raise A2SCompressedError(
+                f"{self.host}:{self.port} sent a bzip2 reply that unpacked to {len(plain)} bytes "
+                f"where its header said {fragment.size}"
+            )
+        actual = zlib.crc32(plain) & 0xFFFF_FFFF
+        if fragment.crc and actual != fragment.crc:
+            raise A2SCompressedError(
+                f"{self.host}:{self.port} sent a bzip2 reply whose checksum does not match "
+                f"({actual:#010x} against the stated {fragment.crc:#010x}); discarding it rather "
+                "than reporting what it appears to say"
+            )
+        return plain
+
 
 def decompress(payload: bytes) -> bytes:
     """Decompress a bzip2 A2S payload.
 
-    Kept out of :meth:`A2SClient._receive` on purpose: no server observed here compresses its
-    replies, so calling this on a live reply has never been verified. It exists so that when one
-    does turn up, the fix is to call it rather than to work out the format.
+    Called by :meth:`A2SClient._decompress`, which checks the result against the length and CRC32 the
+    server states in the fragment header before letting any of it be believed.
     """
     return bz2.decompress(payload)
 

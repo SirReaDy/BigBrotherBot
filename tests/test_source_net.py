@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import pytest
 
-from b3.net.a2s import A2SClient, A2SError
+from b3.net.a2s import A2SClient, A2SCompressedError, A2SError
 from b3.net.source import (
     AUTH_FAILED_ID,
     MAX_COMMAND_LENGTH,
@@ -316,6 +316,73 @@ def test_a2s_rules_reads_the_public_cvars(server):
 
     assert rules["sm_nextmap"] == "district"
     assert rules["tv_password"] == ""
+
+
+# -- split and compressed replies ----------------------------------------------------
+#
+# A real server splits any reply that will not fit in a datagram, and bzip2s it when it is long
+# enough to be worth it — which for a busy server's `A2S_RULES` is the normal case, not the exotic
+# one. Neither path had ever run: the fake only sent whole replies, so reassembly was implemented
+# and unexercised, and compression was detected and refused. Both are checked here against a fake
+# that actually does it.
+
+
+def test_a_split_reply_is_reassembled(server):
+    server.a2s_fragment = 40  # small enough that the rules table needs several packets
+
+    rules = A2SClient(*server.address, timeout=2.0).rules()
+
+    assert rules["sm_nextmap"] == "district"
+    assert rules["tv_password"] == ""
+
+
+def test_a_compressed_reply_is_decompressed(server):
+    """§2.2's open item. `decompress` existed and was deliberately never called."""
+    server.a2s_fragment = 40
+    server.a2s_compress = True
+
+    rules = A2SClient(*server.address, timeout=2.0).rules()
+
+    assert rules["sm_nextmap"] == "district"
+
+
+def test_a_compressed_reply_whose_checksum_is_wrong_is_refused(server, monkeypatch):
+    """The reason this was left unwired: a mangled cvar table is worse than a missing one. It is not
+    a risk any more, because a mangled one cannot pass the CRC32 the server states — so the choice is
+    between the right answer and no answer, which is a choice worth making."""
+    server.a2s_fragment = 40
+    server.a2s_compress = True
+
+    import bz2
+
+    import b3.net.a2s as a2s_module
+
+    def corrupt(payload: bytes) -> bytes:
+        # Decompression "succeeds" and hands back the right *number* of bytes with one of them
+        # wrong. That is the case worth testing: a length check alone would pass it.
+        plain = bytearray(bz2.decompress(payload))
+        plain[-1] ^= 0xFF
+        return bytes(plain)
+
+    monkeypatch.setattr(a2s_module, "decompress", corrupt)
+
+    with pytest.raises(A2SCompressedError, match="checksum"):
+        A2SClient(*server.address, timeout=2.0).rules()
+
+
+def test_a_compressed_reply_that_will_not_unpack_is_reported_as_such(server, monkeypatch):
+    server.a2s_fragment = 40
+    server.a2s_compress = True
+
+    import b3.net.a2s as a2s_module
+
+    def explode(payload: bytes) -> bytes:
+        raise OSError("Invalid data stream")
+
+    monkeypatch.setattr(a2s_module, "decompress", explode)
+
+    with pytest.raises(A2SCompressedError, match="will not decompress"):
+        A2SClient(*server.address, timeout=2.0).rules()
 
 
 def test_a_server_that_is_not_there_is_reported_rather_than_hanging():

@@ -25,11 +25,13 @@ Two things here exist to prove the client rather than to be convenient:
 from __future__ import annotations
 
 import argparse
+import bz2
 import random
 import socket
 import struct
 import threading
 import time
+import zlib
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -59,6 +61,8 @@ A2S_RULES_REQUEST = ord("V")
 A2S_INFO_REPLY = 0x49
 A2S_PLAYER_REPLY = 0x44
 A2S_RULES_REPLY = 0x45
+#: First four bytes of a fragment, against -1 for a reply that fits in one datagram.
+SPLIT = -2
 S2C_CHALLENGE_REPLY = 0x41
 
 
@@ -90,6 +94,15 @@ class FakeSourceServer:
         #: With this off, ``sm version`` answers as a stock server does — which is what the bot has to
         #: refuse to run against, since every reply and the whole of `!ban` go through SourceMod.
         self.sourcemod = sourcemod
+        #: What ``sm plugins list`` reports. Add "B3 Say" to model a server whose admin installed the
+        #: plugin the classic bot's better chat verbs come from — see `GameProfile.optional_mods`.
+        self.sm_plugins: list[str] = ["Admin File Reader", "Basic Commands"]
+        #: Split A2S replies into fragments this many bytes long. 0 = send them whole. A real server
+        #: splits whenever the answer will not fit in a datagram, which for `A2S_RULES` is usual.
+        self.a2s_fragment = 0
+        #: bzip2 a split A2S reply, as a real server does when it is long enough to be worth it.
+        #: Only meaningful with `a2s_fragment` set — compression is a property of a split reply.
+        self.a2s_compress = False
         #: A2S: answer the first request with a challenge, as every current build does.
         self.require_challenge = require_challenge
 
@@ -322,6 +335,14 @@ class FakeSourceServer:
 
         if command.strip() == "sm version":
             return SM_VERSION if self.sourcemod else 'Unknown command "sm"\n'
+        if command.strip() == "sm plugins list":
+            if not self.sourcemod:
+                return 'Unknown command "sm"\n'
+            rows = "".join(
+                f'{i:02d} "{name}" (1.0.0) by Courgette\n'
+                for i, name in enumerate(self.sm_plugins, start=1)
+            )
+            return f"  Listing {len(self.sm_plugins)} plugins:\n{rows}"
         if verb == "status":
             return self._status()
         if command.strip() == "maps *":
@@ -447,11 +468,48 @@ class FakeSourceServer:
             except OSError:
                 return
             reply = self._answer_query(datagram)
-            if reply is not None:
+            if reply is None:
+                continue
+            for packet in self._split_query_reply(reply):
                 try:
-                    self._udp.sendto(reply, addr)
+                    self._udp.sendto(packet, addr)
                 except OSError:
                     pass
+
+    def _split_query_reply(self, reply: bytes) -> list[bytes]:
+        """Break a query reply into fragments, and bzip2 it, when the test asked for that.
+
+        A real server does this whenever the answer will not fit in one datagram, which for a busy
+        server's `A2S_RULES` is always. Modelled here rather than assumed away because a fake that
+        only ever sends whole replies cannot tell working reassembly from reassembly that has never
+        run — and the compressed path in particular sat unexercised for exactly that reason.
+
+        The layout is Valve's: ``-2``, the reply id with its top bit set when compressed, the total
+        number of fragments, this fragment's number, its size — and then, **on fragment zero only**,
+        the decompressed length and CRC32.
+        """
+        # A reply that already fits goes whole, which is what a real server does — and it matters
+        # here: the challenge packet is nine bytes, and splitting *that* would exercise reassembly
+        # on the handshake instead of on the long answer the setting is meant to be about.
+        if not self.a2s_fragment or len(reply) <= self.a2s_fragment:
+            return [reply]
+        # What gets reassembled is the whole reply, `-1` header and all: the client checks for that
+        # header once the pieces are back together, which is how it knows reassembly worked.
+        body = reply
+        reply_id = 0x1234
+        extra = b""
+        if self.a2s_compress:
+            body = bz2.compress(reply)
+            reply_id |= 0x8000_0000
+            extra = struct.pack("<II", len(reply), zlib.crc32(reply) & 0xFFFF_FFFF)
+
+        size = self.a2s_fragment
+        chunks = [body[i : i + size] for i in range(0, len(body), size)] or [b""]
+        packets: list[bytes] = []
+        for number, chunk in enumerate(chunks):
+            head = struct.pack("<iIBBH", SPLIT, reply_id, len(chunks), number, size)
+            packets.append(head + (extra if number == 0 else b"") + chunk)
+        return packets
 
     def _answer_query(self, datagram: bytes) -> bytes | None:
         if len(datagram) < 5 or datagram[:4] != b"\xff\xff\xff\xff":
