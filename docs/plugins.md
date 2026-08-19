@@ -41,7 +41,8 @@ from b3.core.commands import CommandContext, command
 from b3.core.events import EventType
 from b3.core.plugin import Plugin
 
-MESSAGES = {"chatlog_empty": "no chat recorded yet"}   # operators can reword these
+MESSAGES = {"chatlog_empty": "no chat recorded yet"}  # operators can reword these
+
 
 class ChatLoggerPlugin(Plugin):
     requires_plugins = ("admin",)
@@ -50,10 +51,10 @@ class ChatLoggerPlugin(Plugin):
         self.log_chat = (self.config or {}).get("general", {}).get("log_chat", True)
 
     def on_startup(self):
-        self.register_messages(MESSAGES)                    # your text, still customisable
-        Base.metadata.create_all(self.storage_engine())     # your own tables
+        self.register_messages(MESSAGES)  # your text, still customisable
+        Base.metadata.create_all(self.storage_engine())  # your own tables
         self.subscribe(EventType.CLIENT_SAY, self.on_chat)  # gated on the plugin being enabled
-        self.schedule(self.prune, hour=4)                   # cron work, torn down on unload
+        self.schedule(self.prune, hour=4)  # cron work, torn down on unload
 
     @command(level=20, alias="cl")
     def cmd_chatlog(self, ctx: CommandContext):

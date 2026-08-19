@@ -110,7 +110,7 @@ Plugins run timed work through the core scheduler — the classic bot's `PluginC
 ```python
 class MyPlugin(Plugin):
     def on_startup(self) -> None:
-        self.schedule(self.announce, second=0, minute="*/15")   # every 15 minutes
+        self.schedule(self.announce, second=0, minute="*/15")  # every 15 minutes
         self.schedule(self.nightly, second=0, minute=0, hour=4)  # 04:00 in bot.time_zone
 ```
 
