@@ -60,6 +60,23 @@ def _client(fake: FakeFrontlineServer, **kwargs) -> FrontlineClient:
     return FrontlineClient(fake.address[0], fake.address[1], "test", timeout=0.4, **kwargs)
 
 
+def _wait_for_line(fake: FakeFrontlineServer, client: FrontlineClient, wanted: str) -> bool:
+    """Wait for a line containing ``wanted``, keeping the lines already read.
+
+    `read_lines` **consumes** what it returns, so a predicate that calls it directly throws away
+    every line that is not the one it is looking for — and the line it wants may well have been in
+    the same read as one it discarded. Accumulating is the difference between a test that waits and a
+    test that waits and then fails for three seconds.
+    """
+    seen: list[str] = []
+
+    def arrived() -> bool:
+        seen.extend(client.read_lines())
+        return any(wanted in line for line in seen)
+
+    return bool(fake.wait_for(arrived))
+
+
 # -- the codec ----------------------------------------------------------------------------------
 
 
@@ -191,7 +208,7 @@ def test_chat_really_is_silent_until_then(server):
     client.open()
     try:
         server.say_as("Courgette", "hello")
-        assert server.wait_for(lambda: any("CHAT:" in line for line in client.read_lines()))
+        assert _wait_for_line(server, client, "CHAT:")
     finally:
         client.close()
 
@@ -204,7 +221,7 @@ def test_pushed_lines_come_out_as_lines(server):
     client.open()
     try:
         server.push("DEBUG: ScriptLog: hello")
-        assert server.wait_for(lambda: any("ScriptLog" in line for line in client.read_lines()))
+        assert _wait_for_line(server, client, "ScriptLog")
     finally:
         client.close()
 
