@@ -18,6 +18,7 @@ list, each with an optional config of its own (see `examples/`):
 | `stats` | kills, deaths, damage, a relative skill score and XP, per session | `!mapstats` `!stats` `!testscore` `!topstats` `!topxp` |
 | `welcome` | greets arrivals with their history, and announces their own greeting | `!greeting [text\|none]` |
 | `afk` | asks players who look absent whether they are, and removes the silent ones | — |
+| `banlist` | applies ban lists from a file or a URL, with whitelists that win | `!banlistinfo` `!banlistupdate` `!banlistcheck` |
 
 ### tk — team damage
 
@@ -85,6 +86,23 @@ fresh join, a map change and a bot restart safe without a special case for each.
 clears every record, so the slowest computer on the server is not the first thing this kicks. And no
 kick ever takes the server below `min_ingame_humans` playing people, re-counted at the moment it is
 due. Config: `examples/plugin_afk.yaml`.
+
+### banlist — somebody else's ban list
+
+Communities share ban lists, and this honours one without your admins retyping it. Four kinds: `ip`
+(with the published `.0` range convention — an entry ending `.0` covers the last octet, `.0.0` two,
+`.0.0.0` three), `guid`, `pbid` (a PunkBuster id, which is a different thing from a guid) and `roc`
+("Rules of Combat" files). A list can be a local file, a URL cached into one, or both; URLs refresh
+hourly with conditional requests, so a list nobody changed costs one round trip and no bytes.
+
+Whitelists are checked first and win outright — that is the promise worth having, because it means a
+list you do not control can never remove one of your own regulars. A player at or above
+`immunity_level` gets an admin note rather than a kick.
+
+Lists are checked at authentication **and when a player's address turns up**, which on the Call of Duty
+and Quake 3 engines is not the same moment: their log lines carry no IP, and the status poll resolves
+one seconds later. An IP list checked only at auth matches nobody at all on those titles.
+Config: `examples/plugin_banlist.yaml`.
 
 Anything else is a git install — see [Plugins](cli.md#plugins) and
 [Writing an installable plugin](#writing-an-installable-plugin).

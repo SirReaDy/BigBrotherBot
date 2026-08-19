@@ -1314,6 +1314,12 @@ class Bot:
                 if client.id is not None:
                     self.storage.save_client(client)
                     self._record_history(client)
+                # Said out loud, because on these engines this is where an address comes from: the
+                # log line that authenticates a player carries no IP at all. A plugin that acts on
+                # one — `banlist` is the case — would otherwise only ever see the addresses that
+                # arrive through the auth-resolution poll, and miss every player already on the
+                # server when the bot started.
+                self.bus.publish_soon(Event(EventType.CLIENT_UPDATE, client=client))
 
         for client in self.clients.connected():
             if client.cid is not None and client.cid not in live:

@@ -1,0 +1,52 @@
+# banlist — applies ban lists somebody else maintains, from a file or a URL.
+#
+# Point at it from the main config:
+#
+#   plugins:
+#     - name: banlist
+#       config: "@conf/plugin_banlist.yaml"
+#
+# On authentication — and again the moment a player's address becomes known, which on the Call of Duty
+# and Quake 3 engines is *not* at authentication — each list is looked up. A match is a kick naming the
+# list. Whitelists are checked first and win outright, so a list maintained by somebody else can never
+# remove one of your own regulars.
+
+settings:
+  # At or above this level a match becomes an admin note instead of a kick: somebody trusted turning up
+  # on a shared list is worth knowing about, not worth removing.
+  immunity_level: 100
+
+  # Refresh every list that has a url, once an hour (at a minute derived from `bot.name`, so a hundred
+  # servers honouring the same list do not all fetch it in the same second). Conditional requests, so
+  # a list nobody has changed costs one round trip and no bytes.
+  auto_update: true
+
+# The lists. Each needs a `kind` and at least one of `file` / `url`; with both, the url is fetched and
+# cached into the file. Paths accept the @b3 / @conf / @home tokens.
+#
+#   kind: ip    one address per line. An entry ending `.0` covers the last octet, `.0.0` two octets,
+#               `.0.0.0` three — the convention the published lists use. Anything after the address on
+#               the line (a port, a nickname, a reason) is ignored, and //, #, ; and -- are comments.
+#   kind: guid  the engine's own player id, one per line.
+#   kind: pbid  a PunkBuster id — a different thing from a guid, so a pbid list is looked up against
+#               the pbid only. Needs a title that runs PunkBuster.
+#   kind: roc   "Rules of Combat": an XML-ish file whose entries are BannedID="...".
+#
+# Optional per list:
+#   name: what the kick reason and !banlistinfo call it (defaults to the file or url)
+#   whitelist: true — a match means "leave this player alone", and stops the search
+#   force_ip_range: true — treat *every* ip entry as its /24, not only entries ending in .0
+lists:
+  - name: our regulars
+    kind: ip
+    whitelist: true
+    file: "@conf/whitelist_ips.txt"
+
+  - name: community banlist
+    kind: guid
+    file: "@conf/banlist_guids.txt"
+    url: https://example.com/banlist.txt
+
+  - name: punkbuster bans
+    kind: pbid
+    file: "@conf/banlist_pbids.txt"
