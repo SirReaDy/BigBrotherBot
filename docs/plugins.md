@@ -16,6 +16,7 @@ list, each with an optional config of its own (see `examples/`):
 | `pingwatch` | removes players whose connection is spoiling the game | `!ci <player>` |
 | `tk` | team damage points, forgiving, and a ban for whoever will not stop | `!forgive` `!fp` `!forgiveall` `!forgivelist` `!forgiveinfo` `!forgiveclear` `!grudge` |
 | `stats` | kills, deaths, damage, a relative skill score and XP, per session | `!mapstats` `!stats` `!testscore` `!topstats` `!topxp` |
+| `welcome` | greets arrivals with their history, and announces their own greeting | `!greeting [text\|none]` |
 
 ### tk — team damage
 
@@ -49,6 +50,24 @@ read. Set `show_awards` to announce them at the end of each map.
 Nothing is stored: these are figures about the session, and a player who reconnects starts again.
 Lasting statistics were the classic bot's `xlrstats`, which is a project of its own rather than a
 plugin. Config: `examples/plugin_stats.yaml`.
+
+### welcome — the first thing a new player sees
+
+Three messages sent privately — first visit, returning-and-unregistered, returning-and-registered —
+and two announced to the server, thirty seconds after the player connects so the greeting lands after
+the map has loaded. It matters more than it sounds: the first-visit message is where a new player
+learns the server has a bot at all, and the returning one is where an unregistered player is told
+about `!register`. A player past `newb_connections` visits is greeted privately but no longer
+announced, and nobody is greeted twice inside `min_gap`.
+
+Nothing is said for the first five minutes after the bot starts, because a bot restarted mid-match
+authenticates the whole server at once. Somebody who leaves before their greeting is due does not get
+one — nor does the next player to take their slot.
+
+`!greeting <text>` (mod by default) sets a line announced when its owner joins; it may use `{name}`,
+`{group}`, `{level}` and `{connections}`, and a placeholder that does not exist is refused when it is
+typed rather than failing later in front of the server. `!greeting none` clears it. Wording for every
+message lives in the main config's `messages:` section. Config: `examples/plugin_welcome.yaml`.
 
 Anything else is a git install — see [Plugins](cli.md#plugins) and
 [Writing an installable plugin](#writing-an-installable-plugin).

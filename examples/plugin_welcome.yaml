@@ -1,0 +1,42 @@
+# welcome — greets players as they arrive, with what the database already knows about them.
+#
+# Point at it from the main config:
+#
+#   plugins:
+#     - name: welcome
+#       config: "@conf/plugin_welcome.yaml"
+#
+# The wording of every message is in the main config's `messages:` section, like all the bot's text.
+# The keys are `welcome_first`, `welcome_newb`, `welcome_user`, `announce_first`, `announce_user` and
+# `greeting_announce`; the fields available in them are {name} {id} {group} {level} {connections}
+# {last_visit}.
+
+settings:
+  # Which of them to send. The three `welcome_*` go privately to the player, the two `announce_*` to
+  # the whole server, and `show_greeting` says the player's own line if they have set one.
+  welcome_first: true    # somebody's first ever visit
+  welcome_newb: true     # returning, and has not registered — this is where !register is advertised
+  welcome_user: true     # returning, and has
+  announce_first: true
+  announce_user: true
+  show_greeting: true
+
+  # Above this many visits a returning player is no longer announced to everybody: a regular does not
+  # need introducing every time they connect.
+  newb_connections: 15
+
+  # Seconds after connecting before the greeting goes out, so it lands after the map has loaded
+  # rather than during it. Must be between 15 and 90 — outside that it is ignored with a warning.
+  delay: 30
+
+  # Do not greet the same player again within this many seconds. Somebody who drops and reconnects
+  # has just read it. 0 greets them every time.
+  min_gap: 3600
+
+  # Say nothing for this long after the bot starts. A bot restarted mid-match authenticates the whole
+  # server at once, and greeting everybody is a wall of text that teaches nobody anything.
+  startup_silence: 300
+
+  # Level for `!greeting`. Mod by default, as the classic had it: a greeting is announced to
+  # everybody, so it should not be the first thing a new arrival can write.
+  greeting_level: 20

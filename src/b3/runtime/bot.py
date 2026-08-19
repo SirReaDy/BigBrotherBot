@@ -700,6 +700,9 @@ class Bot:
                 client.password = record.password
                 client.login = record.login
                 client.connections = record.connections + 1
+                # Read before the save below, which sets `time_edit` to now: this is the only moment
+                # "when were they last here" still exists. See `Client.last_visit`.
+                client.last_visit = record.time_edit
             else:
                 client.connections = 1
             self.storage.save_client(client)

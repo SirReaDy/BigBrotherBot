@@ -95,6 +95,11 @@ class Client:
 
     # --- transient runtime state (never persisted) ------------------------
     cid: str | None = None  # in-game slot id
+    #: When this player was last here, as an epoch — 0 for somebody the database has never seen.
+    #: Captured at authentication and not derived later, because `time_edit` on the row *is* "last
+    #: seen" and saving the session overwrites it with now: after the save there is nothing left to
+    #: read. The classic bot's `Client.lastVisit`, and `welcome` is what wants it.
+    last_visit: int = 0
     authed: bool = False
     rejected: bool = False  # a ban was re-applied on auth; do not serve this client
     # The server reported a name longer than the protocol allows (see GameProfile.name_max_length).
