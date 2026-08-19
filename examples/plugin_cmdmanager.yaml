@@ -1,0 +1,30 @@
+# cmdmanager — change what a command is called and who may run it, without restarting.
+#
+# Point at it from the main config:
+#
+#   plugins:
+#     - name: cmdmanager
+#
+# There is nothing to configure: what this plugin does is set at runtime, by an admin typing the
+# commands below, and what they set is kept in the plugin's own database tables so it survives a
+# restart. This file exists only to document them.
+#
+#   !cmdlevel <command> [<level>]   read or set the level a command needs. A level is a group keyword
+#                                   (guest user reg mod admin fulladmin senioradmin superadmin) or a
+#                                   number 0-100, and `mod-admin` sets a ceiling as well as a floor —
+#                                   a command only those groups can see.
+#   !cmdalias <command> [<alias>]   read or set the short form. An alias already belonging to another
+#                                   command is refused rather than silently stolen.
+#   !cmdgrant <player> <command>    let one player use one command whatever their level. This is the
+#                                   thing no other plugin can do: the alternative is promoting them
+#                                   into a group, which carries everything else in that group too.
+#   !cmdrevoke <player> <command>   take the grant back.
+#   !cmduse <player> <command>      check whether somebody can use a command, by level or by grant.
+#
+# All five are superadmin (100) by default — they change who can do what, which is the last thing to
+# hand out. Move them with `!cmdlevel` itself if you disagree, but note that an admin can never change
+# a command they could not run themselves.
+#
+# Unlike the classic plugin, nothing here rewrites another plugin's config file: overrides live in this
+# plugin's tables. That means the file you wrote stays the file you wrote, and it also means a level
+# set for a plugin whose config file does not exist still works.

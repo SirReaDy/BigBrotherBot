@@ -19,6 +19,7 @@ list, each with an optional config of its own (see `examples/`):
 | `welcome` | greets arrivals with their history, and announces their own greeting | `!greeting [text\|none]` |
 | `afk` | asks players who look absent whether they are, and removes the silent ones | — |
 | `banlist` | applies ban lists from a file or a URL, with whitelists that win | `!banlistinfo` `!banlistupdate` `!banlistcheck` |
+| `cmdmanager` | command levels, aliases and per-player grants, at runtime | `!cmdlevel` `!cmdalias` `!cmdgrant` `!cmdrevoke` `!cmduse` |
 
 ### tk — team damage
 
@@ -103,6 +104,20 @@ Lists are checked at authentication **and when a player's address turns up**, wh
 and Quake 3 engines is not the same moment: their log lines carry no IP, and the status poll resolves
 one seconds later. An IP list checked only at auth matches nobody at all on those titles.
 Config: `examples/plugin_banlist.yaml`.
+
+### cmdmanager — who may run what, without a restart
+
+`!cmdlevel <command> [<level>]` moves a command; a level is a group keyword or a number, and
+`mod-admin` sets a ceiling as well as a floor. `!cmdalias` gives it a shorter name, refusing one that
+already belongs to another command. `!cmdgrant <player> <command>` is the one nothing else can do: it
+gives **one player one command** without promoting them into a group that carries everything else with
+it. `!cmdrevoke` takes it back and `!cmduse` answers "can they?" for anybody.
+
+An admin can never change a command they cannot run themselves. Everything set this way lives in the
+plugin's own tables, so it survives a restart *and* leaves your config files alone — the classic wrote
+the new level back into the owning plugin's `.ini`, comments and all. Overrides are re-applied when a
+plugin is enabled again, which would otherwise reset its commands to the levels in their code.
+Config: `examples/plugin_cmdmanager.yaml` (documentation only — there is nothing to set).
 
 Anything else is a git install — see [Plugins](cli.md#plugins) and
 [Writing an installable plugin](#writing-an-installable-plugin).

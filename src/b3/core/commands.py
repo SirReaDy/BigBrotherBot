@@ -106,6 +106,15 @@ class CommandRegistry:
     def __init__(self) -> None:
         self._by_name: dict[str, Command] = {}
         self._commands: list[Command] = []
+        #: An extra source of permission, asked only when a client's level is too low: a callable
+        #: ``(client, command name) -> bool``. `cmdmanager` sets it, so one player can be given one
+        #: command without being moved up a group. None means levels are the whole story, which is
+        #: the case on a server that does not load that plugin.
+        #:
+        #: Held on the registry rather than patched onto `Command`, which is what the classic bot
+        #: did (it rewrote `Command.canUse` on the class *and* on every instance already made). A
+        #: hook on the object that owns the commands can be read, tested and turned off again.
+        self.grant_check: Callable[[Client, str], bool] | None = None
 
     def register(self, cmd: Command) -> None:
         if cmd.name in self._by_name:
@@ -118,11 +127,42 @@ class CommandRegistry:
     def get(self, name: str) -> Command | None:
         return self._by_name.get(name.lower())
 
+    def set_alias(self, cmd: Command, alias: str) -> bool:
+        """Give a command a different short form at runtime — `cmdmanager`'s `!cmdalias`.
+
+        False when the alias is already something else's, because two commands answering to one word
+        means whichever registered last wins, silently. Re-indexes rather than only setting the
+        field: the old alias has to stop working, or a command ends up with two and the config that
+        describes it is wrong about one of them.
+        """
+        wanted = alias.strip().lower()
+        if not wanted:
+            return False
+        existing = self._by_name.get(wanted)
+        if existing is not None and existing is not cmd:
+            return False
+        if cmd.alias:
+            self._by_name.pop(cmd.alias, None)
+        cmd.alias = wanted
+        self._by_name[wanted] = cmd
+        return True
+
     def all(self) -> list[Command]:
         return list(self._commands)
 
+    def may_use(self, client: Client, cmd: Command) -> bool:
+        """Whether this client may run this command — by level, or by a grant given to them.
+
+        One place, so `!help` lists exactly what the processor will let somebody run. A grant that
+        showed up at the prompt but not in the list (or the other way round) would be worse than no
+        grants at all.
+        """
+        if cmd.can_use(client):
+            return True
+        return bool(self.grant_check and self.grant_check(client, cmd.name))
+
     def usable_by(self, client: Client) -> list[Command]:
-        return [c for c in self._commands if c.is_available() and c.can_use(client)]
+        return [c for c in self._commands if c.is_available() and self.may_use(client, c)]
 
     def for_plugin(self, plugin: object) -> list[Command]:
         """Every command a given plugin registered — what `!plugin info` reports."""
@@ -179,7 +219,7 @@ class CommandProcessor:
             self._tell(issuer, "command_disabled", command=name)
             return True
 
-        if not cmd.can_use(issuer):
+        if not self._registry.may_use(issuer, cmd):
             self._tell(issuer, "insufficient_access", command=name)
             return True
 
