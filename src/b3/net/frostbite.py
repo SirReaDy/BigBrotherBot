@@ -68,6 +68,15 @@ REFUSALS = frozenset({"CommandDisallowedOnRanked", "CommandDisallowedOnOfficial"
 #: A Battlefield server drops an idle connection, so say something occasionally.
 KEEPALIVE_SECONDS = 25.0
 
+#: Seconds between chat lines, and the reason is **the display, not the protocol**. A Frostbite
+#: server acknowledges every `admin.say` and TCP will not reorder them, so nothing is lost on the
+#: wire — but the game shows each line for a moment and a burst replaces the earlier ones before
+#: anybody can read them, so a wrapped four-line `!help` arrives as its last line. The classic bot's
+#: `_message_delay`, and its two generations disagree: Frostbite 2 used 0.8s and Frostbite 1 used a
+#: full 2s, its chat area being smaller.
+SAY_INTERVAL = 0.8
+SAY_INTERVAL_FROSTBITE1 = 2.0
+
 #: Liveness and reconnect, matching b3.net.battleye and the remote log sources.
 DEAD_AFTER = 90.0
 RETRY_INTERVAL = 5.0
@@ -79,6 +88,17 @@ PROBE_COMMAND = "version"
 #: Runaway guard on the receive loops — see the same constant in b3.net.battleye for why the loops
 #: are bounded by receives rather than by the clock.
 MAX_PUMP = 64
+
+#: Runaway guard on paging through the map list. A rotation this long is not a real one; a server
+#: answering every offset with the same page is, and without a bound that is an endless loop.
+MAX_ROTATION = 1000
+
+#: What to ask for when the server will not say what the current map is being played as. Conquest is
+#: the mode every Battlefield title in this family ships with, and `mapList.add` rejects an empty one
+#: outright — so a wrong guess degrades to "the map loaded in the wrong mode", where an empty string
+#: degrades to "the map did not load".
+DEFAULT_GAMEMODE = "ConquestLarge0"
+DEFAULT_ROUNDS = "2"
 
 
 class FrostbiteError(Exception):
@@ -194,6 +214,26 @@ def split_command(cmd: str) -> list[str]:
         return cmd.split()
 
 
+def parse_map_list(words: list[str]) -> list[str]:
+    """Read a ``mapList.list`` reply (Frostbite 2) into map names, in rotation order.
+
+    The block states its own shape: ``<number of maps> <words per map>`` and then that many words
+    each, of which the first is the name. DICE documented the second field as future-proofing — extra
+    words may be added after the first three — so it is *read* rather than assumed to be three, which
+    is the difference between this surviving a patch and silently misreading every second map.
+
+    A reply that does not start with two numbers is treated as the Frostbite 1 form: a flat list of
+    level names with no header at all.
+    """
+    if len(words) < 2 or not (words[0].isdigit() and words[1].isdigit()):
+        return [w for w in words if w]
+    count, stride = int(words[0]), int(words[1])
+    if stride < 1:
+        return []
+    rows = words[2:]
+    return [rows[i * stride] for i in range(count) if i * stride < len(rows)]
+
+
 class FrostbiteClient:
     """One TCP connection, serving as both the RCON client and the source of game events."""
 
@@ -211,11 +251,29 @@ class FrostbiteClient:
         dead_after: float = DEAD_AFTER,
         retry_interval: float = RETRY_INTERVAL,
         retry_max: float = RETRY_MAX,
+        legacy_maplist: bool = False,
+        say_interval: float | None = None,
         clock: Clock | None = None,
     ) -> None:
         self._addr = (host, port)
         self._password = password
         self._timeout = timeout
+        #: Bad Company 2 and the 2010 Medal of Honor. The two Frostbite generations share every verb
+        #: the bot uses for chat, kicks and bans — which is why one profile serves all six titles —
+        #: but they do **not** share the map list, and this is the only place that difference shows.
+        #: Frostbite 1 holds a flat list of level names and moves with `admin.runNextRound`;
+        #: Frostbite 2 holds (map, gamemode, rounds) triplets and moves with `mapList.runNextRound`.
+        self._legacy_maplist = legacy_maplist
+        #: Seconds between chat lines. Defaults to the pace this generation's chat area can be read
+        #: at — see SAY_INTERVAL — since the two differ and the caller already says which it is.
+        self._say_interval = (
+            say_interval
+            if say_interval is not None
+            else (SAY_INTERVAL_FROSTBITE1 if legacy_maplist else SAY_INTERVAL)
+        )
+        self._last_say = 0.0
+        #: Chat waiting to be released at `say_interval`.
+        self._outbox: deque[str] = deque()
         self.poll_interval = poll_interval
         self._keepalive = keepalive
         self._dead_after = dead_after
@@ -294,6 +352,7 @@ class FrostbiteClient:
             return []
         try:
             self._drain()
+            self._flush_outbox()
             self._maybe_keepalive()
         except FrostbiteError as exc:
             self._lost(f"{exc}")
@@ -313,20 +372,25 @@ class FrostbiteClient:
         for. Callers that need the structure (the player list) use :meth:`get_players`, which keeps
         the words intact.
         """
+        # Anything queued goes first and unpaced. An admin's `!kick` must not wait behind a queue of
+        # announcements, and the announcement explaining the kick must not arrive after it.
+        self._flush_outbox(paced=False)
         return " ".join(self._command_words(split_command(cmd)))
 
     def write(self, cmd: str) -> None:
-        """Fire and forget. Frostbite answers everything, so the reply is read and dropped.
+        """Queue a command with no reply expected — chat, paced.
 
-        Unlike BattlEye there is no pacing here: `admin.say` is acknowledged, the server does not
-        drop a burst of them, and a TCP stream will not reorder what it is given.
+        **Nothing is lost on the wire here, unlike BattlEye.** A Frostbite server acknowledges every
+        `admin.say`, and TCP will not reorder them. The pacing is about the *display*: the game shows
+        a chat line for a moment, so a burst of them replaces each earlier line before it can be
+        read, and a wrapped four-line `!help` arrives as its last line. The classic bot paced it for
+        exactly this reason (`_message_delay`, with a per-generation value).
+
+        Queued rather than slept on, so the wait never lands on the event loop; the next
+        `read_lines` releases the following line.
         """
-        try:
-            self._command_words(split_command(cmd))
-        except FrostbiteCommandError as exc:
-            # Chat is not worth raising over — the caller is a plugin announcing something, not an
-            # admin waiting for a verdict — but it must not vanish silently either.
-            log.warning("frostbite: %s", exc)
+        self._outbox.append(cmd)
+        self._flush_outbox()
 
     def get_players(self) -> list[object]:
         """The live player table, from ``admin.listPlayers all``.
@@ -338,6 +402,120 @@ class FrostbiteClient:
         from b3.parsers.frostbite.status import parse_player_block
 
         return list(parse_player_block(self._command_words(["admin.listPlayers", "all"])))
+
+    # -- map control --------------------------------------------------------
+    #
+    # Here rather than as a profile template because a Frostbite map change is not one command and
+    # not expressible as a fixed string: the map has to be *put into the rotation at an index* and the
+    # server then pointed at that index, and the index is arithmetic over a reply. The bot reaches
+    # these through the same duck-typed seam it uses for `get_players` and BattlEye's `remove_ban`.
+
+    def get_maps(self) -> list[str]:
+        """The rotation, in order. Paged, because a long rotation does not arrive in one reply.
+
+        Frostbite 2 answers `mapList.list <offset>` with a bounded page and expects to be asked
+        again; the classic bot looped until a page came back empty, and so does this. Frostbite 1
+        takes no offset and answers with the whole flat list at once, so the first page is all of it.
+        """
+        if self._legacy_maplist:
+            return parse_map_list(self._command_words(["mapList.list"]))
+        maps: list[str] = []
+        while True:
+            page = parse_map_list(self._command_words(["mapList.list", str(len(maps))]))
+            if not page:
+                return maps
+            maps.extend(page)
+            if len(maps) > MAX_ROTATION:
+                # A server that answers every offset with the same page would loop here forever,
+                # holding the event loop's worker thread. Stopping with what we have is wrong in a way
+                # an admin can see (`!maps` is short); never returning is not.
+                log.warning(
+                    "frostbite: mapList.list is still answering past %d maps; giving up on the rest",
+                    MAX_ROTATION,
+                )
+                return maps
+
+    def change_map(self, name: str, extras: dict[str, str] | None = None) -> None:
+        """Load ``name`` next and end the current round, so it takes effect now.
+
+        ``extras`` may carry ``gamemode`` and ``rounds``, which only Frostbite 2 can express — its
+        map list stores them per entry. On Frostbite 1 they are dropped with a word about it rather
+        than silently, because an admin who typed a gamemode and got none should be told which half
+        of their command the engine cannot do.
+
+        The map is *added* rather than searched for. A map already in the rotation would work too,
+        but adding it unconditionally is what makes `!map` able to load a map that is installed and
+        not currently rotated, which is the case an admin actually reaches for.
+        """
+        values = extras or {}
+        if self._legacy_maplist:
+            if values:
+                log.warning(
+                    "frostbite: this title's map list holds only level names, so %s cannot be set "
+                    "with the map; loading %s with the server's current settings",
+                    ", ".join(sorted(values)),
+                    name,
+                )
+            index = self._next_index()
+            self._command_words(["mapList.insert", str(index), name])
+            self._command_words(["mapList.nextLevelIndex", str(index)])
+            self._command_words(["admin.runNextRound"])
+            return
+        rounds = values.get("rounds") or self._current_rounds()
+        gamemode = values.get("gamemode") or self._current_gamemode()
+        index = self._next_index()
+        self._command_words(["mapList.add", name, gamemode, str(rounds), str(index)])
+        self._command_words(["mapList.setNextMapIndex", str(index)])
+        self._command_words(["mapList.runNextRound"])
+
+    def _next_index(self) -> int:
+        """The slot just after the map being played, which is where a `!map` target belongs.
+
+        Falls back to appending at the end of the rotation when the server will not say where it is.
+        That is the safe direction to be wrong in: the map still loads, because the index is pointed
+        at explicitly straight afterwards, and the rotation is left in an order that makes sense.
+        """
+        try:
+            if self._legacy_maplist:
+                current = self._command_words(["mapList.nextLevelIndex"])
+                return int(current[0]) if current and current[0].isdigit() else len(self.get_maps())
+            indices = self._command_words(["mapList.getMapIndices"])
+        except FrostbiteError as exc:
+            log.debug("frostbite: could not read the map indices (%s); appending instead", exc)
+            return len(self.get_maps())
+        if indices and indices[0].isdigit():
+            return int(indices[0]) + 1
+        return len(self.get_maps())
+
+    def _current_gamemode(self) -> str:
+        """The gamemode to keep when the admin did not name one.
+
+        `mapList.getMapIndices` says *where* the current map is, and `mapList.list` says what mode it
+        is being played in, so the answer is the two together. An empty answer would make
+        `mapList.add` reject the whole command, so a last-resort default is better than a certain
+        failure — and on any server that answers either question this is never reached.
+        """
+        try:
+            indices = self._command_words(["mapList.getMapIndices"])
+            if indices and indices[0].isdigit():
+                words = self._command_words(["mapList.list", indices[0]])
+                if len(words) >= 4 and words[1].isdigit() and int(words[1]) >= 2:
+                    return words[3]
+        except FrostbiteError as exc:
+            log.debug("frostbite: could not read the current gamemode (%s)", exc)
+        return DEFAULT_GAMEMODE
+
+    def _current_rounds(self) -> str:
+        """How many rounds the current entry is set to, or the engine's own default."""
+        try:
+            indices = self._command_words(["mapList.getMapIndices"])
+            if indices and indices[0].isdigit():
+                words = self._command_words(["mapList.list", indices[0]])
+                if len(words) >= 5 and words[1].isdigit() and int(words[1]) >= 3:
+                    return words[4]
+        except FrostbiteError as exc:
+            log.debug("frostbite: could not read the current round count (%s)", exc)
+        return DEFAULT_ROUNDS
 
     # -- internals ---------------------------------------------------------
 
@@ -445,6 +623,26 @@ class FrostbiteClient:
         except FrostbiteError:
             return False
         return True
+
+    def _flush_outbox(self, paced: bool = True) -> None:
+        """Release queued chat, one line per `say_interval`.
+
+        ``paced=False`` empties it outright, which is what a real command does before sending: an
+        admin typing `!kick` must not wait behind a queue of announcements, and the ordering matters
+        the other way round too — the kick should not land before the line explaining it.
+        """
+        now = self._clock.now()
+        while self._outbox:
+            if paced and now - self._last_say < self._say_interval:
+                return
+            command = self._outbox.popleft()
+            self._last_say = now
+            try:
+                self._command_words(split_command(command))
+            except FrostbiteCommandError as exc:
+                # Chat is not worth raising over — the caller is a plugin announcing something, not
+                # an admin waiting for a verdict — but it must not vanish silently either.
+                log.warning("frostbite: %s", exc)
 
     def _maybe_keepalive(self) -> None:
         if self._clock.now() - self._last_send >= self._keepalive:

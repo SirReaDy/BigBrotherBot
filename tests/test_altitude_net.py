@@ -231,10 +231,12 @@ async def test_chat_goes_out_as_the_two_verbs_this_game_has(tmp_path):
     bot.say_big("round over")  # no centre-screen verb: falls back to a plain message
     server.poll()
 
+    # The bot's prefix rides in front of everything it says, and `[pm]` on top of it for a private
+    # message — the classic's `msgPrefix`/`pmPrefix`. What this test is about is the two *verbs*.
     assert server.received == [
-        "serverMessage hello everyone",
-        "serverWhisper Bob watch your language",
-        "serverMessage round over",
+        "serverMessage ^2(b3)^7: hello everyone",
+        "serverWhisper Bob ^2(b3)^7: ^8[pm]^7 watch your language",
+        "serverMessage ^2(b3)^7: round over",
     ]
     await bot.bus.drain()
     bot.storage.close()

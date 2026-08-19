@@ -229,12 +229,19 @@ def _battleye_client(config: Config) -> PushClient:
 
 def _frostbite_client(config: Config) -> PushClient:
     from b3.net.frostbite import FrostbiteClient
+    from b3.parsers.frostbite.profiles import LEGACY_MAPLIST
 
     return FrostbiteClient(
         config.server.host,
         config.server.port,
         config.server.rcon_password,
         timeout=config.server.rcon_timeout,
+        # The only per-title thing this layer needs: Bad Company 2 and the 2010 Medal of Honor keep a
+        # flat map list, where the four Frostbite 2 titles keep (map, gamemode, rounds) entries. Every
+        # other difference between the six is data on the profile.
+        # The two generations differ in the map list, and in how fast their chat area can be read:
+        # the classic paced Frostbite 1 at 2s and Frostbite 2 at 0.8s. Both follow from this flag.
+        legacy_maplist=config.server.game in LEGACY_MAPLIST,
     )
 
 
@@ -349,7 +356,7 @@ def main(argv: list[str] | None = None) -> int:
     from b3.config.schema import ConfigError
     from b3.core.probe import DEFAULT_LINES
     from b3.parsers.games import PROFILES, UnknownGameError
-    from b3.runtime.bot import MissingServerModError
+    from b3.runtime.bot import MissingServerModError, WrongGameError
 
     parser = argparse.ArgumentParser(prog="b3", description="Big Brother Bot 2.0")
     parser.add_argument("-c", "--config", default="b3.yaml", help="path to the YAML config")
@@ -494,10 +501,11 @@ def main(argv: list[str] | None = None) -> int:
             _run_import(config, args.source_url)
         elif args.cmd == "plugin":
             return _run_plugin(config, args, Path(args.config), conf_dir)
-    except (UnknownGameError, ConfigError, MissingServerModError) as exc:
+    except (UnknownGameError, ConfigError, MissingServerModError, WrongGameError) as exc:
         # A one-line refusal beats a traceback: these are mistakes in their config, not crashes.
         # A missing server-side mod is the same kind of thing: an install job, with the command to
-        # run in the message.
+        # run in the message. `server.game` naming a different title from the one the server is
+        # running is the same again, and the fix is one word in the file.
         logging.error("%s", exc)
         return 1
     return 0

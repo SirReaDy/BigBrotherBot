@@ -10,11 +10,14 @@ Path values accept tokens: `@b3` (the installed package dir), `@conf` (the main 
 ```yaml
 bot:
   name: b3                            # default: b3
-  prefix: "^2(b3)^7:"                 # in-game message prefix (game colour codes allowed)
+  prefix: "^2(b3)^7:"                 # in front of everything the bot says (colour codes allowed)
+  pm_prefix: "^8[pm]^7"               # added on top of it for a private reply
+
   time_zone: UTC                      # IANA name; schedules are evaluated in this zone
   log_level: INFO
   line_length: 90                     # game chat limit; longer replies wrap across lines
   line_color_prefix: ""                # prepended to each continuation line, e.g. "^3"
+  dead_prefix: "[DEAD]^7"             # marks a message sent only to players waiting to respawn
   database: "sqlite:///b3.sqlite"     # any SQLAlchemy URL (sqlite / mysql+pymysql / postgresql+psycopg)
   server_id: ""                       # names this server on the penalties it issues; only
                                       # needed when several bots share one database
@@ -29,6 +32,8 @@ server:
   encoding: latin-1                   # CoD engines are latin-1
   rcon_timeout: 0.8
   rcon_user: admin                    # only Frontline and Ravaged authenticate an account name
+  punkbuster:                         # unset asks the server; true insists and warns if absent;
+                                      # false never asks. Call of Duty, Quake 3 and Frostbite only
   log_poll_interval: 2.0              # remote logs only: seconds between polls
   log_timeout: 10.0                   # remote logs only: per-operation network timeout
   log_max_gap: 20480                  # remote logs only: skip ahead past a bigger jump than this
@@ -80,6 +85,23 @@ a key the bot never uses is flagged at startup.
 Replies longer than `line_length` are word-wrapped across several lines (a word longer than the limit
 is broken rather than dropped), and an embedded `\n` starts a new line. Without this the game
 truncates long output mid-word.
+
+**The prefixes count towards that limit.** `prefix` goes in front of everything the bot says, and
+`pm_prefix` on top of it for a private reply — so the defaults cost 10 and 19 characters of the
+first line respectively. That is deliberate: adding them *after* wrapping would push the first line
+past what the engine will display, and several of these engines drop the overflow rather than
+wrapping it (a Call of Duty console shows 65 characters and no more). If you are running a title
+with a short chat limit and want the room back, shorten or empty them:
+
+```yaml
+bot:
+  prefix: ""        # the bot says exactly what it was given
+  pm_prefix: ""
+```
+
+On Insurgency with SourceMod's **"B3 Say"** plugin installed the prefix is dropped automatically —
+that plugin draws the bot's messages distinctly itself, so a second marker is only clutter. The bot
+detects it at startup with `sm plugins list`; nothing needs configuring.
 
 ## Scheduling
 

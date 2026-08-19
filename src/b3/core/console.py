@@ -14,6 +14,8 @@ from typing import TYPE_CHECKING, Protocol, runtime_checkable
 from b3.domain.client import Client
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
+
     from b3.core.bus import EventBus
     from b3.core.clock import Clock
     from b3.core.clients import ClientManager
@@ -22,6 +24,7 @@ if TYPE_CHECKING:
     from b3.core.messages import Messages
     from b3.core.plugin import Plugin
     from b3.core.scheduler import Scheduler
+    from b3.parsers.profile import MapRequest
     from b3.storage.base import Storage
 
 
@@ -101,8 +104,32 @@ class Console(Protocol):
     def get_cvar(self, name: str) -> str | None: ...
     def set_cvar(self, name: str, value: str) -> None: ...
 
+    def say_dead(self, text: str) -> None:
+        """Say something only the players waiting to respawn will see.
+
+        No engine here has a verb for it; it is the same private message sent to each dead player,
+        so it works anywhere there is a `tell`.
+        """
+        ...
+
+    def smart_say(self, client: "Client", text: str) -> None:
+        """Answer where ``client`` will actually see it — to the server, or to the dead.
+
+        On several of these engines a dead or spectating player is shown only the dead chat, so a
+        plain `say` reaches everybody except the person who asked.
+        """
+        ...
+
     def map_display(self, map_id: str) -> str:
         """The name a player would call this map, or the raw id when the title has no table."""
+        ...
+
+    def request_screenshot(self, client: "Client") -> bool:
+        """Ask PunkBuster for a screenshot of this player's view. False where there is no PunkBuster.
+
+        The picture goes to the game server's own PunkBuster folder, so the only thing this can
+        report is whether it was asked for.
+        """
         ...
 
     def get_map(self) -> str | None:
@@ -114,7 +141,24 @@ class Console(Protocol):
         ...
 
     def get_next_map(self) -> str | None: ...
-    def change_map(self, name: str) -> None: ...
+
+    def parse_map_request(self, text: str) -> "MapRequest":
+        """Split a `!map` argument into a map and this engine's extra arguments, if it takes any."""
+        ...
+
+    def map_usage(self) -> str:
+        """The `!map` arguments past the map name, written in this engine's own separator.
+
+        Empty on almost every title, which is what makes `!map <name>` the usage line everywhere
+        else without the plugin having to know which engines are the exceptions.
+        """
+        ...
+
+    def change_map(self, name: str, extras: "Mapping[str, str] | None" = None) -> None:
+        """Load a named map. ``extras`` holds whatever else this engine's map verb takes —
+        `GameProfile.map_arguments` names them, and a title that declares none never gets any."""
+        ...
+
     def rotate_map(self) -> None: ...
 
     def sync(self) -> list[Client]:

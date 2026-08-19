@@ -35,6 +35,7 @@ from collections.abc import Callable, Sequence
 from b3.core.clients import ClientManager
 from b3.core.events import Event, EventType
 from b3.domain.client import Client
+from b3.net.frostbite import split_command
 from b3.parsers.base import Parser
 from b3.parsers.profile import GameProfile
 
@@ -273,6 +274,32 @@ class FbParser(Parser):
     def _on_round_over(self, words: Sequence[str]) -> Event | None:
         """``server.onRoundOver <winning team>``."""
         return Event(EventType.GAME_ROUND_END, data=words[0] if words else "")
+
+    def read_server_info(self, reply: str) -> dict[str, str]:
+        """Read a ``serverInfo`` reply — the classic ``getServerInfo``/``getServerVars``.
+
+        This engine has no cvars, so this command is the only way the bot learns the server's name,
+        its player limit, its gametype or how many rounds a map runs for. The reply is **positional**::
+
+            <hostname> <players> <max players> <gamemode> <map> <rounds played> <rounds total> ...
+
+        Returned under cvar names rather than as fields, so it merges through exactly the path every
+        other family's values take (`Game.update_cvars`) instead of being a second way to set them.
+
+        Read defensively by index: the two protocol generations carry different numbers of trailing
+        fields and DICE added more over time, so anything past the ones named here is ignored rather
+        than assumed absent.
+        """
+        words = split_command(reply)
+        if not words:
+            return {}
+        named = ("sv_hostname", "", "sv_maxclients", "g_gametype", "mapname")
+        info = {key: words[i] for i, key in enumerate(named) if key and i < len(words)}
+        if len(words) > 5:
+            info["roundsPlayed"] = words[5]
+        if len(words) > 6:
+            info["roundsTotal"] = words[6]
+        return info
 
     def _on_punkbuster(self, words: Sequence[str]) -> Event | None:
         """``punkBuster.onMessage <text>``.

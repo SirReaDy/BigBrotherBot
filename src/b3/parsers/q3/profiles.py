@@ -39,6 +39,18 @@ _BASE = GameProfile(
     # Most Quake3 servers have no usable persistent id unless a mod provides cl_guid, so the floor
     # is low and the bot leans on IP history instead. Titles that do better raise it below.
     guid_min_length=8,
+    # The family that needs this, and the reason it exists: a Quake 3 `status` table has a slot, a
+    # name and a ping, and no persistent id at all — the id is only ever stated in the
+    # `ClientUserinfo` line when the player connects. So a bot started mid-match cannot identify
+    # anybody already playing, and before this it waited for them to reconnect. `dumpuser <slot>`
+    # asks for one player's userinfo directly; `Q3Parser.read_userinfo` turns the reply back into the
+    # line it is the same information as. The classic bot's `queryClientUserInfoByCid`.
+    userinfo_command="dumpuser %(cid)s",
+    # And this family needs it more than any other. A plain Quake 3 server sets no `cl_guid` at all,
+    # so on these titles a PunkBuster id is very often the *only* persistent thing about a player —
+    # without it nobody can hold a level and no ban can be matched. The classic made it opt-in here
+    # and opt-out on Call of Duty; this asks the server instead, since `PB_SV_Ver` answers outright.
+    punkbuster=True,
 )
 
 #: Baseline Quake 3 Arena.

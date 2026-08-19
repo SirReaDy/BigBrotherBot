@@ -167,7 +167,9 @@ async def test_an_operator_can_customise_a_command_reply(tmp_path):
             "say;x;1;Admin;!kick Bob spam",
         ]
     )
-    assert "tell 1 ^1Bob^7 removed! reason: spam" in rcon.commands
+    # The wording is what this test is about; the bot's prefix rides in front of every reply and is
+    # tested on its own (test_message_prefix.py).
+    assert any("^1Bob^7 removed! reason: spam" in c for c in rcon.commands)
 
 
 @pytest.mark.asyncio
@@ -181,14 +183,14 @@ async def test_default_wording_is_unchanged_without_config(tmp_path):
             "say;x;1;Admin;!kick Bob spam",
         ]
     )
-    assert "tell 1 Bob was kicked (spam)" in rcon.commands
+    assert any("Bob was kicked (spam)" in c for c in rcon.commands)
 
 
 @pytest.mark.asyncio
 async def test_the_framework_messages_are_customisable_too(tmp_path):
     bot, rcon = _bot(tmp_path, messages={"unknown_command": "eh? '{command}' is not a thing"})
     await bot.replay([f"J;{GBOB};2;Bob", "say;x;2;Bob;!nonsense"])
-    assert "tell 2 eh? 'nonsense' is not a thing" in rcon.commands
+    assert any("eh? 'nonsense' is not a thing" in c for c in rcon.commands)
 
 
 # -- output wrapping -------------------------------------------------------
@@ -196,7 +198,13 @@ async def test_the_framework_messages_are_customisable_too(tmp_path):
 
 @pytest.mark.asyncio
 async def test_a_long_reply_is_split_across_several_lines(tmp_path):
-    """The classic bot's getWrap: without this the game truncates the line mid-word."""
+    """The classic bot's getWrap: without this the game truncates the line mid-word.
+
+    **The prefixes are inside the budget**, which is the point of them living in `Messages` rather
+    than being added at the send site: every line here is within the engine's limit *including* the
+    `(b3):` and `[pm]` markers. Added afterwards they would push the first line past it, and on Call
+    of Duty the engine drops the overflow rather than wrapping it.
+    """
     bot, rcon = _bot(tmp_path, line_length=30)
     await bot.feed_line(f"J;{GBOB};2;Bob")
     bob = bot.clients.get_by_cid("2")
@@ -207,7 +215,7 @@ async def test_a_long_reply_is_split_across_several_lines(tmp_path):
     assert len(told) > 1
     assert all(len(c) - len("tell 2 ") <= 30 for c in told)
     rejoined = " ".join(c[len("tell 2 ") :] for c in told)
-    assert rejoined.startswith("the quick brown fox")
+    assert rejoined.startswith("^2(b3)^7: ^8[pm]^7 the quick brown fox")
     assert rejoined.endswith("keeps on running")
 
 

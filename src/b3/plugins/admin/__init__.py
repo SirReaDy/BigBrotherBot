@@ -1145,15 +1145,34 @@ class AdminPlugin(Plugin):
     @command(level=80)
     def cmd_map(self, ctx: CommandContext) -> None:
         """map <name> - change to another map (a partial name will do)"""
-        name = ctx.args.strip()
-        if not name:
-            ctx.reply(self.message("usage", usage="map <name>"))
+        text = ctx.args.strip()
+        if not text:
+            ctx.reply(self.message("usage", usage=self._map_usage()))
             return
-        chosen = self._resolve_map(ctx, name)
+        # Engines whose map verb takes more than the map say so on the profile; on every other title
+        # this hands the whole line back as the name and nothing below changes. The classic bot got
+        # the same feature by monkey-patching this method from the Frostbite parser.
+        request = self.console.parse_map_request(text)
+        if request.surplus:
+            ctx.reply(self.message("usage", usage=self._map_usage()))
+            return
+        if not request.name:
+            ctx.reply(self.message("usage", usage=self._map_usage()))
+            return
+        chosen = self._resolve_map(ctx, request.name)
         if chosen is None:
             return
         self.console.say(self.message("map_changing", map=self.console.map_display(chosen)))
-        self.console.change_map(chosen)
+        self.console.change_map(chosen, request.extras)
+
+    def _map_usage(self) -> str:
+        """The usage line for `!map`, naming whatever extra arguments this engine takes.
+
+        The arguments *and their separator* come from the profile rather than being written out
+        here, so a usage line cannot tell an admin to type a comma at an engine that wants a space —
+        which would be worse than not mentioning the argument at all.
+        """
+        return "map <name>" + self.console.map_usage()
 
     def _resolve_map(self, ctx: CommandContext, wanted: str) -> str | None:
         """Turn what the admin typed into a map the server has, or reply saying why not.
@@ -1220,6 +1239,19 @@ class AdminPlugin(Plugin):
         players = len(self.console.clients.connected())
         current = self.console.game.map_name or "?"
         ctx.reply(self.message("status", database=database, players=players, map=current))
+
+    @command(level=60)
+    def cmd_pbss(self, ctx: CommandContext) -> None:
+        """pbss <player> - ask PunkBuster for a screenshot of what this player is seeing"""
+        target, _ = self._target_and_reason(ctx)
+        if target is None:
+            return
+        if not self.console.request_screenshot(target):
+            ctx.reply(self.message("punkbuster_unavailable"))
+            return
+        # The picture goes to the *server's* PunkBuster folder, not to the admin, so saying only
+        # "requested" would leave them waiting in game for something that is never coming.
+        ctx.reply(self.message("punkbuster_screenshot", player=target.name))
 
     # -- masking ------------------------------------------------------------
 

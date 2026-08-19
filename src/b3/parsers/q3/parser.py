@@ -155,6 +155,45 @@ class Q3Parser(Parser):
             client.team = self.profile.teams.get(team, team)
         return client
 
+    def read_userinfo(self, cid: str, reply: str) -> str | None:
+        """Turn a ``dumpuser <cid>`` reply into the log line it is the same information as.
+
+        This engine answers `dumpuser` with a fixed-width table rather than an infostring::
+
+            userinfo
+            --------
+            ip                  62.235.246.103:27960
+            name                Shinki
+            cl_guid             8982B13A8DCEE4C77A32E6AC4DD7EEDF
+
+        The key ends at column 20 and the value is the rest, which is what makes it fixed-width
+        rather than whitespace-separated: a player named ``Bob the Builder`` has spaces in the value
+        and a split on whitespace would keep only the first word of it.
+
+        The reply is rebuilt into a ``ClientUserinfo:`` line and handed back rather than applied
+        here, so that identity arriving this way goes through *exactly* the same path as identity
+        arriving from the log — the guid length check, the name truncation, the team mapping and the
+        event. A second implementation of that would be a second place for it to be wrong.
+
+        Returns None when the slot holds nobody. The engine says so with a line of prose rather than
+        an error, and the classic parser's note records what it means: the player has gone, but their
+        body is still in the game.
+        """
+        lines = [line.rstrip() for line in reply.splitlines() if line.strip()]
+        if not lines or lines[0].strip() != "userinfo":
+            log.debug("%s: dumpuser %s answered %r", self.profile.name, cid, reply.strip()[:120])
+            return None
+        pairs: list[str] = []
+        for line in lines[1:]:
+            if line.strip() == "--------":
+                continue
+            key, value = line[:20].strip(), line[20:].strip()
+            if key:
+                pairs.append(f"\\{key}\\{value}")
+        if not pairs:
+            return None
+        return f"ClientUserinfo: {cid} {''.join(pairs)}"
+
     # -- client lifecycle ---------------------------------------------------
 
     @handles(r"^ClientConnect:\s*(?P<cid>\d+)\s*$")

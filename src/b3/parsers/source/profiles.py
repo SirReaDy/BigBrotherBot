@@ -22,12 +22,32 @@ from __future__ import annotations
 
 import re
 
-from b3.parsers.profile import GameProfile, RequiredMod
+from b3.parsers.profile import GameProfile, OptionalMod, RequiredMod
 
 #: SourceMod, and how to prove it is there. ``sm version`` on a server without it answers
 #: ``Unknown command "sm"``, which contains none of the expected text — the classic parser checked
 #: exactly this command and exited when it failed, and that was the right instinct.
 SOURCEMOD = RequiredMod(name="SourceMod", command="sm version", expect="SourceMod")
+
+#: "B3 Say", a SourceMod plugin written for the classic bot. Not needed — everything works without
+#: it — but where it is installed its verbs draw the bot's messages far better on screen than the
+#: stock ``sm_`` ones, so the classic parser asked ``sm plugins list`` at connect and switched to
+#: them. Optional rather than required, which is the whole distinction from `SOURCEMOD` above: a
+#: server without SourceMod cannot be administered at all, and a server without this one simply
+#: looks slightly worse.
+B3_SAY = OptionalMod(
+    name="B3 Say",
+    command="sm plugins list",
+    overrides={
+        "say_template": "b3_say %s",
+        "saybig_template": "b3_hsay %s",
+        "tell_template": 'b3_psay #%(guid)s "%(text)s"',
+        # And stop prefixing, as the classic did. The plugin draws these messages distinctly on its
+        # own, so `(b3):` in front of them is clutter — and clutter that costs part of the line
+        # budget, on an engine whose chat limit is 120 characters.
+        "prefix_messages": False,
+    },
+)
 
 #: Insurgency's team tokens. ``#Team_Unassigned`` is a *recognised* token that means "no team yet",
 #: which is a different thing from a token this bot does not know — see
@@ -84,6 +104,7 @@ INSURGENCY = GameProfile(
     # The classic parser's own figure for this engine's console.
     line_length=120,
     required_mod=SOURCEMOD,
+    optional_mods=(B3_SAY,),
     # SourceMod's verbs. `sm_psay` takes the Steam id rather than a slot, which is why
     # `tell_template` grew `%(guid)s` when Homefront needed the same thing.
     say_template="sm_say %s",
@@ -112,7 +133,17 @@ INSURGENCY = GameProfile(
     set_template='%(name)s "%(value)s"',
     status_patterns=(SOURCE_STATUS_ROW_RE,),
     identity_field="guid",
-    map_template="changelevel %s",
+    # `changelevel <map> [gametype]`. The second argument is why `map_arguments` exists: without it
+    # `!map market push` sent `changelevel market` and the admin got the right map in whatever mode
+    # the server happened to be configured for -- the mode they asked for was simply dropped, with no
+    # error, which is this codebase's most-repeated failure shape. The trailing placeholder renders
+    # empty when no mode is given and the spacing is collapsed by `Bot.change_map`, so a bare
+    # `!map market` still sends exactly `changelevel market`.
+    map_template="changelevel %(map)s %(gamemode)s",
+    map_arguments=("gamemode",),
+    # A space, not a comma: this is the separator the verb itself uses, so what an admin types reads
+    # the same as what reaches the server.
+    map_argument_separator=" ",
     # No rotation cvar on this engine. `maps *` lists every map *installed*, which is what `!map`
     # needs for partial matching -- and is emphatically not a rotation, hence `next_map_cvar`.
     rotation_cvar="",
@@ -208,6 +239,7 @@ ALL: dict[str, GameProfile] = {p.name: p for p in (INSURGENCY, CS2)}
 
 __all__ = [
     "ALL",
+    "B3_SAY",
     "BOT_GUID",
     "CONSOLE_GUID",
     "CS2",

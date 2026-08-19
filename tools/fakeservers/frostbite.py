@@ -96,6 +96,24 @@ class FakeFrostbiteServer:
         self.resend_unacked_after = resend_unacked_after
         #: banList.add/remove keep real state, so a `!unban` can be checked properly.
         self.bans: list[tuple[str, str, str]] = []  # (id_type, target, reason)
+        #: The map list, as real state, for the same reason the ban list is. A `!map` that "worked"
+        #: against a server answering OK to everything is exactly what hid `admin.runNextRound "%s"`
+        #: — a verb that took no map name — for as long as it was here. Entries are
+        #: (map, gamemode, rounds); Frostbite 1 ignores the last two.
+        self.map_list: list[tuple[str, str, str]] = [
+            ("MP_001", "ConquestLarge0", "2"),
+            ("MP_011", "RushLarge0", "2"),
+            ("MP_013", "ConquestLarge0", "2"),
+        ]
+        #: Which entry is playing, and which is queued next. `mapList.getMapIndices` answers both.
+        self.map_index = 0
+        self.next_map_index = 1
+        #: Set True to answer `mapList.list` the Frostbite 1 way — a flat list of level names with no
+        #: header — so both generations can be driven from one fake.
+        self.legacy_maplist = False
+        #: How many entries a `mapList.list` page holds. Small on purpose: the real server pages, and
+        #: a client that only ever asked once would look correct against a fake that never did.
+        self.map_page_size = 2
 
         self._listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self._listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -222,6 +240,22 @@ class FakeFrostbiteServer:
             return self._remove_ban(words[1:])
         if verb == "banList.list":
             return ["OK", *[w for ban in self.bans for w in (ban[0], ban[1], "perm", "0", ban[2])]]
+        if verb == "mapList.list":
+            return self._list_maps(words[1:])
+        if verb == "mapList.getMapIndices":
+            return ["OK", str(self.map_index), str(self.next_map_index)]
+        if verb == "mapList.add":
+            return self._add_map(words[1:])
+        if verb == "mapList.insert":
+            return self._insert_map(words[1:])
+        if verb in ("mapList.setNextMapIndex", "mapList.nextLevelIndex"):
+            return self._set_next_index(words[1:])
+        if verb in ("mapList.runNextRound", "admin.runNextRound"):
+            # The whole point of `!map`: the queued entry becomes the one being played. A fake that
+            # answered OK without moving could not tell a working map change from a no-op.
+            self.map_index = min(self.next_map_index, max(len(self.map_list) - 1, 0))
+            self.next_map_index = self.map_index + 1
+            return ["OK"]
         if verb in self.replies:
             return ["OK", *self.replies[verb]]
         return ["OK"]
@@ -254,6 +288,67 @@ class FakeFrostbiteServer:
         before = len(self.bans)
         self.bans = [b for b in self.bans if not (b[0] == arguments[0] and b[1] == arguments[1])]
         return ["OK"] if len(self.bans) < before else ["NotFound"]
+
+    # -- the map list ------------------------------------------------------
+
+    def current_map(self) -> str:
+        """Which map is being played, by the server's own reckoning. What an e2e run asserts on."""
+        if not self.map_list:
+            return ""
+        return self.map_list[min(self.map_index, len(self.map_list) - 1)][0]
+
+    def _list_maps(self, arguments: list[str]) -> list[str]:
+        """`mapList.list [offset]` — a page of the rotation, in whichever generation's shape.
+
+        Frostbite 1 takes no offset and answers with a flat list of level names. Frostbite 2 takes
+        one and answers with a self-describing block: the number of entries, the number of words each
+        holds, and then the entries. Paged, because a real one is.
+        """
+        if self.legacy_maplist:
+            return ["OK", *[entry[0] for entry in self.map_list]]
+        offset = int(arguments[0]) if arguments and arguments[0].isdigit() else 0
+        page = self.map_list[offset : offset + self.map_page_size]
+        words: list[str] = []
+        for name, gamemode, rounds in page:
+            words += [name, gamemode, rounds]
+        return ["OK", str(len(page)), "3", *words]
+
+    def _add_map(self, arguments: list[str]) -> list[str]:
+        """`mapList.add <map> <gamemode> <rounds> [index]` — Frostbite 2."""
+        if len(arguments) < 3:
+            return ["InvalidArguments"]
+        name, gamemode, rounds = arguments[0], arguments[1], arguments[2]
+        if not gamemode:
+            # A real server refuses this, and it is the failure a bot that guessed at the mode would
+            # actually hit, so the fake refuses it too.
+            return ["InvalidGameModeOnMap"]
+        if not rounds.isdigit() or int(rounds) < 1:
+            return ["InvalidRoundsPerMap"]
+        index = len(self.map_list)
+        if len(arguments) > 3 and arguments[3].isdigit():
+            index = int(arguments[3])
+        self.map_list.insert(min(index, len(self.map_list)), (name, gamemode, rounds))
+        return ["OK"]
+
+    def _insert_map(self, arguments: list[str]) -> list[str]:
+        """`mapList.insert <index> <map>` — Frostbite 1, where an entry is only a level name."""
+        if len(arguments) < 2 or not arguments[0].isdigit():
+            return ["InvalidArguments"]
+        index = min(int(arguments[0]), len(self.map_list))
+        self.map_list.insert(index, (arguments[1], "", ""))
+        return ["OK"]
+
+    def _set_next_index(self, arguments: list[str]) -> list[str]:
+        """Point the server at the entry to play next. With no argument, report it instead."""
+        if not arguments:
+            return ["OK", str(self.next_map_index)]
+        if not arguments[0].isdigit():
+            return ["InvalidArguments"]
+        index = int(arguments[0])
+        if index >= len(self.map_list):
+            return ["InvalidMapIndex"]
+        self.next_map_index = index
+        return ["OK"]
 
     def _resend_unacked(self) -> None:
         now = time.monotonic()

@@ -48,6 +48,11 @@ class Game:
     #: announces them instead (Altitude's ``serverInit``).
     hostname: str = ""
     max_players: int = 0
+    #: Which build of the game this server is running, read once at startup from
+    #: `GameProfile.version_cvar`. Recorded because some builds of a title differ in ways the bot
+    #: depends on — see :class:`b3.parsers.profile.VersionQuirk` — and because "which version?" is
+    #: the first question asked of anyone reporting a fault.
+    version: str = ""
     #: Epoch seconds when the current map / round started; None until the first one is seen.
     map_start: float | None = None
     round_start: float | None = None

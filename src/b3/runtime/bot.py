@@ -14,10 +14,11 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from dataclasses import replace
+from dataclasses import fields, replace
 from datetime import timezone, tzinfo
 from pathlib import Path
-from typing import Protocol
+from collections.abc import Mapping
+from typing import Any, Protocol
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from b3.config.schema import Config
@@ -32,10 +33,10 @@ from b3.core.plugin import Plugin
 from b3.core.scheduler import Scheduler
 from b3.core.util import as_int, format_time, sanitize_rcon_value
 from b3.domain.client import Alias, Client, IpAlias, NEVER_EXPIRES, Penalty, PenaltyType
-from b3.parsers import games
+from b3.parsers import games, punkbuster
 from b3.parsers.cod import status as status_parser
 from b3.parsers.cod.auth import AuthInfo, AuthManager
-from b3.parsers.profile import GameProfile
+from b3.parsers.profile import GameProfile, MapRequest, VersionQuirk
 from b3.storage.store import SqlAlchemyStorage
 
 log = logging.getLogger(__name__)
@@ -56,6 +57,15 @@ class MissingServerModError(RuntimeError):
 
     Its own class so `cli.main` can report it as one line an operator can act on, the way it already
     does for an unknown `server.game`, rather than as a traceback.
+    """
+
+
+class WrongGameError(RuntimeError):
+    """`server.game` names one title and the server is running another.
+
+    Its own class, next to `MissingServerModError`, so `cli.main` reports it as one line an operator
+    can act on. It is a configuration mistake of exactly the same kind as an unknown `server.game`,
+    and the fix is a one-word edit — which a traceback would bury.
     """
 
 
@@ -123,11 +133,7 @@ class Bot:
         self.clients = ClientManager()
         self.command_registry = CommandRegistry()
         self.storage = storage or SqlAlchemyStorage(config.bot.database, clock=self.clock)
-        self.messages = Messages(
-            config.messages,
-            line_length=_line_length(config, self.profile),
-            color_prefix=config.bot.line_color_prefix,
-        )
+        self.messages = self._build_messages()
         self.tz = _resolve_timezone(config.bot.time_zone)
         self.scheduler = Scheduler(self.clock, tz=self.tz)
         #: Set by `!die`/`!restart`; the live loop watches it and returns this exit code.
@@ -140,6 +146,15 @@ class Bot:
         self._status_command = ""
         #: A status reply we could not read is worth one warning, not one per poll.
         self._warned_about_status = False
+        #: The PunkBuster service, once the server has confirmed it is running one. None on every
+        #: engine that cannot run it, and on every server that does not.
+        self.punkbuster: punkbuster.PunkBuster | None = None
+        #: What is known to be odd about this server's build, once it has been asked. None until
+        #: `check_version` runs, and on every title that has no build-specific faults.
+        self.version_quirk: VersionQuirk | None = None
+        #: Slots already asked about with `userinfo_command`. A server that never sets an id must be
+        #: asked once and then left alone, not once per sync for the life of the bot.
+        self._asked_userinfo: set[str] = set()
         #: Set when the last status reply held rows no pattern could read. "Unknown", not "empty" --
         #: `sync` refuses to reconcile on it rather than reporting an empty server.
         self._status_unreadable = False
@@ -165,11 +180,31 @@ class Bot:
         self.bus.subscribe(EventType.CLIENT_UPDATE, self._on_client_update)
         self.bus.subscribe(EventType.CLIENT_DISCONNECT, self._on_disconnect)
         self.bus.subscribe(EventType.GAME_ROUND_START, self._on_round_start)
+        # Who is alive, for `say_dead`/`smart_say`. Subscribed here rather than tracked in each
+        # parser because the events already say it on every family that reports them, and a parser
+        # that does not report spawns simply leaves everyone alive — which is the safe answer.
+        for died in (EventType.CLIENT_KILL, EventType.CLIENT_SUICIDE, EventType.CLIENT_GIB):
+            self.bus.subscribe(died, self._on_death)
+        self.bus.subscribe(EventType.CLIENT_SPAWN, self._on_spawn)
         self.bus.subscribe(EventType.SERVER_INFO, self._on_server_info)
         for evt in _SAY_EVENTS:
             self.bus.subscribe(evt, self._on_say)
 
     # -- setup -------------------------------------------------------------
+
+    def _build_messages(self) -> Messages:
+        """Build the message formatter from the config and the *current* profile.
+
+        One place rather than three, because the profile can change after startup — a server with
+        SourceMod's "B3 Say" turns `prefix_messages` off (see `apply_optional_mods`) — and a
+        formatter built before that would go on prefixing with a value nothing agrees with.
+        """
+        return Messages(
+            self.config.messages,
+            line_length=_line_length(self.config, self.profile),
+            color_prefix=self.config.bot.line_color_prefix,
+            prefix=self.config.bot.prefix if self.profile.prefix_messages else "",
+        )
 
     def add_plugin(self, plugin: Plugin, name: str | None = None) -> None:
         """Register a plugin. ``name`` defaults to the class name minus a 'Plugin' suffix."""
@@ -204,9 +239,257 @@ class Bot:
                     log.info("%s: sent startup command %r", self.profile.name, command)
                 except Exception as exc:  # noqa: BLE001 - the bot still works without it
                     log.warning("startup command %r failed: %s", command, exc)
+            self.check_version()
+            self.apply_optional_mods()
+            self.setup_punkbuster()
+            self.read_server_info()
             # Without this a bot started mid-match sees nobody until the next join line, and a
             # missed disconnect leaves a ghost in the client list forever.
             self.scheduler.add(self._scheduled_sync, minute=f"*/{SYNC_MINUTES}", name="Bot.sync")
+
+    def check_version(self) -> None:
+        """Read which build this server is, and say so when the build is one with a known fault.
+
+        The classic bot's `setVersionExceptions`. Call of Duty 2 is what it was for: build 1.0
+        cannot authenticate players, and build 1.2 reports PunkBuster ids one character shorter than
+        every other build. We read no version at all before this, so a 1.0 server merely looked
+        broken and a 1.2 PunkBuster id failed validation without a word.
+
+        Never fatal. A server that will not answer the question is not a reason to refuse to run —
+        unlike a missing SourceMod, which makes the bot unable to act at all.
+        """
+        self._check_is_the_right_game()
+        if not self.profile.version_cvar:
+            return
+        try:
+            version = self.get_cvar(self.profile.version_cvar) or ""
+        except Exception as exc:  # noqa: BLE001 - a version we cannot read is not a failure
+            log.debug("could not read %s: %s", self.profile.version_cvar, exc)
+            return
+        if not version:
+            return
+        self.game.version = version
+        log.info("%s: server reports version %s", self.profile.name, version)
+        quirk = self.profile.quirk_for(version)
+        if quirk is None:
+            return
+        self.version_quirk = quirk
+        if quirk.warning and not (quirk.only_when_using_ids and self.profile.ips_only):
+            log.warning("%s %s: %s", self.profile.name, version, quirk.warning)
+
+    def setup_punkbuster(self) -> None:
+        """Build the PunkBuster service, if this title can run it and this server does.
+
+        **Asked rather than configured**, which is the difference from the classic. There, Call of
+        Duty enabled it unless told otherwise and Quake 3 disabled it unless told to, so half the
+        operators running PunkBuster got no benefit from it and the other half saw a stream of
+        unknown-command replies. `PB_SV_Ver` answers the question outright, so the default is to ask.
+
+        `server.punkbuster: true` insists instead, and says so when the server has none — an
+        operator relying on PunkBuster for player identity needs to hear that it is not there, which
+        is exactly the case where a silent fallback is worst. `false` skips the question.
+        """
+        wanted = self.config.server.punkbuster
+        if not self.profile.punkbuster or wanted is False or self._rcon is None:
+            return
+        try:
+            reply = self._rcon.command(punkbuster.VERSION_COMMAND)
+        except Exception as exc:  # noqa: BLE001 - a question we could not ask is not an answer
+            log.warning("could not ask whether PunkBuster is running: %s", exc)
+            return
+        if not punkbuster.PunkBuster.is_installed(reply):
+            if wanted:
+                log.warning(
+                    "server.punkbuster is set, but %r answered %r — this server is not running "
+                    "PunkBuster, so no PunkBuster id will ever be recorded and `!pbss` cannot work",
+                    punkbuster.VERSION_COMMAND,
+                    (reply or "").strip()[:80],
+                )
+            return
+        self.punkbuster = punkbuster.PunkBuster(self._send_and_read)
+        log.info("punkbuster active: %s", reply.strip()[:120])
+        quirk = self.version_quirk
+        if quirk is not None and quirk.pb_id_length:
+            # Recorded rather than enforced: the row pattern already accepts 30-32 characters,
+            # because the captured data from real servers contains 31-character ids — the same fact
+            # this quirk states about Call of Duty 2 build 1.2, arriving from the other direction.
+            log.info(
+                "%s %s reports %d-character PunkBuster ids",
+                self.profile.name,
+                self.game.version,
+                quirk.pb_id_length,
+            )
+
+    def request_screenshot(self, client: Client) -> bool:
+        """Ask PunkBuster for a picture of what this player is seeing. False if it cannot be asked.
+
+        On the port because `!pbss` needs it and the admin plugin is deliberately not given the
+        PunkBuster object — the same reasoning as `map_display` and `parse_map_request`. The picture
+        lands in the *server's* PunkBuster folder, so all this can report is whether it was asked.
+        """
+        if self.punkbuster is None:
+            return False
+        try:
+            return self.punkbuster.screenshot(client)
+        except Exception as exc:  # noqa: BLE001 - the admin gets told, rather than a traceback
+            log.warning("punkbuster screenshot request failed: %s", exc)
+            return False
+
+    def _send_and_read(self, cmd: str) -> str:
+        """Send and return the reply — what :class:`punkbuster.PunkBuster` sends its verbs through."""
+        return self._ask(cmd)
+
+    def apply_optional_mods(self) -> None:
+        """Ask what is installed, and take the better verbs when a mod offers them.
+
+        SourceMod's "B3 Say" is the case: with it there, `b3_say`/`b3_hsay`/`b3_psay` display much
+        better on screen than the stock `sm_` verbs. The classic bot switched templates the same way,
+        off the same `sm plugins list` reply.
+
+        The profile is frozen — deliberately, so nothing loaded at runtime can edit a title — so this
+        builds a **new** profile and swaps it in whole, rather than writing over a template in place.
+        The parser is handed the same object, because two profiles that disagree would be worse than
+        either of them being wrong.
+
+        Silent when a mod is absent: that is the ordinary case, and a line about every mod the server
+        has not got is noise. Never fatal — an optional mod is optional.
+        """
+        mods = self.profile.optional_mods
+        reader = getattr(self.parser, "read_installed_mods", None)
+        if not mods or reader is None or self._rcon is None:
+            return
+        replies: dict[str, frozenset[str]] = {}
+        overrides: dict[str, object] = {}
+        found: list[str] = []
+        for mod in mods:
+            if mod.command not in replies:
+                try:
+                    replies[mod.command] = frozenset(reader(self._rcon.command(mod.command)))
+                except Exception as exc:  # noqa: BLE001 - an optional mod is optional
+                    log.debug("could not list mods with %r: %s", mod.command, exc)
+                    replies[mod.command] = frozenset()
+            if mod.name not in replies[mod.command]:
+                continue
+            found.append(mod.name)
+            overrides.update(mod.overrides)
+        if not overrides:
+            return
+        unknown = set(overrides) - {f.name for f in fields(GameProfile)}
+        if unknown:
+            # A typo'd field name would otherwise be a no-op that looks like a working feature.
+            raise ValueError(
+                f"{self.profile.name}: optional mod overrides name fields a GameProfile "
+                f"does not have: {', '.join(sorted(unknown))}"
+            )
+        # `Any` values, because the field names are only known at runtime: an override table is data
+        # on the profile, so the type checker cannot pair a key with the field it names. The check
+        # above is what stands in for it, and it is stricter in the way that matters — it runs
+        # against the actual dataclass rather than against what a template was declared as.
+        applied: dict[str, Any] = dict(overrides)
+        self.profile = replace(self.profile, **applied)
+        # One profile object, not two. The parser reads its own for guid rules and team names, and a
+        # copy that had missed this swap would be a second, quietly different, answer to every
+        # question the profile answers.
+        self.parser.profile = self.profile
+        # Rebuilt because one of the things a mod can change is whether the bot prefixes at all, and
+        # the formatter was built at startup with the answer from before this question was asked.
+        self.messages = self._build_messages()
+        log.info(
+            "%s: %s installed, using its verbs (%s)",
+            self.profile.name,
+            " and ".join(found),
+            ", ".join(sorted(overrides)),
+        )
+
+    def read_server_info(self) -> None:
+        """Ask the server to describe itself, for the engines that will not answer it as cvars.
+
+        The classic bot's `getServerVars`. Only Frostbite declares a `server_info_command`: it has no
+        cvars, so without this the bot does not know the server's name, its player limit, its
+        gametype or how many rounds a map runs for — all of which `!status` and any scheduled
+        announcement want, and every other family here gets from a cvar dump for free.
+
+        The reply is *positional*, so the parser reads it. Never fatal: a server that will not
+        describe itself is still a server the bot can moderate.
+        """
+        command = self.profile.server_info_command
+        reader = getattr(self.parser, "read_server_info", None)
+        if not command or reader is None or self._rcon is None:
+            return
+        try:
+            info = reader(self._rcon.command(command))
+        except Exception as exc:  # noqa: BLE001 - a server that will not describe itself still works
+            log.warning("could not read server info (%r failed: %s)", command, exc)
+            return
+        if not info:
+            return
+        # Returned as cvar names so it goes through the same merge every other engine's values do —
+        # `sv_hostname` and `sv_maxclients` are what `Game.update_cvars` keeps its named fields in
+        # step with, and a second way of setting them is a second way for them to disagree.
+        self.game.update_cvars(info)
+        if not self.game.map_name and info.get("mapname"):
+            self.game.map_name = info["mapname"]
+        log.info(
+            "%s: %s, %s players max, playing %s",
+            self.profile.name,
+            self.game.hostname or "(unnamed server)",
+            self.game.max_players or "?",
+            self.map_display(self.game.map_name) if self.game.map_name else "no map yet",
+        )
+
+    def _check_is_the_right_game(self) -> None:
+        """Refuse to run against a server that is not the game this title parses.
+
+        The classic bot's per-title `checkVersion`, and a refusal for the same reason it was one
+        there: the six Frostbite titles share a parser and a set of verbs, so a `bf3` bot pointed at
+        a Battlefield 4 server connects, logs in and then reads a grammar that is *almost* right.
+        Half the events come out wrong and the rest do not come out at all, which is indistinguishable
+        from a quiet server. Asking costs one command and the server answers with its own name.
+
+        A server that will not answer is not treated as the wrong game — the same distinction
+        `check_required_mod` draws, and for the same reason: "could not ask" and "answered wrongly"
+        want different responses from whoever is reading the log.
+        """
+        check = self.profile.version_check
+        if check is None or self._rcon is None:
+            return
+        try:
+            reply = self._rcon.command(check.command)
+        except Exception as exc:  # noqa: BLE001 - any transport failure means "could not ask"
+            log.warning(
+                "%s: could not check what game this server is (%r failed: %s); continuing",
+                self.profile.name,
+                check.command,
+                exc,
+            )
+            return
+        words = (reply or "").split()
+        if not words:
+            log.warning("%s: the server did not say what game it is; continuing", self.profile.name)
+            return
+        self.game.version = " ".join(words)
+        log.info("%s: server version %s", self.profile.name, self.game.version)
+        if words[0] != check.game_name:
+            raise WrongGameError(
+                f"server.game is {self.profile.name!r}, but this server answered "
+                f"{check.command!r} with {words[0]!r} — it is not the game that title parses. "
+                f"Set server.game to the title this server actually runs. Connecting anyway would "
+                f"read the wrong grammar, which looks like a server where nothing ever happens."
+            )
+        if not check.min_build or len(words) < 2:
+            return
+        try:
+            build = int(words[1])
+        except ValueError:
+            # A build number we cannot read is not evidence that it is too old.
+            log.debug("%s: unreadable build number %r", self.profile.name, words[1])
+            return
+        if build < check.min_build:
+            raise WrongGameError(
+                f"this server is {check.game_name} build {build}, and the {self.profile.name} "
+                f"parser was written against build {check.min_build} and later. Update the game "
+                f"server: the events this bot reads were not all in that build."
+            )
 
     def check_required_mod(self) -> None:
         """Refuse to run when the title needs a server-side mod that is not installed.
@@ -309,6 +592,12 @@ class Bot:
         """Track the match from the ``InitGame`` cvar dump (the legacy ``Game`` object)."""
         cvars = event.data if isinstance(event.data, dict) else {}
         now = self.clock.now()
+        # A new round puts everybody back in play. Without this a player killed in the last seconds
+        # of a round stays "dead" for the whole of the next one on any engine that does not report
+        # spawns, and `say_dead` would keep talking to them while `smart_say` answered them privately
+        # in front of nobody.
+        for client in self.clients.connected():
+            client.alive = True
         new_map = cvars.get("mapname", "")
         if new_map and new_map != self.game.map_name:
             previous = self.game.map_name
@@ -318,6 +607,20 @@ class Bot:
         else:
             self.game.update_cvars(cvars)
             self.game.start_round(now)
+
+    def _on_death(self, event: Event) -> None:
+        """The victim of a kill is the `target`; on a suicide it is the `client`.
+
+        Both spellings are handled because both occur: a kill names two people and a suicide names
+        one, and reading only the first would leave every self-inflicted death marked alive.
+        """
+        victim = event.target if event.target is not None else event.client
+        if victim is not None:
+            victim.alive = False
+
+    def _on_spawn(self, event: Event) -> None:
+        if event.client is not None:
+            event.client.alive = True
 
     def _on_server_info(self, event: Event) -> None:
         """The server said what it is called and how many players it holds.
@@ -514,20 +817,65 @@ class Bot:
     def tell(self, client: Client, text: str) -> None:
         """Message one player, split across as many lines as the game's chat limit needs.
 
+        Marked with `bot.pm_prefix` on top of the bot's own prefix — the classic's `pmPrefix` — so a
+        player can tell a reply meant for them from a broadcast that happens to name them.
+
         The name is offered as well as the slot because engines disagree about which addresses a
         player: Altitude's `serverWhisper` takes the name, and it has no verb that takes a slot.
         """
-        for line in self.messages.wrap(text):
-            self._write(
-                self.profile.tell_template
-                % {
-                    "cid": client.cid,
-                    "name": sanitize_rcon_value(client.name),
-                    # Homefront's `adminpm` takes the player's Steam id, not a slot or a name.
-                    "guid": sanitize_rcon_value(client.guid),
-                    "text": sanitize_rcon_value(line, None),
-                }
-            )
+        for line in self.messages.wrap(text, self.config.bot.pm_prefix):
+            self._tell_line(client, line)
+
+    def _tell_line(self, client: Client, line: str) -> None:
+        """Send one already-wrapped line to one player.
+
+        Shared by `tell` and `say_dead`, which differ only in which prefix the text carries — the
+        addressing is identical, and two copies of it would be two places for an engine's spelling
+        of "this player" to be wrong.
+        """
+        self._write(
+            self.profile.tell_template
+            % {
+                "cid": client.cid,
+                "name": sanitize_rcon_value(client.name),
+                # Homefront's `adminpm` takes the player's Steam id, not a slot or a name.
+                "guid": sanitize_rcon_value(client.guid),
+                "text": sanitize_rcon_value(line, None),
+            }
+        )
+
+    def say_dead(self, text: str) -> None:
+        """Say something only the players waiting to respawn will see.
+
+        There is no verb for this on any engine here. The classic bot did it by sending the same
+        private message to every dead client in turn, and so does this — which means it works on any
+        title with a `tell`, not only on the two the classic implemented it for.
+
+        The prefix matters as much as the routing: without it a dead player cannot tell a message
+        aimed at them from one everybody got, which is the whole point of sending it separately.
+        """
+        dead = [c for c in self.clients.connected() if not c.alive and c.cid is not None]
+        if not dead:
+            return
+        # Wrapped once and sent to each of them, rather than going through `tell`: this is dead
+        # *chat*, not a private message, so it takes `dead_prefix` and not `[pm]` — and wrapping it
+        # per recipient would be the same work repeated once per corpse.
+        lines = self.messages.wrap(text, self.config.bot.dead_prefix)
+        for client in dead:
+            for line in lines:
+                self._tell_line(client, line)
+
+    def smart_say(self, client: Client, text: str) -> None:
+        """Answer where the player who asked will actually see it — the legacy ``smartSay``.
+
+        A dead or spectating player on these engines is shown only the dead/spectator chat, so a
+        reply sent with `say` is a reply they never read while everybody else does. Alive: say it to
+        the server. Dead or spectating: say it to the dead.
+        """
+        if client.alive and client.team != "spec":
+            self.say(text)
+        else:
+            self.say_dead(text)
 
     def say_big(self, text: str) -> None:
         """Centre-screen announcement, or a plain `say` on engines without one."""
@@ -573,7 +921,99 @@ class Bot:
                 for c in self.clients.connected()
                 if c.cid is not None
             ]
-        return self._read_status()[1]
+        return self._identify(self._read_status()[1])
+
+    def _identify_from_punkbuster(self, players: list[PlayerInfo]) -> list[PlayerInfo]:
+        """Fill in what PunkBuster knows: a PunkBuster id for everyone, and a guid for those with none.
+
+        This is what PunkBuster is *for*, on the engines that most need it. A plain Quake 3 or an
+        older Call of Duty server may hand out no usable `cl_guid` at all, so without this a player
+        on one of those titles cannot hold a level or be matched against a ban — the bot sees a name
+        and an address and nothing that survives either being changed.
+
+        The id is recorded on `Client.pbid` in every case, because it is a *second* identity rather
+        than a replacement: a player's guid and their PunkBuster id are different things, and a
+        plugin or an admin looking one up wants the one they asked for.
+
+        Skipped when the roster is empty, so an idle server is not asked about nobody.
+        """
+        if self.punkbuster is None or not players:
+            return players
+        try:
+            seen = self.punkbuster.player_list()
+        except Exception as exc:  # noqa: BLE001 - PunkBuster being unavailable is not fatal
+            log.debug("punkbuster player list failed: %s", exc)
+            return players
+        if not seen:
+            return players
+        filled: list[PlayerInfo] = []
+        for info in players:
+            found = seen.get(info.cid)
+            if found is None:
+                filled.append(info)
+                continue
+            client = self.clients.get_by_cid(info.cid)
+            if client is not None and client.pbid != found.pbid:
+                client.pbid = found.pbid
+                if client.id is not None:
+                    self.storage.save_client(client)
+            # Only as a *fallback* identity. Where the engine states a guid that is the one to key
+            # on, because it is what an imported classic database and every existing ban already
+            # use; overwriting it with a PunkBuster id would orphan a player's whole history.
+            if info.guid:
+                filled.append(info)
+                continue
+            log.info("punkbuster identified slot %s, which the engine did not", info.cid)
+            filled.append(replace(info, guid=found.pbid, ip=info.ip or found.ip))
+        return filled
+
+    def _identify(self, players: list[PlayerInfo]) -> list[PlayerInfo]:
+        """Ask the server directly about any player whose identity the status table does not carry.
+
+        Only the Quake 3 family declares a `userinfo_command`, and it is the family that needs one:
+        its status table reports a slot, a name and a ping, but the persistent id lives in the
+        `ClientUserinfo` line — so a bot started mid-match, or one that missed that line, has a player
+        it cannot authenticate, hold a level for, or match a ban against. The classic bot's
+        `queryClientUserInfoByCid`.
+
+        Runs wherever `get_players` runs, which is on a worker thread for both the auth poll and the
+        five-minute sync, so the round trips are off the event loop.
+
+        **Asked once per slot, not once per poll.** A server that sets no `cl_guid` at all — a plain
+        Enemy Territory server is exactly that — would otherwise be asked about every player every
+        five minutes, forever, for an answer that is never going to arrive.
+        """
+        players = self._identify_from_punkbuster(players)
+        command = self.profile.userinfo_command
+        reader = getattr(self.parser, "read_userinfo", None)
+        if not command or reader is None or self._rcon is None:
+            return players
+        for info in players:
+            if info.guid or info.cid in self._asked_userinfo:
+                continue
+            self._asked_userinfo.add(info.cid)
+            try:
+                reply = self._ask(command % {"cid": sanitize_rcon_value(info.cid)})
+            except Exception as exc:  # noqa: BLE001 - one slot failing must not lose the roster
+                log.debug("userinfo query for slot %s failed: %s", info.cid, exc)
+                continue
+            line = reader(info.cid, reply)
+            if line:
+                # Fed back as a log line so it goes through the same handler an ordinary
+                # `ClientUserinfo` would — see `Q3Parser.read_userinfo` for why that matters.
+                self.parser.parse_line(line)
+                log.info("identified slot %s from the server's own userinfo", info.cid)
+        # Hand back what the parser learned, so `_reconcile` sees the identity on this pass rather
+        # than on the next one — otherwise the player is adopted with no guid and authenticated as a
+        # stranger before the answer we just fetched is ever looked at.
+        enriched: list[PlayerInfo] = []
+        for info in players:
+            client = self.clients.get_by_cid(info.cid)
+            if not info.guid and client is not None and client.guid:
+                enriched.append(replace(info, guid=client.guid))
+            else:
+                enriched.append(info)
+        return enriched
 
     def _read_status(self) -> tuple[str, list[PlayerInfo]]:
         """Ask the server for its status table, and parse it. Returns ``(map name, players)``.
@@ -668,6 +1108,12 @@ class Bot:
         return map_name or None
 
     def get_maps(self) -> list[str]:
+        # A client that holds the rotation itself is asked first. Frostbite is the case: its map list
+        # is neither a cvar nor a text reply but a self-describing block that has to be paged
+        # through, so the client reads it for the same reason it reads its own player block.
+        own_rotation = getattr(self._rcon, "get_maps", None)
+        if own_rotation is not None:
+            return [str(m) for m in own_rotation()]
         if not self.profile.rotation_cvar:
             # No cvars -- but some of those engines will still answer a question. Ravaged's
             # `getmaplist false` returns the rotation in order, and its parser knows the row shape;
@@ -725,12 +1171,67 @@ class Bot:
         """
         return self.profile.map_display(map_id)
 
-    def change_map(self, name: str) -> None:
-        """Load a named map. Some engines need two commands for it, so the template may hold both."""
-        rendered = self.profile.map_template % sanitize_rcon_value(name)
+    def parse_map_request(self, text: str) -> MapRequest:
+        """Split a `!map` argument the way this engine splits it — see `GameProfile.map_arguments`.
+
+        On the port rather than left to the plugin for the same reason `map_display` is: the answer
+        is a fact about the title, and the admin plugin is deliberately not given the profile.
+        """
+        return self.profile.parse_map_request(text)
+
+    def map_usage(self) -> str:
+        """The `!map` arguments past the map name, in this engine's separator — "" on most titles."""
+        return self.profile.map_usage()
+
+    def change_map(self, name: str, extras: Mapping[str, str] | None = None) -> None:
+        """Load a named map. Some engines need two commands for it, so the template may hold both.
+
+        ``extras`` carries the engine-specific arguments an admin may give after the map —
+        :attr:`GameProfile.map_arguments` names them, and `cmd_map` parses them off the command line.
+        A title that declares none never sees this and is rendered exactly as before, positionally.
+
+        Some engines cannot express a map change as a template at all. Frostbite is the case: loading
+        a named map means reading the rotation, adding the map at a computed index, pointing the
+        server at that index and then ending the round — four commands where one of the arguments is
+        arithmetic over a reply. A client that can do it is asked to, the same duck-typed seam
+        `get_players` and `remove_ban` already use.
+        """
+        values = dict(extras or {})
+        own = getattr(self._rcon, "change_map", None)
+        if own is not None:
+            # Unsanitised on purpose, and only safe because of what is on the other side: a client
+            # implementing this seam speaks a framed protocol where each argument is its own
+            # length-prefixed word, so there is no command line for a quote or a semicolon to break
+            # out of. A template, which is a string, is sanitised below.
+            own(name, values)
+            return
+        if not self.profile.map_template:
+            log.warning(
+                "%s has no verb for loading a named map; only !maprotate can move it on",
+                self.profile.name,
+            )
+            return
+        if self.profile.map_arguments:
+            # Named substitution, and every declared argument is given a value even when the admin
+            # left it out: a template naming a placeholder the caller omitted would raise KeyError
+            # here rather than at the point the profile was written, which is the worst place to
+            # find out. An unfilled extra renders empty and the whitespace is tidied below.
+            rendered = self.profile.map_template % {
+                "map": sanitize_rcon_value(name),
+                **{
+                    key: sanitize_rcon_value(str(values.get(key, "")))
+                    for key in self.profile.map_arguments
+                },
+            }
+        else:
+            rendered = self.profile.map_template % sanitize_rcon_value(name)
         for command in rendered.splitlines():
-            if command.strip():
-                self._send(command.strip())
+            # `split()`/`join` rather than `strip`: an omitted middle argument leaves a double space
+            # inside the command, and some of these servers read that as an empty positional rather
+            # than as spacing.
+            collapsed = " ".join(command.split())
+            if collapsed:
+                self._send(collapsed)
 
     def rotate_map(self) -> None:
         if not self.profile.rotate_command:
@@ -856,11 +1357,7 @@ class Bot:
 
         config = load_config(str(self.config_path))
         self.config = config
-        self.messages = Messages(
-            config.messages,
-            line_length=_line_length(config, self.profile),
-            color_prefix=config.bot.line_color_prefix,
-        )
+        self.messages = self._build_messages()
         self.tz = _resolve_timezone(config.bot.time_zone)
         self.scheduler.tz = self.tz
         log.info("configuration reloaded from %s", self.config_path)
@@ -870,6 +1367,9 @@ class Bot:
         if client.cid is not None:
             self.clients.remove(client.cid)
             self.auth.cancel(client.cid)
+            # The slot is free, so the next player in it is a fresh question. Without this, a server
+            # that gave one player no id would never be asked about their replacement either.
+            self._asked_userinfo.discard(client.cid)
         self.bus.publish_soon(Event(EventType.CLIENT_DISCONNECT, client=client))
 
     async def _scheduled_sync(self) -> None:

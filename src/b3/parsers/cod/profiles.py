@@ -36,6 +36,7 @@ from __future__ import annotations
 from dataclasses import replace
 
 from b3.parsers.cod.profile import GameProfile
+from b3.parsers.profile import VersionQuirk
 from b3.parsers.cod.status import (
     COD4GR_PLAYER_LINE_RE,
     COD4X_PATTERNS,
@@ -63,24 +64,61 @@ _NOT_TEAMKILL = frozenset({"briefcase_bomb_mp"})
 #: values of their own (43 and 72); where both apply the smaller wins.
 COD_LINE_LENGTH = 65
 
+#: Every Call of Duty title the classic supported can run PunkBuster, and on the older ones it is the
+#: only reliable identity a player has — `cod` and `cod2` hand out a six-character CD-key hash and
+#: nothing else. Named rather than written as a bare `True` at eight call sites, so that what it
+#: means is stated once. The two **Plutonium** titles are deliberately absent: that client postdates
+#: PunkBuster's withdrawal from these games, so asking one would earn an unknown command at every
+#: startup for a certain "no".
+PUNKBUSTER = True
+
 #: Call of Duty 1. Identity is the short CD-key hash rather than an IP, matching CoD2, and every
 #: verb is this module's default — those defaults were taken from this title in the first place.
 COD = GameProfile(
     name="cod",
+    punkbuster=PUNKBUSTER,
     guid_min_length=6,
     line_length=COD_LINE_LENGTH,
     startup_commands=LOGSYNC,
 )
 
+#: Which cvar names the build, on every Call of Duty title. The classic bot read it through
+#: `setVersionExceptions`, a hook `cod.py` declared and `cod2.py` was the only title to use.
+VERSION_CVAR = "shortversion"
+
+#: Call of Duty 2, and the two builds of it that are not like the others. Both faults are silent
+#: ones, which is why they are worth carrying: a 1.0 server holds nobody's level and looks merely
+#: broken, and a 1.2 server's PunkBuster ids fail a length check that never says so.
+COD2_VERSIONS = {
+    "1.0": VersionQuirk(
+        warning=(
+            "this build of Call of Duty 2 cannot authenticate players properly, so levels and "
+            "bans will not hold. Either update the server, or run it in IP-only mode "
+            "(server.game: cod2 with the server configured for it) and accept that players are "
+            "identified by address"
+        ),
+        # A server already running IP-only has been configured around the fault; saying it every
+        # restart would be noise about a decision that has been made.
+        only_when_using_ids=True,
+    ),
+    # 32 everywhere else. A validator written to the documented length rejects every id this build
+    # produces, and a rejected id looks exactly like a player who has none.
+    "1.2": VersionQuirk(pb_id_length=31),
+}
+
 COD2 = GameProfile(
     name="cod2",
+    punkbuster=PUNKBUSTER,
     guid_min_length=6,
     line_length=COD_LINE_LENGTH,
     startup_commands=LOGSYNC_COD2,
+    version_cvar=VERSION_CVAR,
+    version_quirks=COD2_VERSIONS,
 )
 
 COD4 = GameProfile(
     name="cod4",
+    punkbuster=PUNKBUSTER,
     guid_min_length=32,
     line_length=COD_LINE_LENGTH,
     teams=_IW_TEAMS,
@@ -90,6 +128,7 @@ COD4 = GameProfile(
 
 COD4X = GameProfile(
     name="cod4x",
+    punkbuster=PUNKBUSTER,
     # A Steam64 id is 17 digits. Stock CoD4's 32 would reject every CoD4X player, and 0 (what the
     # reference parser uses) would accept the "0" the engine reports before a client is identified.
     guid_min_length=17,
@@ -119,6 +158,7 @@ COD4X = GameProfile(
 
 COD4GR = GameProfile(
     name="cod4gr",
+    punkbuster=PUNKBUSTER,
     guid_min_length=10,
     line_length=COD_LINE_LENGTH,
     teams=_IW_TEAMS,
@@ -146,6 +186,7 @@ TREYARCH_ACTIONS = {
 
 COD5 = GameProfile(
     name="cod5",
+    punkbuster=PUNKBUSTER,
     guid_min_length=8,
     line_length=COD_LINE_LENGTH,
     startup_commands=LOGSYNC_COD2,  # cod5 inherited cod2's logsync value
@@ -156,6 +197,7 @@ COD5 = GameProfile(
 #: by splatting a dict, so a mistyped field name fails here instead of at import time.
 _MODERN_WARFARE = GameProfile(
     name="",  # each title names itself below
+    punkbuster=PUNKBUSTER,
     guid_min_length=16,
     line_length=COD_LINE_LENGTH,
     ban_template="clientkick %(cid)s",
@@ -168,6 +210,7 @@ COD8 = replace(_MODERN_WARFARE, name="cod8")
 
 COD7 = GameProfile(
     name="cod7",
+    punkbuster=PUNKBUSTER,
     guid_min_length=5,
     line_length=COD_LINE_LENGTH,
     kick_template='clientkick %(cid)s "%(reason)s"',
@@ -250,6 +293,7 @@ __all__ = [
     "COD",
     "COD_LINE_LENGTH",
     "COD2",
+    "COD2_VERSIONS",
     "COD4",
     "COD4GR",
     "COD4X",
@@ -260,4 +304,5 @@ __all__ = [
     "PLUTOIW5",
     "PLUTOT6",
     "TREYARCH_ACTIONS",
+    "VERSION_CVAR",
 ]

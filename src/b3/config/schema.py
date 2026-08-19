@@ -12,7 +12,13 @@ from pydantic import BaseModel, Field
 
 class BotConfig(BaseModel):
     name: str = "b3"
-    prefix: str = "^2(b3)^7:"  # in-game message prefix (game color codes allowed)
+    # Goes in front of everything the bot says, so its messages can be told apart from player chat
+    # on a busy server — which is the entire reason the classic bot had it (`msgPrefix`). Game
+    # colour codes allowed. Empty means the bot says exactly what it was given.
+    #
+    # It is part of the **line-wrapping budget**, not something added afterwards: see
+    # `b3.core.messages.Messages.prefix`.
+    prefix: str = "^2(b3)^7:"
     # IANA name (e.g. Europe/Chisinau). Schedules are evaluated in this zone.
     time_zone: str = "UTC"
     log_level: str = "INFO"
@@ -20,6 +26,13 @@ class BotConfig(BaseModel):
     line_length: int = 90
     # Prepended to each continuation line of a wrapped message (engines reset colour per line).
     line_color_prefix: str = ""
+    # Marks a message sent only to the players waiting to respawn (`Console.say_dead`). Without it a
+    # dead player cannot tell a message aimed at them from one the whole server got, which is the
+    # only reason to send it separately. The classic bot's `deadPrefix`, with its value.
+    dead_prefix: str = "[DEAD]^7"
+    # Marks a private reply, so a player can tell one meant for them from a broadcast that happens
+    # to name them. The classic bot's `pmPrefix`. Stacks on top of `prefix`.
+    pm_prefix: str = "^8[pm]^7"
     # SQLAlchemy URL. sqlite:///path, mysql+pymysql://..., postgresql+psycopg://...
     database: str = "sqlite:///b3.sqlite"
     # Where `b3 plugin install` puts git-installed plugins (@b3/@conf/@home tokens allowed).
@@ -78,6 +91,12 @@ class ServerConfig(BaseModel):
     # the player is kicked as well. Ignored on engines that declare no limit
     # (GameProfile.name_max_length).
     allow_long_names: bool = False
+    # PunkBuster: None asks the server (`PB_SV_Ver`), which is the right default because the answer
+    # is reliable and the operator should not have to know. True insists — the bot says so loudly if
+    # the server has no PunkBuster, which is what an operator who is relying on it for identity
+    # wants to hear. False never asks. Ignored on the engines that cannot run it at all
+    # (GameProfile.punkbuster).
+    punkbuster: bool | None = None
     # -- remote game_log only (ignored for a local path) --
     # Seconds between polls. Each poll is a round trip, so don't set this too low.
     log_poll_interval: float = 2.0

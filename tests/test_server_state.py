@@ -253,7 +253,7 @@ def test_say_big_falls_back_to_say_when_the_engine_has_none(tmp_path):
     rcon = ScriptedRcon()
     bot = _bot(tmp_path, rcon=rcon)
     bot.say_big("round starting")
-    assert rcon.commands == ["say round starting"]
+    assert rcon.commands == ["say ^2(b3)^7: round starting"]
 
 
 # -- player-list reconciliation ----------------------------------------------------------------
@@ -416,7 +416,7 @@ async def test_map_command_changes_the_map(tmp_path):
     await _proc(bot).handle(_admin(), "!map mp_vacant")
 
     assert "map mp_vacant" in rcon.commands
-    assert "say changing map to mp_vacant" in rcon.commands
+    assert any("changing map to mp_vacant" in c for c in rcon.commands)
 
 
 @pytest.mark.asyncio
@@ -477,11 +477,15 @@ async def test_nextmap_is_open_to_ordinary_players_but_map_is_not(tmp_path):
     bot = _bot(tmp_path, rcon=rcon)
     user = Client(guid=GBOB, name="Bob", cid="2", id=2, group_bits=1)  # level 1
 
+    # Searched across every line rather than only the last, because with the bot's prefix and the
+    # `[pm]` marker in front of it the refusal is now long enough to wrap — so its tail alone is
+    # "command", and asserting on `commands[-1]` would be asking the wrong line.
     await _proc(bot).handle(user, "!nextmap")
-    assert "sufficient access" not in rcon.commands[-1]
+    before = list(rcon.commands)
+    assert not any("sufficient access" in c for c in before)
 
     await _proc(bot).handle(user, "!map mp_vacant")
-    assert "sufficient access" in rcon.commands[-1]
+    assert any("sufficient access" in c for c in rcon.commands[len(before) :])
 
 
 # -- bot lifecycle ------------------------------------------------------------------------------

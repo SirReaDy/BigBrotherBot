@@ -127,6 +127,19 @@ async def main() -> int:
             bot.unban(bob, "appeal granted")
         check(server.bans == [], "!unban cleared the server's ban list entry")
 
+        # Map control, which is the half this driver could not see before. What was here was
+        # `admin.runNextRound "<map>"` — the Frostbite *1* rotate verb with a map name glued onto it
+        # that it does not take — so `!map` ended the round and loaded whatever came next. Every
+        # check below is about the server's own state afterwards rather than about a command going
+        # out, because a command going out is exactly what used to be true while it did not work.
+        check(bot.get_maps() == ["MP_001", "MP_011", "MP_013"], "the rotation is read, and paged")
+        bot.change_map("MP_007", {"gamemode": "RushLarge0", "rounds": "3"})
+        check(server.current_map() == "MP_007", "!map loaded the map that was asked for")
+        check(
+            ("MP_007", "RushLarge0", "3") in server.map_list,
+            "with the gamemode and round count the admin typed, not the ones it was already running",
+        )
+
         # The player list comes back as a structured block, not text.
         players = bot.get_players()
         check(

@@ -333,15 +333,44 @@ def test_every_title_is_configurable(game):  # noqa: ANN001
     assert profile.family in PUSH_FAMILIES  # so the CLI builds one object for both halves
 
 
-def test_the_titles_differ_in_nothing_the_bot_cares_about():
-    """Both protocol generations take the same verbs; what differs is data read by name.
+def test_the_titles_differ_in_nothing_but_the_map_list():
+    """Both protocol generations take the same verbs for chat, kicks and bans — that is what makes
+    one profile serve six titles, and it is worth a test because it is the family's whole premise.
 
-    `map_names` is excluded because it is per-title data by definition.
+    **The map list is the exception, and it was found the hard way.** Frostbite 1 (Bad Company 2, the
+    2010 Medal of Honor) keeps a flat list of level names and ends a round with `admin.runNextRound`;
+    Frostbite 2 keeps (map, gamemode, rounds) entries and uses `mapList.runNextRound`. This test used
+    to assert the six were identical in every field, and they were — with the Frostbite 2 rotate verb
+    on all six, so `!maprotate` was an unknown command on the two Frostbite 1 titles, and with a map
+    template that was the Frostbite 1 rotate verb plus an argument it does not take, so `!map` loaded
+    nothing anywhere. Asserting sameness is what made both invisible.
+
+    `map_names` and `version_check` are excluded because both are per-title data by definition —
+    the second is the title *saying which title it is*, so it could not be shared even in principle.
     """
     from dataclasses import replace
 
-    for profile in (BF4, BFBC2, BFH, MOH, MOHW):
-        assert replace(profile, name="bf3", map_names=BF3.map_names) == BF3
+    same_as_bf3 = {
+        "map_names": BF3.map_names,
+        "name": "bf3",
+        "version_check": BF3.version_check,
+    }
+    for profile in (BF4, BFH, MOHW):
+        assert replace(profile, **same_as_bf3) == BF3
+
+    for profile in (BFBC2, MOH):
+        # Everything but the map list, which this generation genuinely does differently.
+        assert (
+            replace(
+                profile,
+                **same_as_bf3,
+                rotate_command=BF3.rotate_command,
+                map_arguments=BF3.map_arguments,
+            )
+            == BF3
+        )
+        assert profile.rotate_command == "admin.runNextRound"
+        assert profile.map_arguments == ()
 
 
 def test_bans_are_native_and_by_guid():

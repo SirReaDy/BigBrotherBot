@@ -15,6 +15,7 @@ from b3.core.util import format_time
 from b3.core.events import Event, EventType
 from b3.domain.client import NEVER_EXPIRES, Alias, Client, IpAlias, Penalty, PenaltyType
 from b3.domain.permissions import DEFAULT_GROUPS, Group
+from b3.parsers.profile import GameProfile
 
 
 class FakeStorage:
@@ -112,6 +113,10 @@ class FakeConsole:
         self.game = Game()
         self.said: list[str] = []
         self.said_big: list[str] = []
+        self.said_dead: list[str] = []
+        #: Whether this server is running PunkBuster, and who a screenshot was asked of.
+        self.punkbuster = True
+        self.screenshots: list[Client] = []
         self.told: list[tuple[Client, str]] = []
         # Server-query answers tests can set; every read verb reports "nothing known" by default.
         self.players: list[PlayerInfo] = []
@@ -120,6 +125,11 @@ class FakeConsole:
         self.map_names: dict[str, str] = {}  # lowercased id -> display name, as a profile carries
         self.next_map: str | None = None
         self.map_changes: list[str] = []
+        #: Extras passed with each map change, one entry per `map_changes` entry.
+        self.map_extras: list[dict[str, str]] = []
+        #: Which title's `!map` grammar to answer with. The default takes a bare name, like almost
+        #: every engine here; a test for the two that take more replaces it with their profile.
+        self.map_profile = GameProfile(name="fake")
         self.rotations = 0
         self.kicked: list[tuple[Client, str, Client | None]] = []
         self.banned: list[tuple[Client, str, Client | None]] = []
@@ -149,6 +159,18 @@ class FakeConsole:
     def tell(self, client: Client, text: str) -> None:
         self.told.append((client, text))
 
+    def say_dead(self, text: str) -> None:
+        self.said_dead.append(text)
+        for client in self.clients.connected():
+            if not client.alive:
+                self.told.append((client, f"[DEAD] {text}"))
+
+    def smart_say(self, client: Client, text: str) -> None:
+        if client.alive and client.team != "spec":
+            self.say(text)
+        else:
+            self.say_dead(text)
+
     # server queries + control
     def get_players(self) -> list[PlayerInfo]:
         return list(self.players)
@@ -168,11 +190,22 @@ class FakeConsole:
     def get_next_map(self) -> str | None:
         return self.next_map
 
-    def change_map(self, name: str) -> None:
+    def parse_map_request(self, text: str):  # noqa: ANN201 - MapRequest, imported lazily
+        return self.map_profile.parse_map_request(text)
+
+    def map_usage(self) -> str:
+        return self.map_profile.map_usage()
+
+    def change_map(self, name: str, extras=None) -> None:  # noqa: ANN001
         self.map_changes.append(name)
+        self.map_extras.append(dict(extras or {}))
 
     def map_display(self, map_id: str) -> str:
         return self.map_names.get(map_id.lower(), map_id)
+
+    def request_screenshot(self, client: Client) -> bool:
+        self.screenshots.append(client)
+        return self.punkbuster
 
     def rotate_map(self) -> None:
         self.rotations += 1

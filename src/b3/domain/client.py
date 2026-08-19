@@ -102,6 +102,14 @@ class Client:
     # rather than the parser decides whether to kick for it.
     name_overflow: bool = False
     team: str | None = None
+    #: Whether this player is currently in play, as opposed to waiting to respawn. The classic
+    #: bot's ``STATE_ALIVE``/``STATE_DEAD``, kept for one reason: some engines show a dead player
+    #: only what other dead players are saying, so a bot that answers a `!command` with a plain
+    #: `say` is answering into a channel the person who typed it cannot read. `Console.say_dead`
+    #: and `Console.smart_say` are what use it. Defaults to alive, because a player the bot has just
+    #: adopted mid-round is far more likely to be playing than to be waiting, and being wrong in
+    #: that direction sends them a message they can see.
+    alive: bool = True
     _vars: dict[int, dict[str, Any]] = field(default_factory=dict)
 
     def require_id(self) -> int:

@@ -44,6 +44,7 @@ a fresh player should not be able to make the bot shout at the whole server.
 | `!scream <message>` |  | 40 | Announce something in the engine's largest text |
 | `!tempban <player> <duration> [reason]` | `!tb` | 40 | Ban for a limited time (e.g. 30m, 2h, 1d) |
 | `!ban <player> [reason]` | `!b` | 60 | Ban a player for `ban_duration` (14 days by default) |
+| `!pbss <player>` |  | 60 | Ask PunkBuster for a screenshot of what a player is seeing |
 | `!spank <player> [reason]` | `!sp` | 60 | Kick a player, loudly |
 | `!unban <player> [reason]` |  | 60 | Lift every active ban on a player (works offline, by @id) |
 | `!banall <pattern> [reason]` | `!ball` | 80 | Ban every player whose name matches |
@@ -52,7 +53,7 @@ a fresh player should not be able to make the bot shout at the whole server.
 | `!kickall <pattern> [reason]` | `!kall` | 80 | Kick every player whose name matches |
 | `!lookup <player>` | `!l` | 80 | Find a player in the database, connected or not |
 | `!makereg <player>` | `!mr` | 80 | Make a player a regular |
-| `!map <name>` |  | 80 | Change to another map — a partial name will do |
+| `!map <name>` |  | 80 | Change to another map — a partial name will do. Some engines take more; see below |
 | `!maprotate` |  | 80 | Advance to the next map in the rotation |
 | `!pause <duration>` |  | 80 | Stop acting on the game for a while (0 to resume) |
 | `!permban <player> [reason]` | `!pb` | 80 | Ban a player permanently, whatever ban_duration says |
@@ -71,7 +72,9 @@ a fresh player should not be able to make the bot shout at the whole server.
 | `!unmask [player]` |  | 100 | Stop hiding a level |
 
 That is **all 59 of the classic bot's admin commands**, at its `plugin_admin.ini` default levels
-(guest 0, user 1, reg 2, mod 20, admin 40, fulladmin 60, senioradmin 80, superadmin 100).
+(guest 0, user 1, reg 2, mod 20, admin 40, fulladmin 60, senioradmin 80, superadmin 100) — plus
+`!pbss`, which the classic offered through a separate `punkbuster` plugin rather than as a core
+command.
 
 `<player>` resolves as a slot id (`3`), a case-insensitive partial name (`bo` → Bob), or a database
 id (`@42`). Commands that act on people who have already left — `!unban`, `!baninfo`, `!aliases`,
@@ -88,6 +91,22 @@ still one word even while "bobby" is playing.
 `MP_Subway`. On Battlefield and Medal of Honor titles you can type the name you see on screen
 (`!map grand bazaar`), and `!maps`, `!nextmap` and `!map` all answer with those names rather than the
 engine's ids.
+
+**Two engines take more than a map name, and `!map` takes it in the form their own server does:**
+
+| Titles | Form | Example |
+|---|---|---|
+| `bf3` `bf4` `bfh` `mohw` | `!map <map>, [gamemode], [rounds]` | `!map grand bazaar, RushLarge0, 3` |
+| `insurgency` | `!map <map> [gamemode]` | `!map market push` |
+
+A comma on Frostbite because its map names contain spaces; a space on Insurgency because that is
+what `changelevel` itself takes. Both extras are optional — leave one out and the server keeps what
+it is running. Everywhere else the whole line is the map name, spaces and all, and typing more than
+the engine understands gets the usage line rather than a map loaded in the wrong mode.
+
+`!pbss <player>` (level 60) asks PunkBuster for a screenshot of what a player is seeing. It only
+works where the server is running PunkBuster — the bot asks at startup — and the picture is saved
+in PunkBuster's own folder **on the game server**, not sent back to the admin who asked.
 
 A few commands deliberately behave differently from the classic bot:
 

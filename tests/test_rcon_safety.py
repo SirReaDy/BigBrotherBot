@@ -104,7 +104,7 @@ def test_a_hostile_name_in_an_announcement_cannot_alter_the_command(tmp_path):
 
     bot.say('Bob"; quit was kicked')
 
-    assert rcon.commands == ["say Bob quit was kicked"]
+    assert rcon.commands == ["say ^2(b3)^7: Bob quit was kicked"]
 
 
 def test_set_cvar_value_cannot_close_its_own_quoting(tmp_path):

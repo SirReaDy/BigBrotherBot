@@ -106,6 +106,11 @@ DEFAULT_MESSAGES: dict[str, str] = {
     "nextmap": "next map: {map}",
     "nextmap_unknown": "could not work out the next map",
     "status": "database {database}, {players} player(s) on {map}",
+    # Names where the picture goes, because it does not come back to the admin who asked — saying
+    # only "requested" leaves them waiting in game for something that will never arrive.
+    "punkbuster_screenshot": "asked PunkBuster for a screenshot of {player} (it is saved on the "
+    "game server, in PunkBuster's own folder)",
+    "punkbuster_unavailable": "this server is not running PunkBuster, so it cannot take screenshots",
     # -- lookup / info -------------------------------------------------------
     "found_player": "found {name} in slot {cid}",
     "lookup_found": "@{id} {name} — last seen {when}",
@@ -174,11 +179,19 @@ class Messages:
         *,
         line_length: int = DEFAULT_LINE_LENGTH,
         color_prefix: str = "",
+        prefix: str = "",
     ) -> None:
         self._overrides = dict(overrides or {})
         self._plugin_defaults: dict[str, str] = {}  # filled in by plugins at startup
         self.line_length = line_length
         self.color_prefix = color_prefix
+        #: What goes in front of everything the bot says — `bot.prefix`, the classic's `msgPrefix`.
+        #: Held here rather than applied by the caller because it has to be part of the **wrap
+        #: budget**: a prefix added after wrapping pushes the first line past the engine's chat
+        #: limit, and on Call of Duty that limit is 65 characters and the overflow is simply dropped.
+        #: So the first line of every reply would be cut off mid-sentence — the exact failure §1.16
+        #: records finding once already.
+        self.prefix = prefix
         self._wrapper = TextWrapper(
             width=max(8, line_length),
             drop_whitespace=True,
@@ -228,12 +241,33 @@ class Messages:
             log.warning("message %r could not be formatted (%s); using it verbatim", key, exc)
             return template
 
-    def wrap(self, text: str) -> list[str]:
+    def prefixed(self, text: str, *extra: str) -> str:
+        """``text`` behind the bot's prefix and any channel-specific ones — the classic ``prefixText``.
+
+        Prefixes are joined with single spaces and empty ones are skipped, so a bot configured with
+        no prefix says exactly what it was given. Empty text stays empty rather than becoming a lone
+        prefix: an announcement with nothing in it should send nothing, not "(b3):".
+        """
+        if not text:
+            return ""
+        parts = [p for p in (self.prefix, *extra) if p]
+        return " ".join([*parts, text]) if parts else text
+
+    def wrap(self, text: str, *extra_prefixes: str) -> list[str]:
         """Split text into game-chat-sized lines, honouring embedded newlines.
+
+        The prefix is applied **before** wrapping, which is the whole reason it lives here: it
+        occupies part of the first line's budget, exactly as it did in the classic bot, instead of
+        being bolted on afterwards and pushing that line past what the engine will display.
+
+        ``extra_prefixes`` are the per-channel markers that stack on top of it — ``[pm]`` on a
+        private message, ``[DEAD]`` on dead chat. Like the classic, they are applied once to the
+        whole text, so a message that wraps carries them on its first line only.
 
         Continuation lines get ``color_prefix`` prepended, which is how the classic bot kept a
         wrapped message readable on engines that reset colour per line.
         """
+        text = self.prefixed(text, *extra_prefixes)
         if not text:
             return []
         paragraphs = [p for p in text.replace("\\n", "\n").split("\n") if p.strip()]

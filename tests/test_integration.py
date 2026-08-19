@@ -193,7 +193,10 @@ async def test_chat_is_fire_and_forget_but_penalties_are_not(tmp_path):
     bot.say("everyone hears this")
     bot.tell(bot.clients.get_by_cid("2"), "only Bob hears this")
 
-    assert rcon.writes == ["say everyone hears this", "tell 2 only Bob hears this"]
+    assert rcon.writes == [
+        "say ^2(b3)^7: everyone hears this",
+        "tell 2 ^2(b3)^7: ^8[pm]^7 only Bob hears this",
+    ]
     assert rcon.commands == []  # nothing waited on a reply
 
     bot.ban(bot.clients.get_by_cid("2"), "cheating", admin=bot.clients.get_by_cid("1"))
@@ -206,7 +209,7 @@ async def test_an_rcon_client_without_write_still_works(tmp_path):
     bot, rcon = _build(tmp_path)
     rcon.commands.clear()  # the profile's startup cvars
     bot.say("hello")
-    assert rcon.commands == ["say hello"]
+    assert rcon.commands == ["say ^2(b3)^7: hello"]
 
 
 @pytest.mark.asyncio

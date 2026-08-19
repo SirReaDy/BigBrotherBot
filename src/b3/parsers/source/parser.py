@@ -72,6 +72,13 @@ PROPERTY_RE = re.compile(r'\((?P<key>[^\s()]+)(?P<sep>| "(?P<value>[^"]*)")\)')
 #: One row of a ``maps *`` reply: ``PENDING:  (fs) buhriz.bsp``.
 MAP_ROW_RE = re.compile(r"^PENDING:\s+\(fs\)\s+(?P<map_name>.+)\.bsp\s*$", re.MULTILINE)
 
+#: One row of a ``sm plugins list`` reply: ``01 "B3 Say" (1.0.0) by Courgette``. The classic
+#: parser's pattern, kept as it was. The quotes are what make it readable: a plugin name contains
+#: spaces, so anything splitting on whitespace finds "B3 and stops.
+SM_PLUGIN_ROW_RE = re.compile(
+    r'^(?P<index>.+) "(?P<name>.+)" \((?P<version>.+)\) by (?P<author>.+)$', re.MULTILINE
+)
+
 #: Lines that are real, understood, and of no interest — matched so that `b3 probe` reports them as
 #: handled rather than as gaps in the grammar. One alternation rather than a dozen handlers, because
 #: nothing here needs telling apart.
@@ -627,6 +634,22 @@ class SourceParser(Parser):
         self._maps = [m["map_name"].strip() for m in MAP_ROW_RE.finditer(reply)]
         return list(self._maps)
 
+    def read_installed_mods(self, reply: str) -> list[str]:
+        """Names of the SourceMod plugins a ``sm plugins list`` reply reports.
+
+        The row shape is SourceMod's, and the classic parser's regex for it, verbatim::
+
+            01 "B3 Say" (1.0.0) by Courgette
+
+        Only the **name** is returned. The classic kept the index, version and author too and never
+        read any of them; what the decision actually turns on is whether a plugin is present, so
+        that is what this answers. See `Bot.apply_optional_mods`.
+
+        The quoting is what makes this readable at all: a plugin name has spaces in it, so anything
+        splitting on whitespace would find "B3" and never match.
+        """
+        return [m["name"] for m in SM_PLUGIN_ROW_RE.finditer(reply)]
+
 
 __all__ = [
     "CONSOLE_KICK_REASON",
@@ -635,6 +658,7 @@ __all__ = [
     "MAP_ROW_RE",
     "PROPERTY_RE",
     "ROUND_END_TRIGGERS",
+    "SM_PLUGIN_ROW_RE",
     "KillData",
     "SourceParser",
     "parse_properties",

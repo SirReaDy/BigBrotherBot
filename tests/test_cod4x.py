@@ -329,7 +329,10 @@ async def test_stock_cod4_asks_for_unbuffered_logging_but_not_steam_ids(tmp_path
     """Every CoD server needs g_logsync or the bot reads a buffered log; only CoD4X has Steam ids."""
     rcon = ScriptedRcon()
     _bot(tmp_path, game="cod4", rcon=rcon)
-    assert rcon.commands == ["g_logsync 3"]
+    # `PB_SV_Ver` is also sent — every Call of Duty title is asked whether it runs PunkBuster — so
+    # this asserts the *startup cvars*, which is what the test is about, rather than the whole
+    # conversation. Steam ids are the thing that must be absent here.
+    assert [c for c in rcon.commands if not c.startswith("PB_SV_")] == ["g_logsync 3"]
 
 
 @pytest.mark.asyncio
@@ -541,7 +544,8 @@ async def test_black_ops_asks_the_only_way_it_accepts(tmp_path):
     rcon = ScriptedRcon()
     bot = _bot(tmp_path, game="cod7", rcon=rcon)
 
-    assert rcon.commands == [
+    # Filtered as above: the PunkBuster probe goes out too, and it is not what this test is about.
+    assert [c for c in rcon.commands if not c.startswith("PB_SV_")] == [
         "setadmindvar g_logsync 3",
         "setadmindvar g_logTimeStampInSeconds 0",
     ]
