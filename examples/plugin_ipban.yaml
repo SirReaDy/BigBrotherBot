@@ -1,0 +1,22 @@
+# ipban — keeps out a banned player who has come back with a different identity.
+#
+# Point at it from the main config:
+#
+#   plugins:
+#     - name: ipban
+#       config: "@conf/plugin_ipban.yaml"
+#
+# A ban is enforced on a player's guid, and a guid is evaded by reinstalling. Their address usually is
+# not, so this kicks anybody connecting from an address that is behind an active ban or tempban. It is
+# checked at authentication and again the moment an address becomes known — on the Call of Duty and
+# Quake 3 engines the log line that authenticates a player carries no address at all.
+#
+# Note what this is not: it does not ban an address, and there is no list of its own to maintain. The
+# addresses come from the bans you have already issued, so lifting a ban stops keeping that address out.
+# For lists somebody else maintains, use `banlist`.
+
+settings:
+  # Players at or below this level are checked; above it they are always let in. `1` (user) is the
+  # classic's default and worth keeping: a registered player sharing a household address with somebody
+  # banned is the case this exists *not* to punish. 0 checks only unregistered players.
+  max_level: 1

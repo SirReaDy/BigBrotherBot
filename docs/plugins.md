@@ -23,6 +23,7 @@ list, each with an optional config of its own (see `examples/`):
 | `customcommands` | commands you define in config, sending rcon lines of your own | whatever you name |
 | `status` | writes the roster and server state to a file (or FTP, or tables) | — |
 | `login` | admins must type a password before their level does anything | `!login` `!setpassword` |
+| `ipban` | kicks a connecting player whose address is behind an active ban | — |
 
 ### tk — team damage
 
@@ -165,6 +166,16 @@ hash, and replaced with a modern one the first time its owner logs in — but th
 **migration 0003**, so run `b3 db upgrade` before enabling it on an existing database. Three wrong
 passwords stop the guessing for a minute, which the classic did not do at all.
 Config: `examples/plugin_login.yaml`.
+
+### ipban — the ban a new guid does not escape
+
+A ban is enforced on a guid, and a guid is evaded by reinstalling. This kicks anybody connecting from an
+address that is behind an active ban or tempban — checked at authentication and again the moment an
+address becomes known, since on Call of Duty and Quake 3 the log line that authenticates a player
+carries no address. There is no list to maintain: the addresses come from the bans already issued, so
+lifting a ban stops keeping that address out. Players above `max_level` (a registered user, by default)
+are exempt, because a household address shared with somebody banned is the case this exists not to
+punish. Config: `examples/plugin_ipban.yaml`.
 
 Anything else is a git install — see [Plugins](cli.md#plugins) and
 [Writing an installable plugin](#writing-an-installable-plugin).

@@ -62,6 +62,17 @@ class Storage(Protocol):
         """The most recently issued penalties still in force, newest first (drives `!lastbans`)."""
         ...
 
+    def banned_ips(self) -> set[str]:
+        """Addresses of clients holding a ban or tempban that is still in force.
+
+        One query rather than a row per player, because the caller — `ipban` — asks the same question
+        of everybody who connects. **Empty addresses are excluded**: a banned player whose address was
+        never recorded would otherwise put `""` in this set, and every player the engine has not yet
+        given an address to would match it. On the Call of Duty and Quake 3 engines that is every
+        player at the moment they authenticate.
+        """
+        ...
+
     # -- aliases -----------------------------------------------------------
     def add_alias(self, alias: Alias) -> Alias: ...
     def get_aliases(self, client_id: int) -> list[Alias]: ...

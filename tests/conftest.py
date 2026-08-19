@@ -31,6 +31,9 @@ class FakeStorage:
         self.disabled: list[tuple[int, PenaltyType | None]] = []
         self.clients_by_id: dict[int, Client] = {}
         self.search_results: list[Client] = []
+        #: What "now" is for penalty expiry. Tests that care set it; the default keeps every
+        #: unexpired penalty active.
+        self.now_epoch = 0
 
     def has_superadmin(self) -> bool:
         return self._superadmin
@@ -87,6 +90,21 @@ class FakeStorage:
     def get_recent_penalties(self, types=None, limit: int = 5):  # noqa: ANN001, ANN201
         found = [p for p in self.penalties if not p.inactive and (types is None or p.type in types)]
         return list(reversed(found))[:limit]
+
+    def banned_ips(self) -> set[str]:
+        found = set()
+        for penalty in self.penalties:
+            if penalty.inactive or penalty.type not in (PenaltyType.BAN, PenaltyType.TEMPBAN):
+                continue
+            if not penalty.is_active(self._clock_epoch()):
+                continue
+            client = self.clients_by_id.get(penalty.client_id)
+            if client is not None and client.ip:
+                found.add(client.ip)
+        return found
+
+    def _clock_epoch(self) -> int:
+        return self.now_epoch
 
     def disable_penalties(self, client_id: int, type_: PenaltyType | None = None) -> int:
         self.disabled.append((client_id, type_))

@@ -218,6 +218,27 @@ class SqlAlchemyStorage:
             q = q.order_by(PenaltyRow.time_add.desc(), PenaltyRow.id.desc()).limit(limit)
             return [_penalty_from_row(r) for r in s.scalars(q).all()]
 
+    def banned_ips(self) -> set[str]:
+        """Every address behind an active ban or tempban — see `Storage.banned_ips`.
+
+        A join rather than two queries and a Python loop, which is what the classic did (twice, per
+        connecting player). The `!= ""` is not tidiness: it is the difference between banning an
+        address and banning everybody whose address is not known yet.
+        """
+        now = self._clock.epoch()
+        with self._session_factory() as s:
+            rows = s.scalars(
+                select(ClientRow.ip)
+                .join(PenaltyRow, PenaltyRow.client_id == ClientRow.id)
+                .where(
+                    PenaltyRow.inactive == 0,
+                    PenaltyRow.type.in_((PenaltyType.BAN.value, PenaltyType.TEMPBAN.value)),
+                    (PenaltyRow.time_expire == -1) | (PenaltyRow.time_expire > now),
+                    ClientRow.ip != "",
+                )
+            ).all()
+            return {ip for ip in rows if ip}
+
     def disable_penalties(self, client_id: int, type_: PenaltyType | None = None) -> int:
         now = self._clock.epoch()
         with self._session_factory() as s:
