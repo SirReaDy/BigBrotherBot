@@ -1302,8 +1302,9 @@ class Bot:
                 # all end up sharing one database row — with one level and one ban history between
                 # them. The log path drops it too (CodParser._valid_guid), and this is the other way
                 # a client can be created.
-                guid = "" if self.profile.is_bot_guid(info.guid) else info.guid
-                client = Client(cid=info.cid, name=info.name, guid=guid, ip=info.ip)
+                is_bot = self.profile.is_bot_guid(info.guid)
+                guid = "" if is_bot else info.guid
+                client = Client(cid=info.cid, name=info.name, guid=guid, ip=info.ip, is_bot=is_bot)
                 self.clients.add(client)
                 log.info("sync: adopting player %s in slot %s", info.name, info.cid)
                 self._authenticate(client)

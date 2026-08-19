@@ -208,7 +208,14 @@ class SourceParser(Parser):
             self.clients.remove(cid)
             client = None
         if client is None:
-            client = Client(cid=cid, guid=guid if self._valid_guid(guid) else "", name=name.strip())
+            client = Client(
+                cid=cid,
+                guid=guid if self._valid_guid(guid) else "",
+                name=name.strip(),
+                # Recorded before the guid is dropped: `BOT` is every bot's guid on this engine, so
+                # afterwards there is nothing left to tell an AI player from an unidentified one.
+                is_bot=self.profile.is_bot_guid(guid.strip()),
+            )
             self.clients.add(client)
         else:
             if name.strip():

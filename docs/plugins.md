@@ -17,6 +17,7 @@ list, each with an optional config of its own (see `examples/`):
 | `tk` | team damage points, forgiving, and a ban for whoever will not stop | `!forgive` `!fp` `!forgiveall` `!forgivelist` `!forgiveinfo` `!forgiveclear` `!grudge` |
 | `stats` | kills, deaths, damage, a relative skill score and XP, per session | `!mapstats` `!stats` `!testscore` `!topstats` `!topxp` |
 | `welcome` | greets arrivals with their history, and announces their own greeting | `!greeting [text\|none]` |
+| `afk` | asks players who look absent whether they are, and removes the silent ones | — |
 
 ### tk — team damage
 
@@ -68,6 +69,22 @@ one — nor does the next player to take their slot.
 `{group}`, `{level}` and `{connections}`, and a placeholder that does not exist is refused when it is
 typed rather than failing later in front of the server. `!greeting none` clears it. Wording for every
 message lives in the main config's `messages:` section. Config: `examples/plugin_welcome.yaml`.
+
+### afk — the slot somebody stopped using
+
+Nothing is swept on a timer, which is the whole design: a player is checked only when there is a
+reason to think they are away — they have died `consecutive_deaths` times in a row without doing
+anything, or another player has said "afk" in chat (the word is the trigger, because "bob is afk" is
+what people actually type; sweeps from it are throttled to one every fifteen seconds). A suspect is
+asked privately, the server is told they have `last_chance_delay` seconds, and anything they do calls
+it off.
+
+Nobody is asked who cannot answer or should not be: bots, spectators, players at or above
+`immunity_level`, and anybody the bot has not yet seen do anything at all — which is what makes a
+fresh join, a map change and a bot restart safe without a special case for each. A round or map change
+clears every record, so the slowest computer on the server is not the first thing this kicks. And no
+kick ever takes the server below `min_ingame_humans` playing people, re-counted at the moment it is
+due. Config: `examples/plugin_afk.yaml`.
 
 Anything else is a git install — see [Plugins](cli.md#plugins) and
 [Writing an installable plugin](#writing-an-installable-plugin).

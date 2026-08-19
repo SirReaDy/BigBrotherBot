@@ -95,6 +95,12 @@ class Client:
 
     # --- transient runtime state (never persisted) ------------------------
     cid: str | None = None  # in-game slot id
+    #: An AI player rather than a person. Set where the guid is recognised as a bot's and dropped —
+    #: after that the guid is empty, so the fact is not recoverable later. Plugins need it: an AFK
+    #: check that asks a bot whether it is still there, or counts bots as the humans a server must
+    #: keep, is a plugin doing arithmetic on players who cannot answer. The classic bot's
+    #: `Client.bot`.
+    is_bot: bool = False
     #: When this player was last here, as an epoch — 0 for somebody the database has never seen.
     #: Captured at authentication and not derived later, because `time_edit` on the row *is* "last
     #: seen" and saving the session overwrites it with now: after the save there is nothing left to

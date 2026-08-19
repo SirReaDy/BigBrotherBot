@@ -57,15 +57,28 @@ class CodParser(Parser):
     # -- helpers -----------------------------------------------------------
 
     def _get_or_create(self, cid: str, name: str | None = None, guid: str | None = None) -> Client:
+        """The player in this slot, created on first sight, with the guid the log stated.
+
+        The guid arrives **raw** and is validated here rather than at each of the seven call sites.
+        That is not tidying: `_valid_guid` blanks an AI player's guid, and once it is blank nothing
+        downstream can tell a bot from a player the engine failed to identify. Validating where the
+        client is created is the one place both answers are still in hand.
+        """
+        raw = guid or ""
+        validated = self._valid_guid(raw) if raw else ""
         client = self.clients.get_by_cid(cid)
         if client is None:
-            client = Client(cid=cid, name=name or "", guid=guid or "")
+            client = Client(
+                cid=cid, name=name or "", guid=validated, is_bot=self.profile.is_bot_guid(raw)
+            )
             self.clients.add(client)
         else:
             if name:
                 client.name = name
-            if guid and not client.guid:
-                client.guid = guid
+            if validated and not client.guid:
+                client.guid = validated
+            if raw and self.profile.is_bot_guid(raw):
+                client.is_bot = True
         return client
 
     def _canonical_team(self, raw: str) -> str | None:
@@ -160,13 +173,13 @@ class CodParser(Parser):
         text = m["text"]
         if text[:1] == CHAT_PREFIX_BYTE:
             text = text[1:]
-        client = self._get_or_create(m["cid"], m["name"], self._valid_guid(m["guid"]))
+        client = self._get_or_create(m["cid"], m["name"], m["guid"])
         etype = EventType.CLIENT_TEAM_SAY if m["action"] == "sayteam" else EventType.CLIENT_SAY
         return Event(etype, data=text, client=client)
 
     @handles(r"^J;(?P<guid>[^;]*);(?P<cid>\d+);(?P<name>.*)$")
     def on_join(self, m: "re.Match[str]") -> Event:
-        client = self._get_or_create(m["cid"], m["name"], self._valid_guid(m["guid"]))
+        client = self._get_or_create(m["cid"], m["name"], m["guid"])
         client.authed = False
         if self.auth is not None:
             self.auth.schedule(m["cid"])
@@ -239,7 +252,7 @@ class CodParser(Parser):
     )
     def on_action(self, m: "re.Match[str]") -> Event:
         """A map objective: a flag taken, a bomb planted. The data is the action's name."""
-        client = self._get_or_create(m["cid"], m["name"], self._valid_guid(m["guid"]))
+        client = self._get_or_create(m["cid"], m["name"], m["guid"])
         team = self._canonical_team(m["team"])
         if team:
             client.team = team
@@ -248,7 +261,7 @@ class CodParser(Parser):
     @handles(r"^(?i:JT);(?P<guid>[^;]*);(?P<cid>\d+);(?P<team>[a-z]*);(?P<name>[^;]*);?$")
     def on_join_team(self, m: "re.Match[str]") -> Event:
         """CoD4's explicit team-change line. Note the trailing `;` the engine emits."""
-        client = self._get_or_create(m["cid"], m["name"], self._valid_guid(m["guid"]))
+        client = self._get_or_create(m["cid"], m["name"], m["guid"])
         client.team = self._canonical_team(m["team"])
         return Event(EventType.CLIENT_TEAM_CHANGE, data=client.team, client=client)
 
@@ -261,13 +274,13 @@ class CodParser(Parser):
         text = m["text"]
         if text[:1] == CHAT_PREFIX_BYTE:
             text = text[1:]
-        client = self._get_or_create(m["cid"], m["name"], self._valid_guid(m["guid"]))
+        client = self._get_or_create(m["cid"], m["name"], m["guid"])
         target = self._get_or_create(m["tcid"], m["tname"])
         return Event(EventType.CLIENT_PRIVATE_SAY, data=text, client=client, target=target)
 
     @handles(r"^Item;(?P<guid>[^;]*);(?P<cid>\d+);(?P<name>[^;]*);(?P<item>.*)$")
     def on_item(self, m: "re.Match[str]") -> Event:
-        client = self._get_or_create(m["cid"], m["name"], self._valid_guid(m["guid"]))
+        client = self._get_or_create(m["cid"], m["name"], m["guid"])
         return Event(EventType.CLIENT_ITEM_PICKUP, data=m["item"], client=client)
 
     # Declared last on purpose: `JT;` is also two letters, and the router takes the first pattern
@@ -293,7 +306,7 @@ class CodParser(Parser):
         action = self.profile.action_map.get(m["action"].lower())
         if action is None:
             return None
-        client = self._get_or_create(m["cid"], guid=self._valid_guid(m["guid"]))
+        client = self._get_or_create(m["cid"], guid=m["guid"])
         team = self._canonical_team(m["team"] or "")
         if team:
             client.team = team

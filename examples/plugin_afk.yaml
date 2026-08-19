@@ -1,0 +1,32 @@
+# afk — removes players who have stopped playing but not stopped occupying a slot.
+#
+# Point at it from the main config:
+#
+#   plugins:
+#     - name: afk
+#       config: "@conf/plugin_afk.yaml"
+#
+# Nothing is swept on a timer: a player is only ever checked when there is a reason to think they are
+# away, then asked whether they are, and only silence gets them kicked. An AFK kicker that sweeps
+# eventually removes somebody who was reloading or defending a corner.
+
+settings:
+  # Trigger 1: deaths in a row with no activity in between. 0 turns this off, leaving only the chat
+  # trigger — somebody saying "afk", which is what players actually type.
+  consecutive_deaths: 3
+
+  # Seconds of silence that make a checked player a suspect. Not less than 30: under that is an
+  # ordinary firefight.
+  inactivity_threshold: 50
+
+  # Seconds a suspect has to say something before the kick. Must be 15-60 — less is not a chance, and
+  # more leaves the slot occupied while the bot waits.
+  last_chance_delay: 20
+
+  # Never take the server below this many playing humans (bots and spectators do not count). An idle
+  # player in a server is a better outcome than an empty one, and this is checked again at the moment
+  # the kick is due, because people leave inside those twenty seconds.
+  min_ingame_humans: 1
+
+  # At or above this level nobody is asked at all. 100 keeps the exemption to superadmins.
+  immunity_level: 100
