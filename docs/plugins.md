@@ -22,6 +22,7 @@ list, each with an optional config of its own (see `examples/`):
 | `cmdmanager` | command levels, aliases and per-player grants, at runtime | `!cmdlevel` `!cmdalias` `!cmdgrant` `!cmdrevoke` `!cmduse` |
 | `customcommands` | commands you define in config, sending rcon lines of your own | whatever you name |
 | `status` | writes the roster and server state to a file (or FTP, or tables) | — |
+| `login` | admins must type a password before their level does anything | `!login` `!setpassword` |
 
 ### tk — team damage
 
@@ -149,6 +150,21 @@ masked admin is masked here too (this file is usually public, and that is what `
 player IP addresses are left out unless `include_ip` asks for them. On shutdown the last write says the
 server is empty — without it a page shows the players who were here when the bot stopped.
 Config: `examples/plugin_status.yaml`.
+
+### login — proving an admin is that admin
+
+On most of these engines a player's identity is a guid their own client sends, and some titles hand out
+none at all — so a spoofed identity is an admin account. With this plugin anybody above
+`threshold_level` is a regular from the moment they connect until they type `!login <password>`, in the
+game's private-message console rather than in chat. `!setpassword` sets your own, or that of somebody
+**below** you: setting a password is taking an account.
+
+Passwords are stored as a PBKDF2 hash with a per-password salt, where the classic stored a bare MD5.
+An imported classic database keeps working — a 32-character digest is recognised, verified as a legacy
+hash, and replaced with a modern one the first time its owner logs in — but the wider column needs
+**migration 0003**, so run `b3 db upgrade` before enabling it on an existing database. Three wrong
+passwords stop the guessing for a minute, which the classic did not do at all.
+Config: `examples/plugin_login.yaml`.
 
 Anything else is a git install — see [Plugins](cli.md#plugins) and
 [Writing an installable plugin](#writing-an-installable-plugin).

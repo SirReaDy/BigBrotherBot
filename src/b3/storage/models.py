@@ -33,7 +33,10 @@ class ClientRow(Base):
     mask_level: Mapped[int] = mapped_column(default=0)
     auto_login: Mapped[int] = mapped_column(default=0)
     greeting: Mapped[str] = mapped_column(String(128), default="")
-    password: Mapped[str | None] = mapped_column(String(32), default=None)
+    #: A password hash, never a password. 255 rather than the classic's 32: that width was an MD5
+    #: digest, and a modern hash carries its algorithm, iteration count and salt with it. See
+    #: migration 0003 and `b3.plugins.login`.
+    password: Mapped[str | None] = mapped_column(String(255), default=None)
     login: Mapped[str | None] = mapped_column(String(255), default=None)
     time_add: Mapped[int] = mapped_column(default=0)
     time_edit: Mapped[int] = mapped_column(default=0)

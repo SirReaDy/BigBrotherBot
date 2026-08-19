@@ -1,0 +1,38 @@
+# login — makes an admin prove who they are before their level does anything.
+#
+# Point at it from the main config:
+#
+#   plugins:
+#     - name: login
+#       config: "@conf/plugin_login.yaml"
+#
+# Why this exists: on most of these engines a player's identity is a guid their own client sends, and
+# some titles hand out none at all. A spoofed identity is therefore an admin account, and `!ban` with
+# it is an admin's `!ban`. With this plugin, anybody above `threshold_level` is a regular from the
+# moment they connect until they type their password.
+#
+# They type it in the game's private-message console, not in chat — the bot tells them exactly what to
+# type, because a password said in chat is a password every other player has read.
+#
+#   !login <password>                    get your rights back for this session
+#   !setpassword <password> [<player>]   set your own password, or that of somebody below you
+#
+# Passwords are stored as a PBKDF2 hash with a per-password salt. If your database was imported from
+# the classic bot, its MD5 digests still work: each is replaced with a modern hash the first time its
+# owner logs in successfully, so nobody has to be given a new password. That needs migration 0003, so
+# run `b3 db upgrade` on an existing database before enabling this plugin — the old column was 32
+# characters wide, which is an MD5 digest and nothing else.
+
+settings:
+  # Above this level a password is required. 40 (admin) is the classic's default: moderators can
+  # moderate without one, and anybody who can ban proves it is them.
+  threshold_level: 40
+
+  # The level `!setpassword` needs. Setting somebody's password is taking their account, so this is
+  # worth keeping high; the command already refuses to act on anybody at or above the caller's level,
+  # superadmins excepted.
+  password_level: 40
+
+  # What a logged-out admin is until they log in. `reg` keeps `!help` and the harmless commands
+  # working, which is the difference between "logged out" and "broken".
+  logged_out_group: reg

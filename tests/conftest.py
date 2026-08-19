@@ -48,6 +48,18 @@ class FakeStorage:
     def get_client_by_id(self, client_id: int) -> Client | None:
         return self.clients_by_id.get(client_id)
 
+    def get_client_by_guid(self, guid: str) -> Client | None:
+        """The saved client with this guid.
+
+        Note the fidelity limit: this hands back the very object that was saved, where the real
+        storage rebuilds one from a row. A test that needs "what is actually on disk" — a session
+        change that must *not* be persisted, for instance — has to use a real database.
+        """
+        for client in reversed(self.saved):
+            if client.guid == guid:
+                return client
+        return None
+
     def search_clients(self, term: str, limit: int = 5) -> list[Client]:
         return list(self.search_results)
 
