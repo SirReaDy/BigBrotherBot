@@ -1,0 +1,69 @@
+# tk — team damage points, forgiving, and a ban for whoever will not stop.
+#
+# Point at it from the main config:
+#
+#   plugins:
+#     - name: tk
+#       config: "@conf/plugin_tk.yaml"
+#
+# Every value is optional; the defaults below are the ones the classic plugin shipped with.
+
+settings:
+  # Points at which the server announces that somebody is about to be kicked. Reaching 150% of it
+  # (600 by default — three team kills by a guest) bans immediately, with nothing to discuss.
+  max_points: 400
+
+  # Seconds after a round starts during which shooting a teammate is treated as spawn-killing:
+  # damage counts triple, a kill counts one and a half times, and the attacker gets the warning
+  # named below. 0 turns the whole idea off.
+  round_grace: 7
+
+  # The warning for firing at spawn. This is a *keyword* from the admin plugin's `warn_reasons`
+  # table, so it means whatever your table says — leave it empty to warn for team damage only.
+  issue_warning: sfire
+
+  # `!grudge` marks an attacker you will not forgive, so `!forgiveall` and `!fp` leave them alone.
+  # With grudges off the command still answers, saying they are off; only the level changes here.
+  grudge_enable: true
+  grudge_level: 0
+
+  # true: tell the two players involved. false: announce every forgive to the whole server.
+  private_messages: true
+
+  # Points in a single hit above which the attacker is warned. 100 is a kill's worth of damage, so
+  # the default warns for kills and leaves ordinary crossfire alone.
+  damage_threshold: 100
+
+  # Only players *below* this level are warned. Everybody at or below the top `levels` entry is
+  # still scored and still banned — this setting is about the telling-off, not the tracking.
+  warn_level: 2
+
+  # How long a team-damage warning lives. Warnings also count towards the admin plugin's own
+  # escalation, and forgiving one lifts it there too.
+  warn_duration: 1h
+
+  # Seconds between halvings of everybody's points while a round runs. 0 = only halve when a round
+  # or a map ends, which every engine here reports.
+  halflife: 0
+
+  # How long somebody over the limit has to be forgiven before the ban lands.
+  forgive_grace: 30
+
+  # Gametypes with no teams. Several engines report a team for everybody whatever the gametype, so
+  # without this every kill in a free-for-all would count as a team kill.
+  ffa_gametypes: [dm, ffa, syc-ffa, lms]
+
+# What team damage costs, per level. The key is a level number or a group keyword; the highest entry
+# at or below a player's level applies, and **anybody above the top entry is not scored at all** —
+# which is how senior admins are exempted.
+#
+#          kill: points per 100 damage for killing a teammate
+#        damage: points per 100 damage for hurting one
+#   ban_minutes: how long the ban lasts, multiplied by the number of teammates they hurt.
+#                0 means this level is never banned for team damage.
+levels:
+  guest: {kill: 2.0, damage: 1.0, ban_minutes: 2}
+  user: {kill: 2.0, damage: 1.0, ban_minutes: 2}
+  reg: {kill: 1.0, damage: 0.5, ban_minutes: 1}
+  mod: {kill: 1.0, damage: 0.5, ban_minutes: 0}
+  admin: {kill: 0.75, damage: 0.5, ban_minutes: 0}

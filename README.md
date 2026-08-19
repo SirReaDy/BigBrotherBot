@@ -36,9 +36,9 @@ migrations instead of manual `ALTER TABLE`, plugins that install by name and pin
 straight answers when something is misconfigured.
 
 **Where it stands today.** All 59 classic admin commands at the classic levels, 38 game titles across
-ten engine families — 35 of the classic bot's 37, plus three it never had — and every core service the
-old bot offered, plus remote log tailing, per-server deployment and pre-flight checks it never had.
-1,530 tests, `mypy --strict` clean.
+ten engine families — 34 of the classic bot's 37, plus four it never had — and every core service the
+old bot offered, plus remote log tailing, PunkBuster, per-server deployment and pre-flight checks it
+never had. 1,745 tests, `mypy --strict` clean.
 
 ## What was deleted, and what was rebuilt
 

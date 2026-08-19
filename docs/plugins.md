@@ -14,6 +14,24 @@ list, each with an optional config of its own (see `examples/`):
 | `censor` | bad language in chat, bad player names | — |
 | `spamcontrol` | scores chat and warns whoever floods it | `!spamins [player]` |
 | `pingwatch` | removes players whose connection is spoiling the game | `!ci <player>` |
+| `tk` | team damage points, forgiving, and a ban for whoever will not stop | `!forgive` `!fp` `!forgiveall` `!forgivelist` `!forgiveinfo` `!forgiveclear` `!grudge` |
+
+### tk — team damage
+
+Hurting a teammate earns points **against that teammate**, scaled by the attacker's level: a kill by
+an unregistered player is 200 points, and shooting into the spawn in the first few seconds costs
+triple. Only the teammate can clear them — `!forgive`, or `!fp` for whoever hit you last — so nobody
+is punished for something that has already been forgiven. Collect `max_points` and the server says so
+publicly, giving anybody 30 seconds to forgive; collect half again as much and the ban is immediate,
+for as long as the level's `ban_minutes` says, multiplied by how many teammates were hurt. Everyone's
+points halve when a round or a map ends, so a bad round does not follow a player around.
+
+`!grudge <player>` is the refusal to forgive: `!forgiveall` and `!fp` skip anybody grudged. The
+levels table also decides who is exempt — nobody above its top entry is scored at all.
+
+Team damage has to be reported by the engine, and four families state no damage *figure* (Source,
+Frostbite, Homefront, Ravaged): a kill there is scored as the 100 damage a kill is, and hits of
+unknown size are not scored at all rather than guessed at. Config: `examples/plugin_tk.yaml`.
 
 Anything else is a git install — see [Plugins](cli.md#plugins) and
 [Writing an installable plugin](#writing-an-installable-plugin).
