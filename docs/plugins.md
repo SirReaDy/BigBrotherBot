@@ -15,6 +15,7 @@ list, each with an optional config of its own (see `examples/`):
 | `spamcontrol` | scores chat and warns whoever floods it | `!spamins [player]` |
 | `pingwatch` | removes players whose connection is spoiling the game | `!ci <player>` |
 | `tk` | team damage points, forgiving, and a ban for whoever will not stop | `!forgive` `!fp` `!forgiveall` `!forgivelist` `!forgiveinfo` `!forgiveclear` `!grudge` |
+| `stats` | kills, deaths, damage, a relative skill score and XP, per session | `!mapstats` `!stats` `!testscore` `!topstats` `!topxp` |
 
 ### tk — team damage
 
@@ -32,6 +33,22 @@ levels table also decides who is exempt — nobody above its top entry is scored
 Team damage has to be reported by the engine, and four families state no damage *figure* (Source,
 Frostbite, Homefront, Ravaged): a kill there is scored as the 100 damage a kill is, and hits of
 unknown size are not scored at all rather than guessed at. Config: `examples/plugin_tk.yaml`.
+
+### stats — the session's figures
+
+`!mapstats` (or `!stats`) answers with a player's kills, deaths, team kills, damage, skill score and
+XP for the session; `!testscore <player>` says what killing somebody would be worth before you try.
+The skill score is **relative**, which is the point of it: killing a player who is doing well is worth
+more than killing one who is not, so farming the weakest opponent on the server climbs slowly. Two
+players on equal scores are worth 12.5 to each other; a victim on twice your score is worth 20.
+
+`!topstats` and `!topxp` are the boards, top five, for regulars and up by default — and they list only
+players who have actually done something, where the classic ranked anyone its scoring code had merely
+read. Set `show_awards` to announce them at the end of each map.
+
+Nothing is stored: these are figures about the session, and a player who reconnects starts again.
+Lasting statistics were the classic bot's `xlrstats`, which is a project of its own rather than a
+plugin. Config: `examples/plugin_stats.yaml`.
 
 Anything else is a git install — see [Plugins](cli.md#plugins) and
 [Writing an installable plugin](#writing-an-installable-plugin).

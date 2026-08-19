@@ -1,0 +1,34 @@
+# stats — a session's kills, deaths, damage, skill score and XP.
+#
+# Point at it from the main config:
+#
+#   plugins:
+#     - name: stats
+#       config: "@conf/plugin_stats.yaml"
+#
+# Nothing here is written to the database: these are figures about the session being played. Lasting
+# statistics were the classic bot's `xlrstats`, which is a project of its own.
+
+settings:
+  # The score everybody starts on. Points move between killer and victim, so this is also the number
+  # a player is judged against: 87.50 means they are down on the day.
+  start_points: 100
+
+  # Wipe the skill score / the XP when a round starts. Both off by default, as the classic had them —
+  # a score that resets every round cannot say much about a session. With `reset_xp: false` the
+  # round's XP is filed away rather than dropped, so `!mapstats` shows a session total while `!topxp`
+  # ranks on the round being played.
+  reset_score: false
+  reset_xp: false
+
+  # Announce the boards when the map ends, without anybody asking for them. A map on which nobody
+  # scored announces nothing.
+  show_awards: false
+  show_awards_xp: false
+
+  # Levels for the four commands, at the classic's own defaults: anybody may look at their own stats
+  # or ask what a kill would be worth, regulars and up may see the boards.
+  mapstats_level: 0    # !mapstats / !stats
+  testscore_level: 0   # !testscore / !ts
+  topstats_level: 2    # !topstats / !top
+  topxp_level: 2       # !topxp

@@ -39,17 +39,12 @@ from dataclasses import dataclass, field
 
 from b3.core.commands import CommandContext, command
 from b3.core.console import Console
-from b3.core.events import Event, EventType
+from b3.core.events import Event, EventType, damage_points
 from b3.core.plugin import Plugin
 from b3.domain.client import Client, PenaltyType
 from b3.core.util import as_float, as_int, parse_duration
 
 log = logging.getLogger(__name__)
-
-#: A kill's damage, for the engines that report none. Four families here state no figure — Source,
-#: Frostbite, Homefront and Ravaged — because their servers do not, and their parsers refuse to make
-#: one up. A kill is still a kill, and 100 is what the classic bot used everywhere.
-KILL_DAMAGE = 100
 
 #: Above this share of `max_points` the player is banned without being given a chance to be
 #: forgiven. The classic's `maxPoints + maxPoints / 2`.
@@ -328,19 +323,6 @@ class TkPlugin(Plugin):
     def on_team_kill(self, event: Event) -> None:
         self._record(event, killed=True)
 
-    def _damage_points(self, event: Event, killed: bool) -> int:
-        """How much damage this event did, for the engines that say — and 100 for a kill where none does.
-
-        Four of the nine families report no figure at all (Source, Frostbite, Homefront, Ravaged):
-        their payloads carry the weapon and nothing else, on purpose, because inventing a number
-        reads downstream as a fact. `getattr` rather than a type check for the same reason the rest
-        of the bot duck-types its payloads — a family that starts reporting damage needs no change
-        here.
-        """
-        stated = getattr(event.data, "damage", None)
-        points = as_int(stated, KILL_DAMAGE if killed else 0)
-        return max(0, min(KILL_DAMAGE, points))
-
     def _record(self, event: Event, killed: bool) -> None:
         attacker, victim = event.client, event.target
         if attacker is None or victim is None or attacker.cid is None or victim.cid is None:
@@ -352,7 +334,7 @@ class TkPlugin(Plugin):
         if attacker.max_level() > self.max_level:
             return  # above the table: exempt, as the classic's `_maxLevel` had it
 
-        points = self._damage_points(event, killed)
+        points = damage_points(event.data, killed=killed)
         if points <= 0:
             return
         multipliers = self.multipliers(attacker)

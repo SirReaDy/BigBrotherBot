@@ -150,3 +150,32 @@ class VetoEvent(Exception):
 
     Mirrors the legacy ``VetoEvent``: once raised, no further handlers run for this event.
     """
+
+
+#: What a kill did, on the engines that do not measure it. Four families here report the weapon and
+#: nothing else — Source, Frostbite, Homefront and Ravaged — because that is all their servers say,
+#: and their parsers refuse to invent a figure that would read downstream as a fact. A kill is still
+#: a kill, and 100 is the number the classic bot used on every engine.
+KILL_DAMAGE = 100
+
+
+def damage_points(data: Any, *, killed: bool) -> int:
+    """How much damage an event's payload states, from 0 to 100.
+
+    Every family's kill payload carries a weapon; only the Call of Duty and Quake 3 ones carry a
+    damage figure. So a plugin scoring team damage has to answer two different questions: a **kill**
+    with no figure is worth the 100 damage a kill is, and a **hit** with no figure is worth nothing,
+    because its size is genuinely unknown and guessing would invent the very number the parsers
+    declined to.
+
+    Read with ``getattr`` rather than a type check, the way the rest of the bot duck-types its
+    payloads: a family that starts reporting damage then needs no change here.
+    """
+    stated = getattr(data, "damage", None)
+    if stated is None:
+        return KILL_DAMAGE if killed else 0
+    try:
+        points = int(float(stated))
+    except (TypeError, ValueError):
+        return KILL_DAMAGE if killed else 0
+    return max(0, min(KILL_DAMAGE, points))
