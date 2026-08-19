@@ -1,0 +1,38 @@
+# status — publishes the server state and the player list for something else to read.
+#
+# Point at it from the main config:
+#
+#   plugins:
+#     - name: status
+#       config: "@conf/plugin_status.yaml"
+#
+# The bot is the only thing that knows the roster, the levels, the scores and the map at once; this is
+# how a web page gets at them. Nothing here reads the file back — it is written for you.
+
+settings:
+  # Seconds between updates. Under a minute it is scheduled per second, above it per minute; the floor
+  # is 5s, because each update asks the game server for its player table.
+  interval: 60
+
+  # A filesystem path (the @conf / @b3 / @home tokens work), or an FTP URL for a site that lives on
+  # another machine:
+  #
+  #   output_file: "@conf/status.json"
+  #   output_file: "ftp://user:password@example.com/www/status.json"
+  #   output_file: "ftps://user:password@example.com/www/status.json"
+  #
+  # Uploads run on a worker thread, so a slow FTP server cannot stall the bot, and the credentials are
+  # never written to the log.
+  output_file: "@conf/status.json"
+
+  # `json` or `xml`. XML uses the classic bot's own element and attribute names — B3Status, Game,
+  # Clients/Client with CamelCase attributes — so a status page written for it keeps working.
+  format: json
+
+  # Also write into two tables of this plugin's own (`status_server`, `status_clients`), for a page
+  # that reads the database rather than a file. Rows are replaced on each update.
+  save_to_database: false
+
+  # Publish player IP addresses. Off by default, unlike the classic: this file is usually served on a
+  # public web page, and an address is the one thing in it a player did not choose to share.
+  include_ip: false

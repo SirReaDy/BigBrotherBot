@@ -38,7 +38,7 @@ straight answers when something is misconfigured.
 **Where it stands today.** All 59 classic admin commands at the classic levels, 38 game titles across
 ten engine families — 34 of the classic bot's 37, plus four it never had — and every core service the
 old bot offered, plus remote log tailing, PunkBuster, per-server deployment and pre-flight checks it
-never had. 1,912 tests, `mypy --strict` clean.
+never had. 1,927 tests, `mypy --strict` clean.
 
 ## What was deleted, and what was rebuilt
 

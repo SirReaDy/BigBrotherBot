@@ -21,6 +21,7 @@ list, each with an optional config of its own (see `examples/`):
 | `banlist` | applies ban lists from a file or a URL, with whitelists that win | `!banlistinfo` `!banlistupdate` `!banlistcheck` |
 | `cmdmanager` | command levels, aliases and per-player grants, at runtime | `!cmdlevel` `!cmdalias` `!cmdgrant` `!cmdrevoke` `!cmduse` |
 | `customcommands` | commands you define in config, sending rcon lines of your own | whatever you name |
+| `status` | writes the roster and server state to a file (or FTP, or tables) | — |
 
 ### tk — team damage
 
@@ -134,6 +135,20 @@ untouched, so a player called `bob"; quit` could turn an admin's `!slap` into tw
 placeholder this bot does not recognise is also refused when the command is *loaded* rather than sent
 to the server as literal text — the classic's version of that was a command which looked configured
 and did nothing on every use. Config: `examples/plugin_customcommands.yaml`.
+
+### status — the roster, where a web page can read it
+
+Every minute it writes what is happening — map, gametype, player count, and every player with their
+level, score, ping and team — to a file, an FTP destination, or two tables of its own. The bot is the
+only thing that knows all of that at once, which is why communities put it on their site.
+
+JSON by default; `format: xml` writes the classic bot's own element and attribute names, so a status
+page written for it keeps working. Uploads run on a worker thread, so a slow FTP server cannot stall
+the bot, and credentials in the URL never reach the log. Two deliberate differences from the classic: a
+masked admin is masked here too (this file is usually public, and that is what `!mask` is for), and
+player IP addresses are left out unless `include_ip` asks for them. On shutdown the last write says the
+server is empty — without it a page shows the players who were here when the bot stopped.
+Config: `examples/plugin_status.yaml`.
 
 Anything else is a git install — see [Plugins](cli.md#plugins) and
 [Writing an installable plugin](#writing-an-installable-plugin).
