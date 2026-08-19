@@ -13,6 +13,20 @@ log = logging.getLogger(__name__)
 #: How close a difflib ratio has to be before a guess is offered at all.
 FUZZY_CUTOFF = 0.6
 
+#: A Quake-style colour code: `^` and one digit. Every engine here inherits them, including the ones
+#: that are not Quake — Frostbite and Source players type them out of habit and the games ignore them.
+COLOR_CODE_RE = re.compile(r"\^[0-9]")
+
+
+def strip_colors(text: str) -> str:
+    """The name without its colour codes, for comparing one name with another.
+
+    `^1B^2o^3b` and `Bob` are the same player to everybody in the server and different strings to a
+    computer, so anything that matches names — a reserved-nickname list, a censor — has to compare
+    them stripped. Kept here rather than in a plugin because the second caller was already arriving.
+    """
+    return COLOR_CODE_RE.sub("", text)
+
 
 def match_names(wanted: str, options: Sequence[tuple[str, str]]) -> list[str]:
     """Resolve what somebody typed against ``(value, label)`` pairs; returns the matching values.

@@ -1,0 +1,35 @@
+# nickreg — reserves a nickname for the player it belongs to.
+#
+# Point at it from the main config:
+#
+#   plugins:
+#     - name: nickreg
+#       config: "@conf/plugin_nickreg.yaml"
+#
+# Impersonating an admin is the cheapest trick on a game server: type their name, tell somebody the
+# server is being restarted, and see what happens. A player registers the names that are theirs and
+# anybody else wearing one is warned to change it. Registrations live in the plugin's own table, so
+# they outlive the session — which is the point, since the trick is played when the owner is away.
+#
+#   !registernick  (!regnick)   reserve the name you are using now
+#   !deletenick <name> (!delnick)  drop a registration — yours, or anybody's with `manage_level`
+#   !listnick [player]          what is reserved for you, or for somebody else
+#
+# Names are compared as players see them: colour codes stripped, trimmed, lower-cased. `^1Adm^7in` and
+# `admin` are the same nickname here because they are the same nickname in the server.
+
+settings:
+  # Level needed to register a nickname at all. `mod` is the classic's default and the point of the
+  # plugin — the names worth protecting are the ones players recognise as staff.
+  min_level: 20
+
+  # Level needed to list or delete *somebody else's* registrations. Even with it, nobody can touch the
+  # registrations of a player above their own level.
+  manage_level: 100
+
+  # How many names one player may hold.
+  max_nicks: 3
+
+  # Seconds between sweeps of the connected players, which is also the per-player cooldown and the
+  # grace period after a map change (a player still loading has whatever name the engine gave them).
+  interval: 30

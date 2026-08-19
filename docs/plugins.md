@@ -24,6 +24,7 @@ list, each with an optional config of its own (see `examples/`):
 | `status` | writes the roster and server state to a file (or FTP, or tables) | — |
 | `login` | admins must type a password before their level does anything | `!login` `!setpassword` |
 | `ipban` | kicks a connecting player whose address is behind an active ban | — |
+| `nickreg` | reserves nicknames, and warns whoever else is wearing one | `!registernick` `!deletenick` `!listnick` |
 
 ### tk — team damage
 
@@ -176,6 +177,19 @@ carries no address. There is no list to maintain: the addresses come from the ba
 lifting a ban stops keeping that address out. Players above `max_level` (a registered user, by default)
 are exempt, because a household address shared with somebody banned is the case this exists not to
 punish. Config: `examples/plugin_ipban.yaml`.
+
+### nickreg — the name that belongs to somebody
+
+Impersonating an admin is the cheapest trick on a game server. `!registernick` reserves the name you
+are using; anybody else wearing it is warned to change it, on a name change and on a sweep of the
+connected players. `!listnick` shows what is reserved and `!deletenick` drops a registration — your own,
+or anybody's with `manage_level`, and never one belonging to a player above you.
+
+Names are compared as players see them: colour codes stripped, trimmed, lower-cased, so `^1Adm^7in` and
+`admin` are the same nickname. Registrations live in the plugin's own table and outlive the session,
+which is the point — the trick is played when the owner is away. Nothing is checked for a moment after a
+map change, because a player still loading has whatever name the engine gave them.
+Config: `examples/plugin_nickreg.yaml`.
 
 Anything else is a git install — see [Plugins](cli.md#plugins) and
 [Writing an installable plugin](#writing-an-installable-plugin).
