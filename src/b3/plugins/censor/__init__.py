@@ -19,8 +19,10 @@ and fell through to the ordinary penalty after so many offences. Every part of t
 is settings — `mute_minutes`, `slap`, `warn_after` in a `mute:` section, and no game named anywhere.
 What made it a separate plugin was the verb, and a verb is a fact about the title now
 (`GameProfile.player_verbs`): where the engine has no `mute`, the section is refused at startup with a
-reason and the ordinary penalties apply. Its `threading.Timer` per muted player is gone too — a mute is
-a deadline, checked by one scheduled task.
+reason and the ordinary penalties apply. Its `threading.Timer` per muted player is gone too: muting is
+`Console.mute`, and the runtime holds the deadline — because `poweradminurt`'s `!pamute` mutes as well,
+and two plugins each keeping their own timer would lift each other's mutes early. The **ladder** is
+this plugin's (how long, on which offence); the mechanism is not.
 """
 
 from __future__ import annotations
@@ -63,7 +65,6 @@ MESSAGES = {
     "censor_chat": "watch your language",
     "censor_name": "your name is not acceptable here",
     "censor_muted": "{name} is muted for {minutes} minutes — watch your language",
-    "censor_unmuted": "you can talk again; watch your language",
 }
 
 
@@ -170,9 +171,6 @@ class CensorPlugin(Plugin):
     def on_startup(self) -> None:
         self.register_messages(MESSAGES)
         self._load_mute()
-        if self.mute_ladder:
-            # One task for every muted player on the server, rather than the classic's timer each.
-            self.schedule(self._check_mutes, second="*/5", name="CensorPlugin.mutes")
         self.subscribe(EventType.CLIENT_DISCONNECT, self._on_disconnect)
         self.subscribe(EventType.CLIENT_SAY, self.on_chat)
         self.subscribe(EventType.CLIENT_TEAM_SAY, self.on_chat)
@@ -232,33 +230,18 @@ class CensorPlugin(Plugin):
                 ", ".join(str(m) for m in self.mute_ladder),
             )
 
-    def _muted_until(self, client: Client) -> float:
-        recorded = client.get_var(self, "muted_until")
-        return float(recorded) if isinstance(recorded, (int, float)) else 0.0
-
     def _offences(self, client: Client) -> int:
         recorded = client.get_var(self, "offences")
         return int(recorded) if isinstance(recorded, int) else 0
 
     def _on_disconnect(self, event: Event) -> None:
-        """A player who leaves takes their record with them, as the classic's did.
+        """A player who leaves takes their offence count with them, as the classic's did.
 
-        A mute lives on the *server* and is attached to a slot, so it does not survive them leaving
-        either — and the next person in that slot must not inherit it.
+        The mute itself is the runtime's to forget: it lives on the *server*, attached to a slot, and
+        the next person in that slot must not inherit one.
         """
         if event.client is not None:
-            event.client.del_var(self, "muted_until")
             event.client.del_var(self, "offences")
-
-    def _check_mutes(self) -> None:
-        """Lift the mutes that have run out. One task, not a timer per player."""
-        now = self.console.clock.now()
-        for client in list(self.console.clients.connected()):
-            until = self._muted_until(client)
-            if until and now >= until:
-                client.set_var(self, "muted_until", 0.0)
-                self.console.apply_verb("mute", client, seconds="0")
-                self.console.tell(client, self.message("censor_unmuted"))
 
     def _mute_for(self, client: Client, bad: BadWord) -> bool:
         """Mute this player for their next escalation. True if the mute took the place of a penalty.
@@ -268,14 +251,14 @@ class CensorPlugin(Plugin):
         """
         if not self.mute_ladder:
             return False
-        if self._muted_until(client) > self.console.clock.now():
+        if self.console.muted_until(client) > self.console.clock.now():
             log.debug("censor: %s is already muted", client.name)
             return True
         offences = self._offences(client) + 1
         client.set_var(self, "offences", offences)
         minutes = self.mute_ladder[min(offences, len(self.mute_ladder)) - 1]
-        client.set_var(self, "muted_until", self.console.clock.now() + minutes * 60)
-        self.console.apply_verb("mute", client, seconds=str(minutes * 60))
+        if not self.console.mute(client, minutes):
+            return False
         self.console.say(self.message("censor_muted", name=client.name, minutes=minutes))
         log.info("censor: muted %s for %d minutes (offence %d)", client.name, minutes, offences)
         limit = as_int(self.mute.get("warn_after"), 3)

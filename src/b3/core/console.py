@@ -174,6 +174,28 @@ class Console(Protocol):
         `GameProfile.map_arguments` names them, and a title that declares none never gets any."""
         ...
 
+    def mute(self, client: Client, minutes: float) -> bool:
+        """Silence a player for a while. False where this engine has no verb for it.
+
+        Here rather than in a plugin because **two** plugins want it — `censor`'s escalating mute and
+        `poweradminurt`'s `!pamute` — and two owners of the same engine state fight: whichever holds
+        the shorter deadline lifts the other's mute early. The policy (how long, for what) stays in
+        the plugins; the mechanism and the deadline are one thing, here.
+        """
+        ...
+
+    def unmute(self, client: Client) -> bool:
+        """Let a player talk again, now, whatever deadline was running."""
+        ...
+
+    def muted_until(self, client: Client) -> float:
+        """When this player's mute runs out, as epoch seconds; 0.0 if they are not muted.
+
+        The question a second plugin has to be able to ask before muting somebody: "is one already
+        running, and for longer than mine?"
+        """
+        ...
+
     def supports_verb(self, name: str) -> bool:
         """Whether this engine has a verb for doing ``name`` to a player — `slap`, `mute`, and so on.
 

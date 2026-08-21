@@ -420,7 +420,7 @@ async def test_the_mute_gets_longer_each_time(console):
     for minutes in (1, 5, 30, 30):
         await _say(console, plugin, bob, "you are an ass")
         console.clock.advance(minutes * 60 + 1)
-        plugin._check_mutes()
+        console.lift_expired_mutes()
 
     assert [values["seconds"] for _n, _w, values in console.verbs_applied if _n == "mute"] == [
         "60",
@@ -436,21 +436,20 @@ async def test_the_mute_gets_longer_each_time(console):
 
 @pytest.mark.asyncio
 async def test_a_mute_is_lifted_when_it_runs_out(console):
-    """One scheduled task for the whole server, where the classic started a timer per player."""
+    """The runtime holds the deadline, not this plugin — see `Console.mute`."""
     plugin = _censor(console, mute_minutes=[2])
     bob = _client()
     console.clients.add(bob)
     await _say(console, plugin, bob, "you are an ass")
 
     console.clock.advance(60)
-    plugin._check_mutes()
+    console.lift_expired_mutes()
     assert [n for n, _w, _v in console.verbs_applied] == ["mute"]  # still muted
 
     console.clock.advance(61)
-    plugin._check_mutes()
+    console.lift_expired_mutes()
 
     assert console.verbs_applied[-1] == ("mute", bob, {"seconds": "0"})
-    assert any("can talk again" in text for _who, text in console.told)
 
 
 @pytest.mark.asyncio
@@ -475,7 +474,7 @@ async def test_after_warn_after_offences_the_words_own_penalty_applies_too(conso
     for _ in range(3):
         await _say(console, plugin, bob, "you are an ass")
         console.clock.advance(120)
-        plugin._check_mutes()
+        console.lift_expired_mutes()
 
     assert len(console.warned) == 1  # only the third offence fell through to the penalty
 
@@ -519,8 +518,8 @@ async def test_with_no_mute_configured_censor_behaves_exactly_as_before(console)
 
 
 @pytest.mark.asyncio
-async def test_a_player_who_leaves_takes_their_mute_record_with_them(console):
-    """A mute is attached to a slot on the server, so the next player in it must not inherit one."""
+async def test_a_player_who_leaves_takes_their_offence_count_with_them(console):
+    """The mute itself is the runtime's to forget; the ladder position is this plugin's."""
     plugin = _censor(console, mute_minutes=[1, 5])
     bob = _client()
     console.clients.add(bob)
@@ -529,4 +528,3 @@ async def test_a_player_who_leaves_takes_their_mute_record_with_them(console):
     await console.bus.publish(Event(EventType.CLIENT_DISCONNECT, client=bob))
 
     assert plugin._offences(bob) == 0
-    assert plugin._muted_until(bob) == 0.0

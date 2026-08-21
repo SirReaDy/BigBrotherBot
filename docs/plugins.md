@@ -35,6 +35,7 @@ list, each with an optional config of its own (see `examples/`):
 | `geolocation` | resolves where a player is connecting from, for the plugins that need it | — |
 | `location` | announces where arrivals are from, and answers for it | `!locate` `!distance` `!isp` |
 | `countryfilter` | refuses players from the countries a server does not accept | — |
+| `poweradminurt` | Urban Terror's admin commands (first slice: players and settings) | `!paslap` `!panuke` `!pakill` `!pamute` `!paunmute` `!pabigtext` `!paset` `!paget` `!pavote` |
 
 ### censor — bad language, and the escalating mute
 
@@ -359,6 +360,21 @@ database cannot name is in **neither** list, so it is refused by a whitelist and
 blocklist: the classic matched with `str.find`, and an empty string is found in anything, so those
 players were refused by *any* deny list. `exempt_names` works but is spoofable — a name is whatever the
 player typed. Config: `examples/plugin_countryfilter.yaml`.
+
+### poweradminurt — Urban Terror's own commands
+
+The classic plugin is 3,846 lines and forty-nine commands, so it is being ported in slices. **This one**
+is the commands that act on a player or a setting: `!paslap` and `!panuke` (with a repeat count up to 25,
+one a second), `!pakill`, `!pamute` / `!paunmute`, `!pabigtext`, `!paset` / `!paget`, and `!pavote`. Each
+of the first four is an engine verb, so each asks whether this title has one and says so plainly when it
+does not, rather than the plugin refusing to load by game name. Still to come: the gametype and
+match-setting commands, team management, and the background features (team balancer, skill balancer, name
+checker, spectator check, bot support, headshot counter, rotation manager, match mode).
+
+One immunity rule covers all four player commands — you cannot use them on somebody at or above your own
+level. The classic had `slap_safe_level` on `!paslap`, a different comparison on `!pamute`, and *nothing*
+on `!panuke`. `!paveto` is not here: `callvote`'s `!veto` is that command, and it works on any engine
+that can cancel a vote. Config: `examples/plugin_poweradminurt.yaml`.
 
 Anything else is a git install — see [Plugins](cli.md#plugins) and
 [Writing an installable plugin](#writing-an-installable-plugin).

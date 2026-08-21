@@ -168,6 +168,8 @@ class FakeConsole:
         #: Urban Terror's set by default, since it is the only family here that has any.
         self.player_verbs: set[str] = {"slap", "nuke", "kill", "mute"}
         self.verbs_applied: list[tuple[str, Client, dict[str, str]]] = []
+        #: Slot -> when its mute runs out, as the runtime tracks it.
+        self.muted: dict[str, float] = {}
         self.votes_can_be_cancelled = True
         #: Operator-defined rcon lines sent through `send_rcon`, and canned replies for them.
         self.rcon_sent: list[str] = []
@@ -254,6 +256,35 @@ class FakeConsole:
 
     def rotate_map(self) -> None:
         self.rotations += 1
+
+    def mute(self, client: Client, minutes: float) -> bool:
+        """The runtime's mute, with the same "a longer mute wins" rule."""
+        if "mute" not in self.player_verbs:
+            return False
+        until = self.clock.now() + max(1, int(minutes * 60))
+        if until <= self.muted.get(client.cid or "", 0.0):
+            return True
+        self.muted[client.cid or ""] = until
+        return self.apply_verb("mute", client, seconds=str(max(1, int(minutes * 60))))
+
+    def unmute(self, client: Client) -> bool:
+        self.muted.pop(client.cid or "", None)
+        if "mute" not in self.player_verbs:
+            return False
+        return self.apply_verb("mute", client, seconds="0")
+
+    def muted_until(self, client: Client) -> float:
+        return self.muted.get(client.cid or "", 0.0)
+
+    def lift_expired_mutes(self) -> None:
+        """What the runtime's scheduled task does; tests call it directly."""
+        now = self.clock.now()
+        for cid, until in list(self.muted.items()):
+            if now >= until:
+                del self.muted[cid]
+                client = self.clients.get_by_cid(cid)
+                if client is not None:
+                    self.apply_verb("mute", client, seconds="0")
 
     def supports_verb(self, name: str) -> bool:
         return name in self.player_verbs

@@ -131,6 +131,9 @@ class Bot:
         self.profile = games.profile_for(config.server.game)
         self.bus = EventBus()
         self.clients = ClientManager(self.clock)
+        #: Slot -> when a mute on it runs out. Here rather than in a plugin because two plugins want
+        #: to mute (see `Bot.mute`), and two owners of one piece of engine state fight over it.
+        self._muted: dict[str, float] = {}
         self.command_registry = CommandRegistry()
         self.storage = storage or SqlAlchemyStorage(config.bot.database, clock=self.clock)
         self.messages = self._build_messages()
@@ -246,6 +249,10 @@ class Bot:
             # Without this a bot started mid-match sees nobody until the next join line, and a
             # missed disconnect leaves a ghost in the client list forever.
             self.scheduler.add(self._scheduled_sync, minute=f"*/{SYNC_MINUTES}", name="Bot.sync")
+            if self.profile.player_verbs.get("mute"):
+                # Only where there is something to lift. See `Bot.mute` for why the deadline is here
+                # and not in whichever plugin happened to set it.
+                self.scheduler.add(self._lift_expired_mutes, second="*/5", name="Bot.mutes")
 
     def check_version(self) -> None:
         """Read which build this server is, and say so when the build is one with a known fault.
@@ -1268,6 +1275,50 @@ class Bot:
             )
             return
         self._send(self.profile.rotate_command)
+
+    def mute(self, client: Client, minutes: float) -> bool:
+        """Silence a player for `minutes`, and remember when to let them speak again.
+
+        The engine's verb takes seconds and the server does its own counting, so the deadline here is
+        a *safety net* rather than the mechanism: a bot that restarts, or an engine build whose mute
+        does not expire on its own, would otherwise leave somebody silenced for good. It is also the
+        single place that knows a mute is running, which is what stops two plugins with two ladders
+        from lifting each other's.
+
+        A longer mute replaces a shorter one; a shorter one does not cut a longer one short.
+        """
+        if not self.supports_verb("mute"):
+            return False
+        seconds = max(1, int(minutes * 60))
+        until = self.clock.now() + seconds
+        if until <= self._muted.get(client.cid or "", 0.0):
+            log.debug("%s is already muted for longer than %ds", client.name, seconds)
+            return True
+        self._muted[client.cid or ""] = until
+        return self.apply_verb("mute", client, seconds=str(seconds))
+
+    def unmute(self, client: Client) -> bool:
+        """Let a player talk again. `mute <cid> 0` is how these engines lift one."""
+        self._muted.pop(client.cid or "", None)
+        if not self.supports_verb("mute"):
+            return False
+        return self.apply_verb("mute", client, seconds="0")
+
+    def muted_until(self, client: Client) -> float:
+        """When this player's mute runs out, or 0.0. Read by the plugins that set one."""
+        return self._muted.get(client.cid or "", 0.0)
+
+    def _lift_expired_mutes(self) -> None:
+        """Lift the mutes whose time is up. One pass for the server, on the scheduler."""
+        now = self.clock.now()
+        for cid, until in list(self._muted.items()):
+            if now < until:
+                continue
+            del self._muted[cid]
+            client = self.clients.get_by_cid(cid)
+            if client is not None:
+                self.apply_verb("mute", client, seconds="0")
+                log.info("mute on %s has run out", client.name)
 
     def supports_verb(self, name: str) -> bool:
         """Whether this title declares a verb for doing ``name`` to a player."""

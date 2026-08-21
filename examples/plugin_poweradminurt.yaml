@@ -1,0 +1,59 @@
+# poweradminurt — Urban Terror's own admin commands.
+#
+# Point at it from the main config:
+#
+#   plugins:
+#     - name: poweradminurt
+#       config: "@conf/plugin_poweradminurt.yaml"
+#
+# The classic plugin is 3,846 lines and forty-nine commands, so it is being ported in slices. **This
+# slice** is the commands that act on a player or a server setting:
+#
+#   !paslap <player> [times]   throw them about, up to 25 times, one a second (alias: !slap)
+#   !panuke <player> [times]   nuke them (alias: !nuke)
+#   !pakill <player>           kill them where they stand
+#   !pamute <player> [minutes] stop them talking (alias: !mute)
+#   !paunmute <player>         let them talk again
+#   !pabigtext <text>          announce something in the biggest text the game has
+#   !paset <cvar> <value>      change a server setting
+#   !paget <cvar>              read one
+#   !pavote on|off             let players call votes, or stop them
+#
+# Still to come: the gametype and match-setting commands, team management (`!paforce`, `!pabalance`,
+# the shuffles), and the background features (team balancer, skill balancer, name checker, spectator
+# check, bot support, headshot counter, rotation manager, match mode).
+#
+# Two commands from the classic are deliberately absent. `!paveto` is `callvote`'s `!veto`, which works
+# on every engine that can cancel a vote rather than only this one. `!paversion` printed the plugin's
+# version; `!plugin info` answers that for every plugin.
+#
+# The four player commands need the engine to have the verb (`slap`, `nuke`, `smite`, `mute` — the
+# Urban Terror family has all four). On a title that has none they are still registered and answer that
+# the game has no such command, which is how an operator finds out.
+
+settings:
+  # Level for the commands that act on a player.
+  player_command_level: 40
+
+  # Level for the ones that change a server setting. Higher on purpose: `!paset` can change anything.
+  server_command_level: 60
+
+  # Nobody may slap, nuke, kill or mute a player at or above their own level — you can always do it to
+  # yourself. The classic had three different rules across three commands and *no* rule on `!panuke`,
+  # so which of your fellow admins you could throw about depended on which verb you reached for.
+  protect_peers: yes
+
+  # Minutes `!pamute` uses when the admin does not say. Always a real duration: the classic sent the
+  # mute verb with an empty one, which toggles on these builds, so a mute could outlive the bot that
+  # set it with nothing recording that it was on.
+  default_mute_minutes: 5
+
+# Everything it says can be reworded in the main config's `messages:` block:
+#
+#   pa_slapped / pa_nuked / pa_killed / pa_muted / pa_unmuted     ({name}, {minutes})
+#   pa_protected          the target outranks you ({name})
+#   pa_repeat_range       a bad repeat count ({limit})
+#   pa_unavailable        this game has no such verb ({verb})
+#   pa_cvar / pa_cvar_unset / pa_cvar_changed                     ({name}, {value})
+#   pa_vote_on / pa_vote_off / pa_vote_usage
+#   pa_usage_player / pa_usage_set / pa_usage_get / pa_usage_bigtext
