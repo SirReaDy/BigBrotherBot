@@ -33,6 +33,7 @@ list, each with an optional config of its own (see `examples/`):
 | `duel` | keeps score between two players who agreed to a duel | `!duel` `!duelreset` `!duelcancel` |
 | `spawnkill` | warns, kicks or bans players who shoot somebody who just spawned | — |
 | `geolocation` | resolves where a player is connecting from, for the plugins that need it | — |
+| `location` | announces where arrivals are from, and answers for it | `!locate` `!distance` `!isp` |
 
 ### tk — team damage
 
@@ -308,6 +309,20 @@ licence — start there; **MaxMind GeoLite2** needs a free account and a licence
 coordinates and (with GeoLite2-ASN) the network operator. Install the reader with `pip install b3ng[geo]`.
 Place names are folded to ASCII by default, because a Quake 3 console cannot draw `Córdoba` and a row of
 question marks is worse than "Cordoba". Config: `examples/plugin_geolocation.yaml`.
+
+### location — where everybody is
+
+The user-facing half of the geo family: it announces each arrival's place and adds `!locate`,
+`!distance` (great-circle kilometres) and `!isp`. Load it after `geolocation`, which owns the database;
+without one it announces nothing and answers "I do not know", which is the truthful reply rather than a
+fault.
+
+What it can say depends on the database. A country file (DB-IP Lite, GeoLite2-Country) answers `!locate`;
+`!distance` needs coordinates, so a city file; `!isp` needs GeoLite2-ASN as the second database. Missing
+fields produce the message that says so — the classic substituted them as `--`, so a country-level
+database answered "Bob is connected from -- (Germany)". Nothing is announced for the first few minutes
+after the bot starts, since a restart mid-match authenticates everybody at once.
+Config: `examples/plugin_location.yaml`.
 
 Anything else is a git install — see [Plugins](cli.md#plugins) and
 [Writing an installable plugin](#writing-an-installable-plugin).

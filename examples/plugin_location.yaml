@@ -1,0 +1,47 @@
+# location — announces where players are connecting from, and answers questions about it.
+#
+# Point at it from the main config, **after** geolocation:
+#
+#   plugins:
+#     - name: geolocation
+#       config: "@conf/plugin_geolocation.yaml"
+#     - name: location
+#       config: "@conf/plugin_location.yaml"
+#
+# Everything this knows comes from `geolocation`, which reads a local database. Without that plugin
+# loaded and pointed at a `.mmdb`, this one announces nothing and answers "I do not know" — which is
+# the honest reply, not a fault.
+#
+# What each command can say depends on which database you have:
+#
+#   DB-IP Lite / GeoLite2-Country   the country. `!locate` works; `!distance` cannot (no coordinates).
+#   GeoLite2-City                   city, region, coordinates — `!distance` works.
+#   GeoLite2-ASN (as `asn_database`)  the network operator, which is what `!isp` reports.
+
+settings:
+  # Announce each arrival's location to the whole server.
+  announce: yes
+
+  # Say nothing for this many seconds after the plugin starts. A bot restarted mid-match authenticates
+  # everybody at once, and announcing a full server is a wall of text nobody reads. The classic had
+  # this fixed at 300 and undocumented.
+  startup_silence: 300
+
+  # Levels for the three commands — the classic's own choices. `!isp` is higher because whose network
+  # somebody is on is a different kind of question from where they are.
+  locate_level: 1
+  distance_level: 1
+  isp_level: 20
+
+# Everything it says can be reworded in the main config's `messages:` block. `{place}` is already
+# formatted as "City (Country)", or just the country where that is all the database carries:
+#
+#   location_connected        on arrival ({name}, {place})
+#   location_locate           !locate ({name}, {place})
+#   location_locate_failed    !locate on somebody who has not been placed ({name})
+#   location_distance         !distance ({name}, {distance} — kilometres, two decimal places)
+#   location_distance_self    !distance on yourself
+#   location_distance_failed  either player has no coordinates ({name})
+#   location_isp              !isp ({name}, {isp})
+#   location_isp_failed       no ASN database, or no answer in it ({name})
+#   location_usage            a command with no player named ({command})
