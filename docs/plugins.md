@@ -16,7 +16,7 @@ list, each with an optional config of its own (see `examples/`):
 | `pingwatch` | removes players whose connection is spoiling the game | `!ci <player>` |
 | `tk` | team damage points, forgiving, and a ban for whoever will not stop | `!forgive` `!fp` `!forgiveall` `!forgivelist` `!forgiveinfo` `!forgiveclear` `!grudge` |
 | `stats` | kills, deaths, damage, a relative skill score and XP, per session | `!mapstats` `!stats` `!testscore` `!topstats` `!topxp` |
-| `welcome` | greets arrivals with their history, and announces their own greeting | `!greeting [text\|none]` |
+| `welcome` | greets arrivals with their history and where they are from, and announces their own greeting | `!greeting [text\|none]` |
 | `afk` | asks players who look absent whether they are, and removes the silent ones | — |
 | `banlist` | applies ban lists from a file or a URL, with whitelists that win | `!banlistinfo` `!banlistupdate` `!banlistcheck` |
 | `cmdmanager` | command levels, aliases and per-player grants, at runtime | `!cmdlevel` `!cmdalias` `!cmdgrant` `!cmdrevoke` `!cmduse` |
@@ -85,6 +85,13 @@ one — nor does the next player to take their slot.
 `{group}`, `{level}` and `{connections}`, and a placeholder that does not exist is refused when it is
 typed rather than failing later in front of the server. `!greeting none` clears it. Wording for every
 message lives in the main config's `messages:` section. Config: `examples/plugin_welcome.yaml`.
+
+**Where they are from.** If `geolocation` is loaded and has placed the player, the two server
+announcements are replaced by variants naming their country — `announce_first_geo` and
+`announce_user_geo`, with `{place}` available to every message here. That is the whole of what the
+classic's separate `geowelcome` plugin did: it was a *subclass* of `welcome` that re-implemented the
+greeting flow to add two messages and disabled `welcome` if it found it loaded. Nothing to switch on,
+and `welcome` behaves exactly as before on a server with no geolocation.
 
 ### afk — the slot somebody stopped using
 

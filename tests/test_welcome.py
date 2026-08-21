@@ -388,3 +388,73 @@ async def test_a_real_player_joining_is_greeted_over_rcon(tmp_path):
 
     assert any("welcome back" in c for c in rcon.commands)
     bot.storage.close()
+
+
+# -- the country, which the classic had a whole second plugin for --------------------------------
+
+
+class _FakePlace:
+    """What `geolocation.Location` looks like from here: something with `describe()`."""
+
+    def __init__(self, described: str) -> None:
+        self._described = described
+
+    def describe(self) -> str:
+        return self._described
+
+
+class _FakeGeolocation:
+    def __init__(self, places: dict[str, object]) -> None:
+        self.places = places
+
+    def location_of(self, client):  # noqa: ANN001, ANN202
+        return self.places.get(client.guid)
+
+
+@pytest.mark.asyncio
+async def test_an_arrival_is_announced_with_their_country_when_it_is_known(console):
+    """The whole of what the classic's `geowelcome` plugin did, in two message variants.
+
+    It was a subclass of this plugin that re-implemented the greeting flow and disabled `welcome` if
+    it found it loaded; its copy of the defaults had already drifted from the originals.
+    """
+    plugin = _welcome(console)
+    bob = _client(connections=1)
+    console.plugins["geolocation"] = _FakeGeolocation({bob.guid: _FakePlace("Rome (Italy)")})
+
+    await _arrive(console, plugin, bob)
+
+    assert console.said == ["everyone welcome Bob from Rome (Italy), player #7, to the server"]
+
+
+@pytest.mark.asyncio
+async def test_a_returning_player_is_announced_with_their_country_too(console):
+    plugin = _welcome(console)
+    bob = _client(connections=4)
+    console.plugins["geolocation"] = _FakeGeolocation({bob.guid: _FakePlace("Germany")})
+
+    await _arrive(console, plugin, bob)
+
+    assert any("from Germany" in text for text in console.said)
+
+
+@pytest.mark.asyncio
+async def test_without_geolocation_the_plain_announcement_is_used(console):
+    """`welcome` on a server with no geo plugin behaves exactly as it did before."""
+    plugin = _welcome(console)
+    bob = _client(connections=1)
+
+    await _arrive(console, plugin, bob)
+
+    assert console.said == ["everyone welcome Bob, player #7, to the server"]
+
+
+@pytest.mark.asyncio
+async def test_a_player_geolocation_could_not_place_gets_the_plain_announcement(console):
+    plugin = _welcome(console)
+    bob = _client(connections=1)
+    console.plugins["geolocation"] = _FakeGeolocation({})
+
+    await _arrive(console, plugin, bob)
+
+    assert console.said == ["everyone welcome Bob, player #7, to the server"]

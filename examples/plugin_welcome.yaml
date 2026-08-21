@@ -11,6 +11,11 @@
 # `greeting_announce`; the fields available in them are {name} {id} {group} {level} {connections}
 # {last_visit}.
 
+# If `geolocation` is loaded and has placed the player, the two server announcements are replaced by
+# variants that name where they are from — `announce_first_geo` and `announce_user_geo`. That is the
+# whole of what the classic's separate `geowelcome` plugin did; there is nothing to switch on, and
+# `{place}` is available to every message here if you would rather put it in a private greeting.
+
 settings:
   # Which of them to send. The three `welcome_*` go privately to the player, the two `announce_*` to
   # the whole server, and `show_greeting` says the player's own line if they have set one.

@@ -24,6 +24,14 @@ Changed, and each for a reason:
 * **Placeholders are validated when the greeting is set**, and named in the refusal. The classic
   rewrote `$name` into `%(name)s` and let a bad one raise at greeting time — which is to say in front
   of the whole server, once, on somebody else's arrival.
+
+**`geowelcome` is folded in here rather than ported.** The classic had a second plugin for "welcome,
+but name the country": a **subclass of this one** that re-implemented the whole greeting flow to add
+two messages, and disabled `welcome` at startup if it found it loaded. Its copy of the message defaults
+had already drifted from the originals. What it actually adds is two message variants, so that is what
+it is: `announce_first_geo` and `announce_user_geo`, used instead of the plain ones when `geolocation`
+has placed the player, with `{place}` available to every message here. Nothing needs configuring and
+`welcome` behaves exactly as before on a server with no geolocation at all.
 """
 
 from __future__ import annotations
@@ -87,6 +95,12 @@ MESSAGES = {
     "here {connections} times",
     "announce_first": "everyone welcome {name}, player #{id}, to the server",
     "announce_user": "everyone welcome back {name}, player #{id} — here {connections} times",
+    # Used instead of the two above when `geolocation` has placed the player. This is the whole of
+    # what the classic bot's separate `geowelcome` plugin did — see the note in this module's
+    # docstring about why it is two messages here rather than a plugin.
+    "announce_first_geo": "everyone welcome {name} from {place}, player #{id}, to the server",
+    "announce_user_geo": "everyone welcome back {name} from {place}, player #{id} — here "
+    "{connections} times",
     "greeting_announce": "{name} joined: {greeting}",
     "greeting_none": "you have no greeting set",
     "greeting_yours": "your greeting is: {greeting}",
@@ -215,7 +229,9 @@ class WelcomePlugin(Plugin):
             if self.settings.get("welcome_first"):
                 self.console.tell(client, self.message("welcome_first", **values))
             if self.settings.get("announce_first"):
-                self.console.say(self.message("announce_first", **values))
+                self.console.say(
+                    self.message(self._announce_key("announce_first", values), **values)
+                )
         else:
             registered = client.display_level() > 0
             if registered and self.settings.get("welcome_user"):
@@ -224,11 +240,39 @@ class WelcomePlugin(Plugin):
                 self.console.tell(client, self.message("welcome_newb", **values))
             still_new = client.connections < as_int(self.settings.get("newb_connections"), 15)
             if still_new and self.settings.get("announce_user"):
-                self.console.say(self.message("announce_user", **values))
+                self.console.say(
+                    self.message(self._announce_key("announce_user", values), **values)
+                )
         if self.settings.get("show_greeting") and client.greeting:
             self.console.say(
                 self.message("greeting_announce", greeting=self._render(client), **values)
             )
+
+    def place_of(self, client: Client) -> str:
+        """Where this player is, if `geolocation` is loaded and has placed them; "" otherwise.
+
+        Asked of the plugin rather than read off the client, and asked *optionally*: `welcome` works
+        exactly as before on a server with no geolocation at all, which is the point of folding the
+        classic's `geowelcome` in here instead of porting it.
+        """
+        provider = self.console.get_plugin("geolocation")
+        location_of = getattr(provider, "location_of", None)
+        if location_of is None:
+            return ""
+        place = location_of(client)
+        described = getattr(place, "describe", None)
+        return str(described()) if described is not None else ""
+
+    def _announce_key(self, key: str, values: dict[str, object]) -> str:
+        """`announce_user`, or `announce_user_geo` when we know where they are.
+
+        Decided at the moment of speaking, which is what makes this need no coordination at all:
+        `geolocation` resolves on authentication and this greeting is delayed by half a minute, so by
+        the time it goes out the answer is either known or it never will be. The classic's `geowelcome`
+        instead subscribed to the geolocation events and started its own timer from them, which is why
+        it had to be a copy of this whole plugin.
+        """
+        return f"{key}_geo" if values.get("place") else key
 
     def _values(self, client: Client) -> dict[str, object]:
         """The fields every welcome message can use."""
@@ -239,6 +283,9 @@ class WelcomePlugin(Plugin):
             "connections": client.connections,
             "level": client.display_level(),
             "group": group.name if group is not None else "guest",
+            # Empty unless `geolocation` is loaded and has placed them. `{place}` is available to
+            # every message here, so an operator can name the country in a private greeting too.
+            "place": self.place_of(client),
             "last_visit": (
                 self.console.format_time(client.last_visit)
                 if client.last_visit
