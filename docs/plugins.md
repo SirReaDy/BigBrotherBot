@@ -27,6 +27,7 @@ list, each with an optional config of its own (see `examples/`):
 | `nickreg` | reserves nicknames, and warns whoever else is wearing one | `!registernick` `!deletenick` `!listnick` |
 | `makeroom` | frees a slot on a full server, and holds it for a member | `!makeroom` `!makeroomauto` |
 | `callvote` | decides who may call a vote, and records the ones that finish | `!veto` `!lastvote` |
+| `spree` | announces killing and losing streaks | `!spree [player]` |
 
 ### tk — team damage
 
@@ -224,6 +225,19 @@ voter has already passed by the time the log line reporting it is read — and b
 announce a vote and take no instruction about it. On those two the plugin says so once at startup and
 then only records and announces, rather than telling a player they may not do what is about to happen
 anyway. Config: `examples/plugin_callvote.yaml`.
+
+### spree — the server saying a player's name
+
+Five kills without dying gets a line to the whole server, and whoever ends it gets the credit; seven
+deaths in a row gets a word of encouragement. Both tables are the operator's, keyed by the count, with a
+`start` and an `end` message and `{player}` / `{victim}` in them — a placeholder this plugin cannot fill
+is refused when the config is read rather than sent to the server as written.
+
+A streak is kills *without dying*, so every kind of death breaks it: shot, team-killed, or walked off a
+ledge. Team-killing does not build one. A death nobody caused ends a spree in silence, because the `end`
+message names who did it and there is nobody. Counts reset at the end of a map, or per round if you ask
+for it, or never. `!spree [player]` reports the streak somebody is on.
+Config: `examples/plugin_spree.yaml`.
 
 Anything else is a git install — see [Plugins](cli.md#plugins) and
 [Writing an installable plugin](#writing-an-installable-plugin).
