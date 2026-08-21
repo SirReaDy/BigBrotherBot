@@ -177,6 +177,7 @@ class FakeConsole:
             "map_restart",
             "reload",
             "cyclemap",
+            "exec",
         }
         self.server_verbs_applied: list[tuple[str, dict[str, str]]] = []
         #: Slot -> when its mute runs out, as the runtime tracks it.

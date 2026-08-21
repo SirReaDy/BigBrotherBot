@@ -74,6 +74,7 @@ def test_the_verbs_that_name_no_player_are_their_own_table():
         "map_restart",
         "reload",
         "cyclemap",
+        "exec",
     }
 
 

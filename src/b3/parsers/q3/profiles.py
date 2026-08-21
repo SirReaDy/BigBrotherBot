@@ -127,6 +127,7 @@ _URT = replace(
         "map_restart": "map_restart",
         "reload": "reload",
         "cyclemap": "cyclemap",
+        "exec": "exec %(file)s",
     },
 )
 IOURT41 = replace(_URT, name="iourt41")

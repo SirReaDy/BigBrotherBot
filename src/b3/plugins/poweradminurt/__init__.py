@@ -19,11 +19,12 @@ parts and this module's docstring records which.
 **Slice 3: moving players between teams.** `!paforce` (with its lock), `!paswap`, `!paswapteams` and
 `!pashuffleteams`. Two of those name no player at all, which is what `GameProfile.server_verbs` is for.
 
-**Later slices:** the remaining server commands (`!pamaprestart`, `!pamapreload`, `!pacyclemap`,
-`!paexec`, `!papublic` — the first three are declared verbs already and want only a command each), then
-the background features, each of which is its own plugin-sized thing. `!pateams` and `!pabalance` belong
-with the **team balancer** rather than here: they are its manual trigger, and porting them without it
-would mean writing the balancing twice.
+**Slice 3b: the rest of the server commands.** `!pamaprestart`, `!pamapreload`, `!pacyclemap`,
+`!paexec` and `!papublic` — the first three are one `server_verb` each.
+
+**Later slices:** the background features, each of which is its own plugin-sized thing. `!pateams` and
+`!pabalance` belong with the **team balancer** rather than here: they are its manual trigger, and porting
+them without it would mean writing the balancing twice.
 
 **Not ported, deliberately:**
 
@@ -56,6 +57,8 @@ Changed from the classic, and the first two are faults:
 from __future__ import annotations
 
 import logging
+import re
+import secrets
 from collections.abc import Callable
 from dataclasses import dataclass
 
@@ -138,6 +141,11 @@ GEAR_NONE = sum(GEAR_BITS.values())
 MOON_GRAVITY = "100"
 NORMAL_GRAVITY = "800"
 
+#: A config file `!paexec` will run. Checked rather than sanitised: these engines read `;` as a command
+#: separator, so a name with one in it is not a filename that needs cleaning up — it is somebody trying
+#: to run two commands, and the right answer is no.
+CONFIG_FILE_RE = re.compile(r"^[A-Za-z0-9._\-]{1,64}$")
+
 #: What an admin may type for a team, and what the engine's `forceteam` calls it. `free` is not a team:
 #: it releases a lock, which is the classic's own spelling and worth keeping because operators know it.
 TEAMS = {
@@ -160,6 +168,12 @@ DEFAULTS: dict[str, object] = {
     "protect_peers": True,
     # Minutes for `!pamute` when the admin does not say.
     "default_mute_minutes": 5,
+    # The word `!papublic off` builds the private password from. Digits are added to it so that the
+    # password changes each time; without a word here the command refuses rather than setting a
+    # password made only of digits, which is what the classic did while claiming it had refused.
+    "private_password": "",
+    # How many digits to add.
+    "password_digits": 2,
 }
 
 MESSAGES = {
@@ -210,6 +224,17 @@ MESSAGES = {
     "pa_swapped": "{first} and {second} have changed places",
     "pa_teams_swapped": "the teams have been swapped",
     "pa_teams_shuffled": "the teams have been shuffled",
+    "pa_map_restarted": "restarting the map",
+    "pa_map_reloaded": "reloading the map",
+    "pa_map_cycled": "moving on to the next map",
+    "pa_exec_usage": "!paexec <config file>",
+    "pa_exec_bad_name": "{name} is not a config file name I will run",
+    "pa_exec": "running {name}",
+    "pa_public_usage": "!papublic on|off",
+    "pa_public_on": "the server is public again",
+    "pa_public_off": "the server is going private",
+    "pa_public_password": "the password is {password} — type !pamapreload to apply it",
+    "pa_public_no_password": "set private_password in the plugin config first",
 }
 
 
@@ -260,6 +285,10 @@ class PoweradminurtPlugin(Plugin):
             "pavote",
             "paswapteams",
             "pashuffleteams",
+            "pamaprestart",
+            "pamapreload",
+            "pacyclemap",
+            "papublic",
         ):
             self._set_level(name, server_level)
         for name in (
@@ -699,6 +728,84 @@ class PoweradminurtPlugin(Plugin):
             return
         ctx.reply(self.message("pa_teams_shuffled"))
 
+    # -- slice 3b: the rest of the server commands ---------------------------
+
+    @command("pamaprestart", level=60, alias="maprestart")
+    def cmd_pamaprestart(self, ctx: CommandContext) -> None:
+        """pamaprestart - restart the map now"""
+        self._server_verb(ctx, "map_restart", "pa_map_restarted")
+
+    @command("pamapreload", level=60, alias="mapreload")
+    def cmd_pamapreload(self, ctx: CommandContext) -> None:
+        """pamapreload - reload the map, which is what applies a changed password"""
+        self._server_verb(ctx, "reload", "pa_map_reloaded")
+
+    @command("pacyclemap", level=60, alias="cyclemap")
+    def cmd_pacyclemap(self, ctx: CommandContext) -> None:
+        """pacyclemap - move on to the next map"""
+        self._server_verb(ctx, "cyclemap", "pa_map_cycled")
+
+    def _server_verb(self, ctx: CommandContext, verb: str, said: str) -> None:
+        if not self.console.apply_server_verb(verb):
+            ctx.reply(self.message("pa_unavailable", verb=verb))
+            return
+        log.info("poweradminurt: %s ran %s", ctx.client.name, verb)
+        ctx.reply(self.message(said))
+
+    @command("paexec", level=80)
+    def cmd_paexec(self, ctx: CommandContext) -> None:
+        """paexec <config file> - run a config file on the server"""
+        name = ctx.args.strip()
+        if not name:
+            ctx.reply(self.message("pa_exec_usage"))
+            return
+        if not CONFIG_FILE_RE.match(name):
+            # Checked, not cleaned: `exec` takes a filename, and a "filename" with a semicolon in it
+            # is somebody running a second command, not a name that wants tidying. Level 80 as well,
+            # above the other server commands, because what a config file contains is anything.
+            ctx.reply(self.message("pa_exec_bad_name", name=name))
+            return
+        if not self.console.apply_server_verb("exec", file=name):
+            ctx.reply(self.message("pa_unavailable", verb="exec"))
+            return
+        log.info("poweradminurt: %s ran the config file %r", ctx.client.name, name)
+        ctx.reply(self.message("pa_exec", name=name))
+
+    @command("papublic", level=60, alias="public")
+    def cmd_papublic(self, ctx: CommandContext) -> None:
+        """papublic <on|off> - open the server to everybody, or put a password on it"""
+        wanted = ctx.args.strip().lower()
+        if wanted not in ("on", "off"):
+            ctx.reply(self.message("pa_public_usage"))
+            return
+        if wanted == "on":
+            self.console.set_cvar("g_password", "")
+            self.console.say(self.message("pa_public_on"))
+            return
+        word = str(self.settings.get("private_password") or "").strip()
+        if not word:
+            # The classic printed this refusal *after* building the password, so the branch could
+            # never run: with no word configured it set a password of two random digits and told the
+            # admin that was the password.
+            ctx.reply(self.message("pa_public_no_password"))
+            return
+        password = word + self._digits()
+        self.console.set_cvar("g_password", password)
+        self.console.say(self.message("pa_public_off"))
+        # Privately, and *not* into the log: the classic wrote `private password set to: %s` at debug,
+        # so the server's password ended up in a file somebody else can read.
+        self.console.tell(ctx.client, self.message("pa_public_password", password=password))
+        log.info("poweradminurt: %s put a password on the server", ctx.client.name)
+
+    def _digits(self) -> str:
+        """The digits appended to the private password, so it changes each time.
+
+        `secrets` rather than `random`: it is a password. The classic used `random.randint`, which is
+        seeded predictably and is documented as unsuitable for exactly this.
+        """
+        count = max(0, as_int(self.settings.get("password_digits"), 2))
+        return "".join(secrets.choice("123456789") for _ in range(count))
+
     # -- the server commands -------------------------------------------------
 
     @command("pabigtext", level=60)
@@ -756,6 +863,7 @@ class PoweradminurtPlugin(Plugin):
 
 
 __all__ = [
+    "CONFIG_FILE_RE",
     "DEFAULTS",
     "GAMETYPES",
     "TEAMS",

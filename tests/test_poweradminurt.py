@@ -852,3 +852,127 @@ async def test_a_game_with_no_such_verb_says_so(console):
         "this game has no forceteam command",
         "this game has no swap command",
     ]
+
+
+# -- slice 3b: the rest of the server commands ---------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_the_map_can_be_restarted_reloaded_and_cycled(console):
+    _plugin(console)
+    admin = _join(console, "Admin", bits=64)
+
+    await _run(console, admin, "!pamaprestart")
+    await _run(console, admin, "!pamapreload")
+    await _run(console, admin, "!pacyclemap")
+
+    assert [name for name, _values in console.server_verbs_applied] == [
+        "map_restart",
+        "reload",
+        "cyclemap",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_a_config_file_can_be_run(console):
+    _plugin(console)
+    admin = _join(console, "Admin", bits=100)
+
+    await _run(console, admin, "!paexec match.cfg")
+
+    assert console.server_verbs_applied == [("exec", {"file": "match.cfg"})]
+
+
+@pytest.mark.asyncio
+async def test_a_filename_with_a_command_in_it_is_refused(console):
+    """`exec` takes a filename; a "filename" with a `;` is somebody running a second command.
+
+    Refused rather than sanitised, because there is no reading of `match.cfg; quit` that is a file.
+    """
+    _plugin(console)
+    admin = _join(console, "Admin", bits=100)
+
+    await _run(console, admin, "!paexec match.cfg; quit")
+    await _run(console, admin, "!paexec ../../etc/passwd")
+
+    assert console.server_verbs_applied == []
+    assert len(_told(console, admin)) == 2
+
+
+@pytest.mark.asyncio
+async def test_running_a_config_file_needs_a_higher_level(console):
+    """What a config file contains is anything, so it sits above the other server commands."""
+    _plugin(console)
+    registered = console.command_registry.get("paexec")
+
+    assert registered is not None
+    assert registered.min_level == 80
+
+
+# -- !papublic ----------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_the_server_can_be_made_public(console):
+    _plugin(console)
+    admin = _join(console, "Admin", bits=64)
+    console.cvars["g_password"] = "secret22"
+
+    await _run(console, admin, "!papublic on")
+
+    assert console.cvars["g_password"] == ""
+    assert console.said == ["the server is public again"]
+
+
+@pytest.mark.asyncio
+async def test_going_private_builds_a_password_from_the_configured_word(console):
+    _plugin(console, private_password="clanwar", password_digits=2)
+    admin = _join(console, "Admin", bits=64)
+
+    await _run(console, admin, "!papublic off")
+
+    password = console.cvars["g_password"]
+    assert password.startswith("clanwar")
+    assert len(password) == len("clanwar") + 2
+    assert password[len("clanwar") :].isdigit()
+    # Told to the admin privately, and to nobody else.
+    assert any(password in text for text in _told(console, admin))
+    assert not any(password in text for text in console.said)
+
+
+@pytest.mark.asyncio
+async def test_the_digits_change_between_uses(console):
+    """Which is the only reason to add them: the same password twice is not a new password."""
+    _plugin(console, private_password="clanwar", password_digits=6)
+    admin = _join(console, "Admin", bits=64)
+
+    seen = set()
+    for _ in range(5):
+        await _run(console, admin, "!papublic off")
+        seen.add(console.cvars["g_password"])
+
+    assert len(seen) > 1
+
+
+@pytest.mark.asyncio
+async def test_going_private_with_no_password_configured_refuses(console):
+    """The classic checked for this *after* building the password, so the branch never ran: it set a
+    password of two random digits and told the admin that was the password."""
+    _plugin(console, private_password="")
+    admin = _join(console, "Admin", bits=64)
+
+    await _run(console, admin, "!papublic off")
+
+    assert "g_password" not in console.cvars
+    assert _told(console, admin) == ["set private_password in the plugin config first"]
+
+
+@pytest.mark.asyncio
+async def test_papublic_accepts_either_case(console):
+    """The classic compared without lower-casing, so `!papublic ON` was refused."""
+    _plugin(console)
+    admin = _join(console, "Admin", bits=64)
+
+    await _run(console, admin, "!papublic ON")
+
+    assert console.cvars["g_password"] == ""

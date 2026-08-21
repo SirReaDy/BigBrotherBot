@@ -40,11 +40,19 @@
 #   !paswapteams                  swap the two teams around (alias: !swapteams)
 #   !pashuffleteams               shuffle everybody (alias: !shuffleteams)
 #
-# Still to come: the commands that need a server verb rather than a cvar (`!pamaprestart`,
-# `!pamapreload`, `!pacyclemap`, `!paexec`, `!papublic`) and the background features (team balancer,
-# skill balancer, name checker, spectator check, bot support, headshot counter, rotation manager, match
-# mode). `!pateams` and `!pabalance` come with the team balancer: they are its manual trigger, and
-# porting them alone would mean writing the balancing twice.
+# **Slice 3b** is the rest of the server commands:
+#
+#   !pamaprestart    restart the map now (alias: !maprestart)
+#   !pamapreload     reload it — which is what applies a changed password (alias: !mapreload)
+#   !pacyclemap      move on to the next map (alias: !cyclemap)
+#   !paexec <file>   run a config file. Level 80, above the other server commands, because what a
+#                    config file contains is anything; the name must look like a filename
+#   !papublic on|off open the server to everybody, or put a password on it (alias: !public)
+#
+# Still to come: the background features (team balancer, skill balancer, name checker, spectator check,
+# bot support, headshot counter, rotation manager, match mode). `!pateams` and `!pabalance` come with
+# the team balancer: they are its manual trigger, and porting them alone would mean writing the
+# balancing twice.
 #
 # Two commands from the classic are deliberately absent. `!paveto` is `callvote`'s `!veto`, which works
 # on every engine that can cancel a vote rather than only this one. `!paversion` printed the plugin's
@@ -67,6 +75,13 @@ settings:
   # yourself. The classic had three different rules across three commands and *no* rule on `!panuke`,
   # so which of your fellow admins you could throw about depended on which verb you reached for.
   protect_peers: yes
+
+  # `!papublic off` puts a password on the server, built from this word plus a few digits so that it
+  # changes each time. Without a word here the command refuses — where the classic set a password made
+  # only of digits and told the admin that was the password. The password is sent privately to whoever
+  # typed the command and is deliberately *not* written to the log.
+  private_password: ""
+  password_digits: 2
 
   # Minutes `!pamute` uses when the admin does not say. Always a real duration: the classic sent the
   # mute verb with an empty one, which toggles on these builds, so a mute could outlive the bot that
