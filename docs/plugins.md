@@ -28,6 +28,7 @@ list, each with an optional config of its own (see `examples/`):
 | `makeroom` | frees a slot on a full server, and holds it for a member | `!makeroom` `!makeroomauto` |
 | `callvote` | decides who may call a vote, and records the ones that finish | `!veto` `!lastvote` |
 | `spree` | announces killing and losing streaks | `!spree [player]` |
+| `firstkill` | announces first blood, first headshot and the first team kill | `!firstkill` `!firsttk` `!firsths` |
 
 ### tk — team damage
 
@@ -238,6 +239,19 @@ ledge. Team-killing does not build one. A death nobody caused ends a spree in si
 message names who did it and there is nobody. Counts reset at the end of a map, or per round if you ask
 for it, or never. `!spree [player]` reports the streak somebody is on.
 Config: `examples/plugin_spree.yaml`.
+
+### firstkill — first blood
+
+Three announcements, once each per map: the first kill, the first kill *if it was a headshot*, and the
+first player to shoot their own side. They go out centre-screen where the engine has a verb for that and
+as ordinary chat where it has not. `!firstkill`, `!firsttk` and `!firsths` switch each on or off and
+report the current state when given neither.
+
+The headshot line needs the engine to have said where the shot landed: Call of Duty states a hit location
+on every kill, Source sets a headshot flag, and Urban Terror states it on the `Hit:` line before the kill
+(threaded onto the kill by the parser, since a UrT `Kill:` line names only the weapon). On the families
+that report a weapon and nothing else it never fires, and nothing needs configuring for that.
+Config: `examples/plugin_firstkill.yaml`.
 
 Anything else is a git install — see [Plugins](cli.md#plugins) and
 [Writing an installable plugin](#writing-an-installable-plugin).

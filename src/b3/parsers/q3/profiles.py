@@ -92,7 +92,17 @@ ETPRO = replace(_ET, name="etpro")
 #: asserted with `requiresParsers = ['iourt42', 'iourt43']`. 4.1 may well answer it too; nobody here
 #: has a 4.1 server to find out on, and the cost of guessing wrong is a plugin that reports a vote
 #: cancelled when it was not.
-_URT = replace(_BASE, family="urt", guid_min_length=32, name_max_length=32)
+#: `bigtext` is Urban Terror's centre-screen verb, and the only one in this family — plain Quake 3
+#: and the rest have none, so `say_big` falls back to `say` there. The classic bot's `firstkill`
+#: reached for it by checking the game's *name*, which is the kind of per-title branch a profile
+#: field exists to remove.
+_URT = replace(
+    _BASE,
+    family="urt",
+    guid_min_length=32,
+    name_max_length=32,
+    saybig_template='bigtext "%s"',
+)
 IOURT41 = replace(_URT, name="iourt41")
 IOURT42 = replace(_URT, name="iourt42", veto_command="veto")
 IOURT43 = replace(_URT, name="iourt43", veto_command="veto")

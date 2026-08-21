@@ -88,6 +88,12 @@ class Q3Parser(Parser):
         # so the slot has to be carried between the two.
         self._pending_cid: str | None = None
         self._warned_about_guids = False
+        #: Where each player was last hit, by slot, for the engines that report hits separately from
+        #: kills. A `Kill:` line names the weapon and never the part of the body, so without this a
+        #: kill carries no hit location at all and nothing downstream can tell a headshot from a shot
+        #: in the foot. Urban Terror is the case (see `b3.parsers.q3.urt`); the classic bot did the
+        #: same thing under the name `lastDamageTaken`.
+        self._last_hit: dict[str, str] = {}
         super().__init__(profile, clients)
 
     # -- helpers -----------------------------------------------------------
@@ -227,6 +233,7 @@ class Q3Parser(Parser):
 
     @handles(r"^ClientDisconnect:\s*(?P<cid>\d+)\s*$")
     def on_disconnect(self, m: "re.Match[str]") -> Event | None:
+        self._last_hit.pop(m["cid"], None)  # the slot may be somebody else's in a moment
         client = self.clients.remove(m["cid"])
         if client is None:
             return None
@@ -251,7 +258,14 @@ class Q3Parser(Parser):
         """
         acid, vcid = m["acid"], m["vcid"]
         victim = self._get_or_create(vcid)
-        kill = KillData(weapon=m["weapon"], damage=100, hit_location="", means_of_death=m["mod"])
+        kill = KillData(
+            weapon=m["weapon"],
+            damage=100,
+            # Consumed, not read: the next kill of this player is a different life, and a hit
+            # location left lying around would be attributed to it.
+            hit_location=self._last_hit.pop(vcid, ""),
+            means_of_death=m["mod"],
+        )
 
         if acid == self.profile.world_cid or acid == vcid or m["mod"] in SELF_INFLICTED:
             return Event(EventType.CLIENT_SUICIDE, data=kill, client=victim, target=victim)
@@ -350,6 +364,9 @@ class Q3Parser(Parser):
 
     @handles(r"^InitGame:\s*(?P<info>.*)$")
     def on_init_game(self, m: "re.Match[str]") -> Event:
+        # Nobody carries a wound across a round: a player killed by the fall damage of the next map
+        # would otherwise be reported as having been shot in the head on the last one.
+        self._last_hit.clear()
         return Event(EventType.GAME_ROUND_START, data=parse_infostring(m["info"]))
 
     @handles(r"^ShutdownGame:\s*(?P<data>.*)$")

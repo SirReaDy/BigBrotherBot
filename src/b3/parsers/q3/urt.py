@@ -150,12 +150,18 @@ class UrtParser(Q3Parser):
         if weapon is None:
             log.warning("unknown weapon id %r on a UrT Hit line", m["weapon"])
             weapon = m["weapon"]
+        location = self._hit_location(m["hitloc"])
         damage = KillData(
             weapon=weapon,
             damage=self._damage_points(weapon, m["hitloc"]),
-            hit_location=self._hit_location(m["hitloc"]),
+            hit_location=location,
             means_of_death=weapon,
         )
+        # Remembered for the `Kill:` line, which states the weapon and not the part of the body. The
+        # kill is the event plugins listen to, so without this the fact that a shot was a headshot is
+        # in the log and nowhere else. Consumed by `Q3Parser.on_kill`.
+        if victim.cid is not None:
+            self._last_hit[victim.cid] = location
         if attacker.cid == victim.cid:
             return Event(EventType.CLIENT_DAMAGE_SELF, data=damage, client=victim, target=victim)
         if attacker.team is not None and attacker.team == victim.team:

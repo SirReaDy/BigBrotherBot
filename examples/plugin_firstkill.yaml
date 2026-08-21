@@ -1,0 +1,47 @@
+# firstkill — announces the first kill of the map, and the first team kill.
+#
+# Point at it from the main config:
+#
+#   plugins:
+#     - name: firstkill
+#       config: "@conf/plugin_firstkill.yaml"
+#
+# Three announcements, once each per map: first blood, first blood by headshot, and the first player
+# to shoot their own side. Each goes out centre-screen where the engine has a verb for that
+# (`bigtext` on Urban Terror, `adminbigsay` on Homefront, `sm_hsay` on Source) and as ordinary chat
+# where it has not.
+#
+# The headshot announcement needs the engine to have said where the shot landed. Call of Duty states
+# a hit location on every kill line, Source sets a headshot flag, and Urban Terror states it on the
+# `Hit:` line before the kill — all three work. Frostbite, Homefront, Ravaged and Frontline report a
+# weapon and nothing else, so on those titles it simply never fires; nothing needs configuring for
+# that.
+
+settings:
+  announce_first_kill: yes
+  announce_first_teamkill: yes
+
+  # A first kill that was a headshot gets its own line instead of the ordinary one. Bleeding to death
+  # and grenades are never headshots, whatever the last recorded hit was.
+  announce_first_headshot: yes
+
+  # When the announcements come round again:
+  #   map     a map change or the end of a map (the classic's behaviour)
+  #   round   also between rounds — for the round-based titles, where players count first blood per
+  #           round rather than per map
+  #   never   once per bot lifetime, which is almost certainly not what you want
+  reset_on: map
+
+  # Level for `!firstkill`, `!firsttk` and `!firsths`, each of which takes `on` or `off` and reports
+  # the current state when given neither. superadmin, as the classic's config had it: they change
+  # what the whole server sees.
+  min_level: 100
+
+# The three lines can be reworded in the main config's `messages:` block. `{player}` is the killer and
+# `{victim}` the player who died:
+#
+#   firstkill_kill        "first kill: {player} killed {victim}"
+#   firstkill_headshot    "first kill, by headshot: {player} killed {victim}"
+#   firstkill_teamkill    "first team kill: {player} shot {victim}"
+#   firstkill_state       the reply from the three switches ({what}, {state})
+#   firstkill_usage       what they say when given something other than on or off

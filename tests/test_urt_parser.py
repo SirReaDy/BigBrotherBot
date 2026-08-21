@@ -242,3 +242,54 @@ def test_a_kill_by_any_weapon_is_seen(parser, mod):  # noqa: ANN001
     assert ev.type is EventType.CLIENT_KILL
     assert ev.client.cid == "7" and ev.target.cid == "12"
     assert ev.data.means_of_death == mod
+
+
+# -- the hit location a kill line does not carry ---------------------------
+
+
+def test_a_kill_carries_the_hit_location_of_the_shot_that_did_it(parser):  # noqa: ANN001
+    """`Kill:` states the weapon and never the part of the body.
+
+    The classic bot threaded it through the victim as `lastDamageTaken`, and it has to be threaded
+    somehow: the kill is the event plugins listen to, so without this the fact that a shot was a
+    headshot is in the log and nowhere else. `firstkill` is what wants it.
+    """
+    one(parser, "Hit: 12 7 0 19: BSTHanzo[FR] hit ercan in the Head")
+    kill = one(parser, "Kill: 7 12 19: ercan killed BSTHanzo[FR] by UT_MOD_M4")
+
+    assert kill.type is EventType.CLIENT_KILL
+    assert kill.data.hit_location == "head"
+
+
+def test_a_kill_with_no_hit_before_it_claims_no_hit_location(parser):  # noqa: ANN001
+    kill = one(parser, "Kill: 7 12 19: ercan killed BSTHanzo[FR] by UT_MOD_M4")
+
+    assert kill.data.hit_location == ""
+
+
+def test_a_hit_location_is_spent_on_one_kill(parser):  # noqa: ANN001
+    """The next death is a different life, and must not inherit the last one's wound."""
+    one(parser, "Hit: 12 7 0 19: BSTHanzo[FR] hit ercan in the Head")
+    first = one(parser, "Kill: 7 12 19: ercan killed BSTHanzo[FR] by UT_MOD_M4")
+    second = one(parser, "Kill: 7 12 19: ercan killed BSTHanzo[FR] by UT_MOD_M4")
+
+    assert first.data.hit_location == "head"
+    assert second.data.hit_location == ""
+
+
+def test_a_round_starting_forgets_every_wound(parser):  # noqa: ANN001
+    one(parser, "Hit: 12 7 0 19: BSTHanzo[FR] hit ercan in the Head")
+    parser.parse_line(r"InitGame: \sv_hostname\test\mapname\ut4_casa")
+    kill = one(parser, "Kill: 7 12 19: ercan killed BSTHanzo[FR] by UT_MOD_M4")
+
+    assert kill.data.hit_location == ""
+
+
+def test_a_departing_player_takes_their_wound_with_them(parser):  # noqa: ANN001
+    """The slot is somebody else's in a moment, and their hit locations are not inherited."""
+    one(parser, "Hit: 12 7 0 19: BSTHanzo[FR] hit ercan in the Head")
+    parser.parse_line("ClientDisconnect: 12")
+    parser.clients.add(Client(cid="12", name="Somebody", team="red"))
+    kill = one(parser, "Kill: 7 12 19: ercan killed Somebody by UT_MOD_M4")
+
+    assert kill.data.hit_location == ""
