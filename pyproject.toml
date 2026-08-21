@@ -34,6 +34,10 @@ mysql = ["PyMySQL>=1.1"]
 postgres = ["psycopg[binary]>=3.1"]
 # Tailing a hosted server's game log over sftp://. ftp/ftps/http need nothing extra (stdlib).
 sftp = ["paramiko>=3.4"]
+# Reading a MaxMind-format database for `geolocation`. The database file itself is the operator's:
+# DB-IP's "IP to Country Lite" needs no account (CC-BY), MaxMind's GeoLite2 needs a free account and
+# a licence key. `maxminddb` has a pure-Python fallback, so no compiler is required.
+geo = ["maxminddb>=2.6"]
 # Test + dev tooling.
 dev = [
     "pytest>=8.0",

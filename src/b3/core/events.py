@@ -83,6 +83,18 @@ class EventType(Enum):
     VOTE_PASSED = auto()
     VOTE_FAILED = auto()
 
+    # --- geolocation ------------------------------------------------------
+    #
+    # Promoted into the shared vocabulary for the same reason as the voting events above: the classic
+    # bot's `geolocation` plugin *created* these at runtime, so the three plugins that consume them
+    # (`location`, `geowelcome`, `countryfilter`) could only find them by name, and nothing outside
+    # that family could listen at all. `data` carries a `b3.plugins.geolocation.Location` on success.
+    #: Where a player is connecting from, resolved. `client` is the player, `data` the location.
+    CLIENT_GEOLOCATION_SUCCESS = auto()
+    #: The address could not be placed. Published as well as logged because a greeting that names the
+    #: country has to say *something* to a player whose country is unknown.
+    CLIENT_GEOLOCATION_FAILURE = auto()
+
     # --- game / round -----------------------------------------------------
     GAME_ROUND_START = auto()
     GAME_ROUND_END = auto()

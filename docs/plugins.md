@@ -32,6 +32,7 @@ list, each with an optional config of its own (see `examples/`):
 | `netblocker` | refuses players connecting from a listed network | — |
 | `duel` | keeps score between two players who agreed to a duel | `!duel` `!duelreset` `!duelcancel` |
 | `spawnkill` | warns, kicks or bans players who shoot somebody who just spawned | — |
+| `geolocation` | resolves where a player is connecting from, for the plugins that need it | — |
 
 ### tk — team damage
 
@@ -293,6 +294,20 @@ nothing is recorded and nobody is punished, with no game names anywhere in the p
 `tempban` are the penalties; the classic's `slap`, `nuke` and `kill` were game-server verbs this bot has
 no seam for, and configuring one is refused at startup rather than silently doing nothing.
 Config: `examples/plugin_spawnkill.yaml`.
+
+### geolocation — where a player is connecting from
+
+Answers no commands and says nothing in game: it resolves addresses and publishes the result for
+`location`, `geowelcome` and `countryfilter` to use. It reads a **local MaxMind-format `.mmdb`** and makes
+no network requests, so no player's address leaves the machine and there is no service to be down. The
+classic plugin queried three web services before trying a local file, and two of those services have
+since shut down.
+
+You supply the database. **DB-IP "IP to Country Lite"** is a monthly `.mmdb` with no account and a CC-BY
+licence — start there; **MaxMind GeoLite2** needs a free account and a licence key but adds city, region,
+coordinates and (with GeoLite2-ASN) the network operator. Install the reader with `pip install b3ng[geo]`.
+Place names are folded to ASCII by default, because a Quake 3 console cannot draw `Córdoba` and a row of
+question marks is worse than "Cordoba". Config: `examples/plugin_geolocation.yaml`.
 
 Anything else is a git install — see [Plugins](cli.md#plugins) and
 [Writing an installable plugin](#writing-an-installable-plugin).

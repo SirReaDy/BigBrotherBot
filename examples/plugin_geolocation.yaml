@@ -1,0 +1,50 @@
+# geolocation — works out where a player is connecting from.
+#
+# Point at it from the main config:
+#
+#   plugins:
+#     - name: geolocation
+#       config: "@conf/plugin_geolocation.yaml"
+#
+# This plugin answers no commands and says nothing in game. It resolves addresses and publishes the
+# answer, so that `location`, `geowelcome` and `countryfilter` have something to work with.
+#
+# It reads a **local MaxMind-format database** (`.mmdb`) and makes no network requests at all: no
+# player's address leaves the machine, there is no service to be down or rate-limit you, and a lookup
+# takes microseconds. The classic plugin queried three web services before trying a local file; two of
+# those services have since shut down, so every arriving player paid for two doomed HTTP requests.
+#
+# WHERE TO GET A DATABASE — two vendors, same file format:
+#
+#   DB-IP "IP to Country Lite"   https://db-ip.com/db/download/ip-to-country-lite
+#       A monthly .mmdb, direct download, **no account needed**, CC-BY-4.0. Country only, which is
+#       all `countryfilter` and most of `geowelcome` need. Start here.
+#
+#   MaxMind GeoLite2             https://dev.maxmind.com/geoip/geolite2-free-geolocation-data
+#       Free, but needs an account and a licence key, and may not be redistributed. GeoLite2-City
+#       adds the city, region, postcode, timezone and coordinates — which is what `!locate` and
+#       `!distance` in the `location` plugin can use. GeoLite2-ASN carries the network operator.
+#
+# Both are updated regularly and go stale: an address that moved provider answers with the old
+# country. Re-download on whatever schedule suits you; MaxMind's licence has something to say about
+# how long you may keep a copy.
+#
+# The reader is an optional dependency, since not every operator wants this at all:
+#
+#   pip install b3ng[geo]
+
+settings:
+  # The database. An empty path (the default) means this plugin does nothing at all, and says so once
+  # at startup rather than complaining per player.
+  database: ""
+  # database: "/var/lib/b3/dbip-country-lite.mmdb"
+
+  # Optional second database naming the network's operator — GeoLite2-ASN is the one that has it.
+  # Without it the ISP is simply unknown, which is a truthful answer and what `!isp` will report.
+  asn_database: ""
+
+  # Fold place names to plain ASCII, so `Córdoba` is announced as `Cordoba`. On by default, and not
+  # out of laziness: the Quake 3 and Call of Duty consoles cannot render anything else, and a row of
+  # question marks in front of the whole server is worse than a name spelled plainly. Turn it off on
+  # an engine whose chat is UTF-8 (Frostbite, Source).
+  ascii_only: yes
