@@ -11,7 +11,7 @@ list, each with an optional config of its own (see `examples/`):
 | Plugin | What it does | Adds |
 |---|---|---|
 | `admin` | the 59 commands, groups, warnings | — |
-| `censor` | bad language in chat, bad player names | — |
+| `censor` | bad language in chat, bad player names, with an optional escalating mute | — |
 | `spamcontrol` | scores chat and warns whoever floods it | `!spamins [player]` |
 | `pingwatch` | removes players whose connection is spoiling the game | `!ci <player>` |
 | `tk` | team damage points, forgiving, and a ban for whoever will not stop | `!forgive` `!fp` `!forgiveall` `!forgivelist` `!forgiveinfo` `!forgiveclear` `!grudge` |
@@ -35,6 +35,20 @@ list, each with an optional config of its own (see `examples/`):
 | `geolocation` | resolves where a player is connecting from, for the plugins that need it | — |
 | `location` | announces where arrivals are from, and answers for it | `!locate` `!distance` `!isp` |
 | `countryfilter` | refuses players from the countries a server does not accept | — |
+
+### censor — bad language, and the escalating mute
+
+A list of bad words, each a plain word or a regular expression, each able to carry its own penalty.
+Patterns compile once at startup and a broken one is reported and skipped; a plain word matches on word
+boundaries **in chat** (so "ass" does not fire on "class") and anywhere in a **name**, because
+"xXcheaterXx" has no boundaries to find.
+
+**Muting instead of warning** was a separate plugin in the classic bot — `censorurt`, a subclass of this
+one. It is a `mute:` section here: minutes of silence escalating per offence, an optional slap, and a
+`warn_after` after which the word's own penalty applies as well. It needs the engine to have a `mute`
+verb (`GameProfile.player_verbs`, which today means Urban Terror); on any other title the section is
+refused at startup with a reason rather than silently doing nothing.
+Config: `examples/plugin_censor.yaml`.
 
 ### tk — team damage
 

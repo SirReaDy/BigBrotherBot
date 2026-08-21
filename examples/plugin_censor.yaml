@@ -26,3 +26,34 @@ badnames:
   - word: cheater
     penalty: kick
     reason: "^7pick a different name"
+
+# --- muting instead of warning (Urban Terror) -------------------------------------------------------
+#
+# This was a separate plugin in the classic bot (`censorurt`, a subclass of `censor`). What it did is
+# all here: silence the offender for an escalating number of minutes using the game's own `mute` verb,
+# optionally slap them as well, and fall through to the word's own penalty once they have been muted
+# often enough.
+#
+# It needs the engine to have a `mute` verb, which today means the Urban Terror family. On any other
+# title this section is refused at startup with a reason in the log and the ordinary penalties apply —
+# nothing silently does nothing.
+#
+# Leave the section out (or `mute_minutes` empty) and censor behaves exactly as it does without it.
+
+# mute:
+#   # Minutes of silence for the first offence, the second, and every one after that. Two entries or
+#   # five work as well as three; the last one repeats.
+#   mute_minutes: [1, 5, 30]
+#
+#   # Slap them as well, where the engine has a verb for it. The classic did this on every censor hit,
+#   # whether or not muting was on.
+#   slap: no
+#
+#   # After this many muted offences the word's own penalty applies *as well*, so somebody who will not
+#   # stop still gets kicked or banned. 0 mutes forever.
+#   warn_after: 3
+#
+# Two more messages, rewordable in the main config's `messages:` block:
+#
+#   censor_muted     said to the server ({name}, {minutes})
+#   censor_unmuted   said privately when the mute runs out

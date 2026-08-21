@@ -11,6 +11,16 @@ accepted a broken regex and then raised on every chat line). And a plain `word` 
 boundaries **in chat** rather than as a substring, which is what stops the Scunthorpe problem the
 original was famous for — while bad *names* are still matched anywhere, because "xXcheaterXx" has
 no word boundaries to find.
+
+**`censorurt` is folded in here rather than ported.** The classic had a second plugin for "censor, but
+mute them instead": a **subclass of this one** which overrode the penalty step to silence a player for
+an escalating number of minutes using Urban Terror's own `mute` verb, slapped them as well if asked,
+and fell through to the ordinary penalty after so many offences. Every part of that is a setting, so it
+is settings — `mute_minutes`, `slap`, `warn_after` in a `mute:` section, and no game named anywhere.
+What made it a separate plugin was the verb, and a verb is a fact about the title now
+(`GameProfile.player_verbs`): where the engine has no `mute`, the section is refused at startup with a
+reason and the ordinary penalties apply. Its `threading.Timer` per muted player is gone too — a mute is
+a deadline, checked by one scheduled task.
 """
 
 from __future__ import annotations
@@ -32,12 +42,28 @@ DEFAULTS: dict[str, object] = {
     "ignore_length": 3,  # words this short or shorter are not checked at all
 }
 
+#: The escalating mute, which was the whole of the classic's separate `censorurt` plugin. Off unless
+#: `mute_minutes` is configured, and unavailable on a title whose engine has no `mute` verb.
+MUTE_DEFAULTS: dict[str, object] = {
+    # Minutes of silence for a first, second, and every later offence. The classic had three separate
+    # settings; a list says the same thing and allows two, or five. Empty means no muting at all.
+    "mute_minutes": [],
+    # Slap them as well, where the engine has a verb for it. The classic did this before the mute and
+    # regardless of whether muting was on.
+    "slap": False,
+    # After this many muted offences, the word's own penalty applies as well — so somebody who will
+    # not stop still gets kicked or banned. 0 keeps muting forever.
+    "warn_after": 3,
+}
+
 #: What a badword entry may ask for when it matches.
 PENALTIES = ("warning", "kick", "tempban", "ban")
 
 MESSAGES = {
     "censor_chat": "watch your language",
     "censor_name": "your name is not acceptable here",
+    "censor_muted": "{name} is muted for {minutes} minutes — watch your language",
+    "censor_unmuted": "you can talk again; watch your language",
 }
 
 
@@ -58,8 +84,11 @@ class CensorPlugin(Plugin):
     def __init__(self, console: Console, config: object | None = None) -> None:
         super().__init__(console, config)
         self.settings = dict(DEFAULTS)
+        self.mute = dict(MUTE_DEFAULTS)
         self.badwords: list[BadWord] = []
         self.badnames: list[BadWord] = []
+        #: Minutes per offence, once validated. Empty means the escalating mute is off.
+        self.mute_ladder: list[int] = []
 
     # -- config -------------------------------------------------------------
 
@@ -140,6 +169,11 @@ class CensorPlugin(Plugin):
 
     def on_startup(self) -> None:
         self.register_messages(MESSAGES)
+        self._load_mute()
+        if self.mute_ladder:
+            # One task for every muted player on the server, rather than the classic's timer each.
+            self.schedule(self._check_mutes, second="*/5", name="CensorPlugin.mutes")
+        self.subscribe(EventType.CLIENT_DISCONNECT, self._on_disconnect)
         self.subscribe(EventType.CLIENT_SAY, self.on_chat)
         self.subscribe(EventType.CLIENT_TEAM_SAY, self.on_chat)
         self.subscribe(EventType.CLIENT_NAME_CHANGE, self.on_name)
@@ -175,8 +209,84 @@ class CensorPlugin(Plugin):
         if match is not None:
             self._punish(client, match)
 
+    def _load_mute(self) -> None:
+        """Read the `mute:` section, and refuse it where the engine cannot carry it out."""
+        config = self.config if isinstance(self.config, dict) else {}
+        self.mute = {**MUTE_DEFAULTS, **(config.get("mute") or {})}
+        raw = self.mute.get("mute_minutes")
+        entries = raw if isinstance(raw, (list, tuple)) else [raw] if raw else []
+        ladder = [as_int(entry, 0) for entry in entries]
+        self.mute_ladder = [minutes for minutes in ladder if minutes > 0]
+        if self.mute_ladder and not self.console.supports_verb("mute"):
+            log.error(
+                "censor: mute_minutes is configured but this game has no `mute` verb, so nobody can "
+                "be muted; the words' own penalties apply instead"
+            )
+            self.mute_ladder = []
+        if self.mute.get("slap") and not self.console.supports_verb("slap"):
+            log.error("censor: mute.slap is on but this game has no `slap` verb; ignoring it")
+            self.mute["slap"] = False
+        if self.mute_ladder:
+            log.info(
+                "censor: muting for %s minutes on successive offences",
+                ", ".join(str(m) for m in self.mute_ladder),
+            )
+
+    def _muted_until(self, client: Client) -> float:
+        recorded = client.get_var(self, "muted_until")
+        return float(recorded) if isinstance(recorded, (int, float)) else 0.0
+
+    def _offences(self, client: Client) -> int:
+        recorded = client.get_var(self, "offences")
+        return int(recorded) if isinstance(recorded, int) else 0
+
+    def _on_disconnect(self, event: Event) -> None:
+        """A player who leaves takes their record with them, as the classic's did.
+
+        A mute lives on the *server* and is attached to a slot, so it does not survive them leaving
+        either — and the next person in that slot must not inherit it.
+        """
+        if event.client is not None:
+            event.client.del_var(self, "muted_until")
+            event.client.del_var(self, "offences")
+
+    def _check_mutes(self) -> None:
+        """Lift the mutes that have run out. One task, not a timer per player."""
+        now = self.console.clock.now()
+        for client in list(self.console.clients.connected()):
+            until = self._muted_until(client)
+            if until and now >= until:
+                client.set_var(self, "muted_until", 0.0)
+                self.console.apply_verb("mute", client, seconds="0")
+                self.console.tell(client, self.message("censor_unmuted"))
+
+    def _mute_for(self, client: Client, bad: BadWord) -> bool:
+        """Mute this player for their next escalation. True if the mute took the place of a penalty.
+
+        Returns False once they are past `warn_after`, so the word's own penalty applies as well —
+        which is the classic's rule and the reason the ladder is not simply endless.
+        """
+        if not self.mute_ladder:
+            return False
+        if self._muted_until(client) > self.console.clock.now():
+            log.debug("censor: %s is already muted", client.name)
+            return True
+        offences = self._offences(client) + 1
+        client.set_var(self, "offences", offences)
+        minutes = self.mute_ladder[min(offences, len(self.mute_ladder)) - 1]
+        client.set_var(self, "muted_until", self.console.clock.now() + minutes * 60)
+        self.console.apply_verb("mute", client, seconds=str(minutes * 60))
+        self.console.say(self.message("censor_muted", name=client.name, minutes=minutes))
+        log.info("censor: muted %s for %d minutes (offence %d)", client.name, minutes, offences)
+        limit = as_int(self.mute.get("warn_after"), 3)
+        return limit <= 0 or offences <= limit
+
     def _punish(self, client: Client, bad: BadWord) -> None:
         log.info("censor: %s tripped %r -> %s", client.name, bad.name, bad.penalty)
+        if self.mute.get("slap"):
+            self.console.apply_verb("slap", client)
+        if self._mute_for(client, bad):
+            return
         if bad.penalty == "warning":
             self.console.warn(client, reason=bad.reason, minutes=bad.minutes)
         elif bad.penalty == "kick":

@@ -125,8 +125,11 @@ CENSOR_CONFIG = {
 }
 
 
-def _censor(console, config=None):  # noqa: ANN001, ANN202
-    plugin = CensorPlugin(console, CENSOR_CONFIG if config is None else config)
+def _censor(console, config=None, **mute):  # noqa: ANN001, ANN202
+    settings = CENSOR_CONFIG if config is None else config
+    if mute:
+        settings = {**settings, "mute": mute}
+    plugin = CensorPlugin(console, settings)
     plugin.start()
     return plugin
 
@@ -387,3 +390,143 @@ async def test_a_censor_warning_escalates_like_any_other(console):
 
     assert len(console.storage.get_active_penalties(bob.id, PenaltyType.WARNING)) == 2
     assert console.tempbanned != []  # two warnings hit the configured kick threshold
+
+
+# -- censor's escalating mute, which was the whole of the `censorurt` plugin ---------------------
+
+
+@pytest.mark.asyncio
+async def test_a_bad_word_can_mute_instead_of_warning(console):
+    """The classic had a separate plugin (a *subclass* of censor) to do this on Urban Terror."""
+    plugin = _censor(console, mute_minutes=[1, 5, 30], warn_after=3)
+    bob = _client()
+    console.clients.add(bob)
+
+    await _say(console, plugin, bob, "you are an ass")
+
+    assert [(name, who.name, values) for name, who, values in console.verbs_applied] == [
+        ("mute", "Bob", {"seconds": "60"})
+    ]
+    assert console.warned == []  # the mute took the place of the penalty
+    assert any("muted for 1 minutes" in text for text in console.said)
+
+
+@pytest.mark.asyncio
+async def test_the_mute_gets_longer_each_time(console):
+    plugin = _censor(console, mute_minutes=[1, 5, 30], warn_after=9)
+    bob = _client()
+    console.clients.add(bob)
+
+    for minutes in (1, 5, 30, 30):
+        await _say(console, plugin, bob, "you are an ass")
+        console.clock.advance(minutes * 60 + 1)
+        plugin._check_mutes()
+
+    assert [values["seconds"] for _n, _w, values in console.verbs_applied if _n == "mute"] == [
+        "60",
+        "0",
+        "300",
+        "0",
+        "1800",
+        "0",
+        "1800",
+        "0",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_a_mute_is_lifted_when_it_runs_out(console):
+    """One scheduled task for the whole server, where the classic started a timer per player."""
+    plugin = _censor(console, mute_minutes=[2])
+    bob = _client()
+    console.clients.add(bob)
+    await _say(console, plugin, bob, "you are an ass")
+
+    console.clock.advance(60)
+    plugin._check_mutes()
+    assert [n for n, _w, _v in console.verbs_applied] == ["mute"]  # still muted
+
+    console.clock.advance(61)
+    plugin._check_mutes()
+
+    assert console.verbs_applied[-1] == ("mute", bob, {"seconds": "0"})
+    assert any("can talk again" in text for _who, text in console.told)
+
+
+@pytest.mark.asyncio
+async def test_saying_it_again_while_muted_does_not_stack(console):
+    plugin = _censor(console, mute_minutes=[5])
+    bob = _client()
+    console.clients.add(bob)
+
+    await _say(console, plugin, bob, "you are an ass")
+    await _say(console, plugin, bob, "you are an ass")
+
+    assert len([n for n, _w, _v in console.verbs_applied if n == "mute"]) == 1
+
+
+@pytest.mark.asyncio
+async def test_after_warn_after_offences_the_words_own_penalty_applies_too(console):
+    """Somebody who will not stop still gets kicked — the classic's rule and the point of the limit."""
+    plugin = _censor(console, mute_minutes=[1], warn_after=2)
+    bob = _client()
+    console.clients.add(bob)
+
+    for _ in range(3):
+        await _say(console, plugin, bob, "you are an ass")
+        console.clock.advance(120)
+        plugin._check_mutes()
+
+    assert len(console.warned) == 1  # only the third offence fell through to the penalty
+
+
+@pytest.mark.asyncio
+async def test_a_slap_can_come_with_it(console):
+    plugin = _censor(console, mute_minutes=[1], slap=True)
+    bob = _client()
+    console.clients.add(bob)
+
+    await _say(console, plugin, bob, "you are an ass")
+
+    assert [n for n, _w, _v in console.verbs_applied] == ["slap", "mute"]
+
+
+@pytest.mark.asyncio
+async def test_on_an_engine_with_no_mute_verb_the_section_is_refused(console):
+    """Every family but Urban Terror. The penalties still apply; nothing silently does nothing."""
+    console.player_verbs = set()
+    plugin = _censor(console, mute_minutes=[1, 5], slap=True)
+    bob = _client()
+    console.clients.add(bob)
+
+    await _say(console, plugin, bob, "you are an ass")
+
+    assert plugin.mute_ladder == []
+    assert console.verbs_applied == []
+    assert len(console.warned) == 1
+
+
+@pytest.mark.asyncio
+async def test_with_no_mute_configured_censor_behaves_exactly_as_before(console):
+    plugin = _censor(console)
+    bob = _client()
+    console.clients.add(bob)
+
+    await _say(console, plugin, bob, "you are an ass")
+
+    assert console.verbs_applied == []
+    assert len(console.warned) == 1
+
+
+@pytest.mark.asyncio
+async def test_a_player_who_leaves_takes_their_mute_record_with_them(console):
+    """A mute is attached to a slot on the server, so the next player in it must not inherit one."""
+    plugin = _censor(console, mute_minutes=[1, 5])
+    bob = _client()
+    console.clients.add(bob)
+    await _say(console, plugin, bob, "you are an ass")
+
+    await console.bus.publish(Event(EventType.CLIENT_DISCONNECT, client=bob))
+
+    assert plugin._offences(bob) == 0
+    assert plugin._muted_until(bob) == 0.0
