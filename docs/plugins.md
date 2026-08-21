@@ -29,6 +29,7 @@ list, each with an optional config of its own (see `examples/`):
 | `callvote` | decides who may call a vote, and records the ones that finish | `!veto` `!lastvote` |
 | `spree` | announces killing and losing streaks | `!spree [player]` |
 | `firstkill` | announces first blood, first headshot and the first team kill | `!firstkill` `!firsttk` `!firsths` |
+| `netblocker` | refuses players connecting from a listed network | — |
 
 ### tk — team damage
 
@@ -252,6 +253,17 @@ on every kill, Source sets a headshot flag, and Urban Terror states it on the `H
 (threaded onto the kill by the parser, since a UrT `Kill:` line names only the weapon). On the families
 that report a weapon and nothing else it never fires, and nothing needs configuring for that.
 Config: `examples/plugin_firstkill.yaml`.
+
+### netblocker — a network nobody may connect from
+
+For the nuisance that keeps returning on a new account from the same place. List the networks —
+`10.0.0.0/8`, a single address, `1.2.3.5 - 1.2.3.9`, or IPv6 — and anybody connecting from one is
+removed. `max_level` is what keeps it usable: a registered player is exempt by default, because
+everybody behind a listed address is refused whether they have done anything or not.
+
+Checked at authentication *and* when an address first becomes known, since on Call of Duty and Quake 3
+the line that authenticates somebody carries no address at all. A bad entry in the list is refused at
+startup by name and the rest still load. Config: `examples/plugin_netblocker.yaml`.
 
 Anything else is a git install — see [Plugins](cli.md#plugins) and
 [Writing an installable plugin](#writing-an-installable-plugin).

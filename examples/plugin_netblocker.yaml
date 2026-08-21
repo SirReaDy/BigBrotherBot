@@ -1,0 +1,39 @@
+# netblocker — keeps whole networks off the server.
+#
+# Point at it from the main config:
+#
+#   plugins:
+#     - name: netblocker
+#       config: "@conf/plugin_netblocker.yaml"
+#
+# For the nuisance that keeps coming back on a new account from the same place: a hosting range that
+# only ever brings bots, a proxy provider, a school's address block. Anybody connecting from a listed
+# network is removed.
+#
+# This is a heavy-handed tool — everybody behind a listed address is refused, including people who
+# have done nothing — so `max_level` matters: a player who has registered is exempt by default.
+#
+# On Call of Duty and Quake 3 an address is not known when a player authenticates; it arrives a moment
+# later from the server's status table. Both moments are checked, so nothing needs configuring for it.
+
+settings:
+  # The networks nobody may connect from. Four spellings, all of them fine:
+  #
+  #   10.0.0.0/8              a network
+  #   192.168.1.44            one address
+  #   1.2.3.5 - 1.2.3.9       a range, exact rather than rounded to a boundary
+  #   2001:db8::/32           IPv6, which the classic plugin could not do at all
+  #
+  # An entry that is not a usable network is refused at startup, by name, and the rest still load.
+  blocks: []
+    # - 10.0.0.0/8
+    # - 192.168.0.0/16
+
+  # At or below this level a player is subject to the list. 1 (`user`) is the classic's default and
+  # a good one: this is aimed at people nobody knows, and a regular who happens to share a blocked
+  # range should not be caught by it. 0 would subject registered players to it as well.
+  max_level: 1
+
+# The line the removed player is shown can be reworded in the main config's `messages:` block:
+#
+#   netblocker_kicked   "connections from your network are not accepted here"
