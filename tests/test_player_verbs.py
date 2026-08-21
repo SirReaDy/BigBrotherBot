@@ -55,8 +55,46 @@ def _client(name="Bob", cid="3"):  # noqa: ANN001, ANN202
 
 def test_urban_terror_declares_its_own_verbs():
     """Taken from the classic `iourt42` parser's command table, which is where they were hiding."""
-    assert set(IOURT42.player_verbs) == {"slap", "nuke", "kill", "mute"}
+    assert set(IOURT42.player_verbs) == {
+        "slap",
+        "nuke",
+        "kill",
+        "mute",
+        "forceteam",
+        "swap",
+    }
     assert IOURT42.player_verbs["kill"] == "smite %(cid)s"  # the engine's own spelling
+
+
+def test_the_verbs_that_name_no_player_are_their_own_table():
+    """`swapteams` takes nothing at all, so it cannot go through the same call as `slap`."""
+    assert set(IOURT42.server_verbs) == {
+        "swapteams",
+        "shuffleteams",
+        "map_restart",
+        "reload",
+        "cyclemap",
+    }
+
+
+def test_a_server_verb_reaches_the_server(tmp_path):
+    bot, rcon = _bot(tmp_path)
+
+    assert bot.supports_server_verb("shuffleteams") is True
+    assert bot.apply_server_verb("shuffleteams") is True
+
+    assert rcon.commands == ["shuffleteams"]
+    bot.storage.close()
+
+
+def test_a_title_with_no_server_verbs_says_no(tmp_path):
+    bot, rcon = _bot(tmp_path, game="cod4")
+
+    assert bot.supports_server_verb("shuffleteams") is False
+    assert bot.apply_server_verb("shuffleteams") is False
+
+    assert rcon.commands == []
+    bot.storage.close()
 
 
 def test_a_title_with_none_says_so(tmp_path):

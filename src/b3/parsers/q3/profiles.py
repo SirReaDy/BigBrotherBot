@@ -115,6 +115,18 @@ _URT = replace(
         "nuke": "nuke %(cid)s",
         "kill": "smite %(cid)s",
         "mute": "mute %(cid)s %(seconds)s",
+        "forceteam": "forceteam %(cid)s %(team)s",
+        "swap": "swap %(cid)s %(other)s",
+    },
+    #: The ones that name no player. `map_restart`, `reload` and `cyclemap` are declared here with
+    #: the two the team commands use, because they are one table in the engine and in the classic
+    #: parser — `poweradminurt`'s remaining slice is what calls them.
+    server_verbs={
+        "swapteams": "swapteams",
+        "shuffleteams": "shuffleteams",
+        "map_restart": "map_restart",
+        "reload": "reload",
+        "cyclemap": "cyclemap",
     },
 )
 IOURT41 = replace(_URT, name="iourt41")

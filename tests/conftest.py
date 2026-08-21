@@ -168,8 +168,17 @@ class FakeConsole:
         self.vote_cancels = 0
         #: Engine verbs this title has (`GameProfile.player_verbs`) and the ones a plugin applied.
         #: Urban Terror's set by default, since it is the only family here that has any.
-        self.player_verbs: set[str] = {"slap", "nuke", "kill", "mute"}
+        self.player_verbs: set[str] = {"slap", "nuke", "kill", "mute", "forceteam", "swap"}
         self.verbs_applied: list[tuple[str, Client, dict[str, str]]] = []
+        #: The verbs that name no player, and the ones a plugin ran.
+        self.server_verbs: set[str] = {
+            "swapteams",
+            "shuffleteams",
+            "map_restart",
+            "reload",
+            "cyclemap",
+        }
+        self.server_verbs_applied: list[tuple[str, dict[str, str]]] = []
         #: Slot -> when its mute runs out, as the runtime tracks it.
         self.muted: dict[str, float] = {}
         self.votes_can_be_cancelled = True
@@ -295,6 +304,15 @@ class FakeConsole:
                 client = self.clients.get_by_cid(cid)
                 if client is not None:
                     self.apply_verb("mute", client, seconds="0")
+
+    def supports_server_verb(self, name: str) -> bool:
+        return name in self.server_verbs
+
+    def apply_server_verb(self, name: str, **values: str) -> bool:
+        if name not in self.server_verbs:
+            return False
+        self.server_verbs_applied.append((name, dict(values)))
+        return True
 
     def supports_verb(self, name: str) -> bool:
         return name in self.player_verbs

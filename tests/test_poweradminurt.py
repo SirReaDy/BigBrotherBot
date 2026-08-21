@@ -613,3 +613,242 @@ async def test_a_game_with_no_next_map_cvar_says_so(console):
 
     assert console.cvars == {}
     assert _told(console, admin) == ["this game has no next-map setting"]
+
+
+# -- slice 3: moving players between teams -------------------------------------------------------
+
+
+def _teamed(console, name, team, bits=0, cid=None):  # noqa: ANN001, ANN202
+    client = _join(console, name, bits=bits, cid=cid)
+    client.team = team
+    return client
+
+
+@pytest.mark.asyncio
+async def test_a_player_can_be_forced_to_a_team(console):
+    _plugin(console)
+    admin = _join(console, "Admin", bits=64)
+    _teamed(console, "Bob", "blue")
+
+    await _run(console, admin, "!paforce Bob red")
+
+    assert console.verbs_applied[-1][0] == "forceteam"
+    assert console.verbs_applied[-1][2] == {"team": "red"}
+    assert _told(console, admin) == ["Bob moved to red"]
+
+
+@pytest.mark.asyncio
+async def test_the_engines_own_spelling_for_the_spectators(console):
+    """`s`, not `spec` — and an admin may type either."""
+    _plugin(console)
+    admin = _join(console, "Admin", bits=64)
+    _teamed(console, "Bob", "blue")
+
+    await _run(console, admin, "!paforce Bob spec")
+
+    assert console.verbs_applied[-1][2] == {"team": "s"}
+    assert _told(console, admin) == ["Bob moved to spectator"]
+
+
+@pytest.mark.asyncio
+async def test_a_team_nobody_has_heard_of(console):
+    _plugin(console)
+    admin = _join(console, "Admin", bits=64)
+    _teamed(console, "Bob", "blue")
+
+    await _run(console, admin, "!paforce Bob sideways")
+
+    assert console.verbs_applied == []
+    assert "!paforce" in _told(console, admin)[-1]
+
+
+@pytest.mark.asyncio
+async def test_a_locked_player_is_put_back_when_they_switch(console):
+    """The only thing that makes the lock mean anything: `forceteam` moves somebody once."""
+    _plugin(console)
+    admin = _join(console, "Admin", bits=64)
+    bob = _teamed(console, "Bob", "blue")
+
+    await _run(console, admin, "!paforce Bob red lock")
+    console.verbs_applied.clear()
+
+    bob.team = "blue"  # they switched back
+    await console.bus.publish(Event(EventType.CLIENT_TEAM_CHANGE, client=bob, data="blue"))
+
+    assert console.verbs_applied[-1][0] == "forceteam"
+    assert console.verbs_applied[-1][2] == {"team": "red"}
+    assert any("locked to red" in text for _who, text in console.told)
+
+
+@pytest.mark.asyncio
+async def test_an_unlocked_player_may_switch_freely(console):
+    _plugin(console)
+    admin = _join(console, "Admin", bits=64)
+    bob = _teamed(console, "Bob", "blue")
+
+    await _run(console, admin, "!paforce Bob red")
+    console.verbs_applied.clear()
+
+    bob.team = "blue"
+    await console.bus.publish(Event(EventType.CLIENT_TEAM_CHANGE, client=bob, data="blue"))
+
+    assert console.verbs_applied == []
+
+
+@pytest.mark.asyncio
+async def test_a_team_change_to_where_they_are_already_locked_is_left_alone(console):
+    _plugin(console)
+    admin = _join(console, "Admin", bits=64)
+    bob = _teamed(console, "Bob", "blue")
+    await _run(console, admin, "!paforce Bob red lock")
+    console.verbs_applied.clear()
+
+    bob.team = "red"
+    await console.bus.publish(Event(EventType.CLIENT_TEAM_CHANGE, client=bob, data="red"))
+
+    assert console.verbs_applied == []
+
+
+@pytest.mark.asyncio
+async def test_a_lock_can_be_released(console):
+    plugin = _plugin(console)
+    admin = _join(console, "Admin", bits=64)
+    bob = _teamed(console, "Bob", "blue")
+    await _run(console, admin, "!paforce Bob red lock")
+
+    await _run(console, admin, "!paforce Bob free")
+
+    assert plugin.locked_to(bob) is None
+    assert any("choose their own team" in text for text in _told(console, admin))
+
+
+@pytest.mark.asyncio
+async def test_releasing_a_lock_nobody_had(console):
+    _plugin(console)
+    admin = _join(console, "Admin", bits=64)
+    _teamed(console, "Bob", "blue")
+
+    await _run(console, admin, "!paforce Bob free")
+
+    assert _told(console, admin) == ["Bob was not locked to anything"]
+
+
+@pytest.mark.asyncio
+async def test_a_player_who_leaves_takes_their_lock_with_them(console):
+    plugin = _plugin(console)
+    admin = _join(console, "Admin", bits=64)
+    bob = _teamed(console, "Bob", "blue")
+    await _run(console, admin, "!paforce Bob red lock")
+
+    await console.bus.publish(Event(EventType.CLIENT_DISCONNECT, client=bob))
+
+    assert plugin.locked_to(bob) is None
+
+
+@pytest.mark.asyncio
+async def test_you_cannot_force_a_peer(console):
+    _plugin(console)
+    admin = _join(console, "Admin", bits=64)
+    _teamed(console, "Other", "blue", bits=64)
+
+    await _run(console, admin, "!paforce Other red")
+
+    assert console.verbs_applied == []
+    assert _told(console, admin) == ["Other is not somebody you can do that to"]
+
+
+# -- !paswap ------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_two_players_can_change_places(console):
+    _plugin(console)
+    admin = _join(console, "Admin", bits=64)
+    bob = _teamed(console, "Bob", "red", cid="2")
+    _teamed(console, "Ann", "blue", cid="3")
+
+    await _run(console, admin, "!paswap Bob Ann")
+
+    assert console.verbs_applied[-1][0] == "swap"
+    assert console.verbs_applied[-1][1] is bob
+    assert console.verbs_applied[-1][2] == {"other": "3"}
+
+
+@pytest.mark.asyncio
+async def test_with_one_name_you_swap_with_them_yourself(console):
+    _plugin(console)
+    admin = _teamed(console, "Admin", "red", bits=64, cid="1")
+    _teamed(console, "Bob", "blue", cid="2")
+
+    await _run(console, admin, "!paswap Bob")
+
+    assert console.verbs_applied[-1][2] == {"other": "1"}
+
+
+@pytest.mark.asyncio
+async def test_two_players_on_one_team_cannot_swap(console):
+    _plugin(console)
+    admin = _join(console, "Admin", bits=64)
+    _teamed(console, "Bob", "red", cid="2")
+    _teamed(console, "Ann", "red", cid="3")
+
+    await _run(console, admin, "!paswap Bob Ann")
+
+    assert console.verbs_applied == []
+    assert _told(console, admin) == ["Bob and Ann are on the same team"]
+
+
+@pytest.mark.asyncio
+async def test_a_spectator_has_nothing_to_swap(console):
+    _plugin(console)
+    admin = _join(console, "Admin", bits=64)
+    _teamed(console, "Bob", "spec", cid="2")
+    _teamed(console, "Ann", "red", cid="3")
+
+    await _run(console, admin, "!paswap Bob Ann")
+
+    assert console.verbs_applied == []
+    assert _told(console, admin) == ["Bob is a spectator, so there is nothing to swap"]
+
+
+# -- the whole-team commands --------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_the_teams_can_be_swapped_and_shuffled(console):
+    """Neither names a player, which is what `server_verbs` is for."""
+    _plugin(console)
+    admin = _join(console, "Admin", bits=64)
+
+    await _run(console, admin, "!paswapteams")
+    await _run(console, admin, "!pashuffleteams")
+
+    assert [name for name, _values in console.server_verbs_applied] == [
+        "swapteams",
+        "shuffleteams",
+    ]
+    assert _told(console, admin) == [
+        "the teams have been swapped",
+        "the teams have been shuffled",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_a_game_with_no_such_verb_says_so(console):
+    console.server_verbs = set()
+    console.player_verbs = set()
+    _plugin(console)
+    admin = _join(console, "Admin", bits=64)
+    _teamed(console, "Bob", "blue")
+
+    await _run(console, admin, "!pashuffleteams")
+    await _run(console, admin, "!paforce Bob red")
+    await _run(console, admin, "!paswap Bob")
+
+    assert console.server_verbs_applied == []
+    assert console.verbs_applied == []
+    assert _told(console, admin) == [
+        "this game has no shuffleteams command",
+        "this game has no forceteam command",
+        "this game has no swap command",
+    ]

@@ -35,7 +35,7 @@ list, each with an optional config of its own (see `examples/`):
 | `geolocation` | resolves where a player is connecting from, for the plugins that need it | — |
 | `location` | announces where arrivals are from, and answers for it | `!locate` `!distance` `!isp` |
 | `countryfilter` | refuses players from the countries a server does not accept | — |
-| `poweradminurt` | Urban Terror's admin commands (slices 1-2: players, settings, match settings) | `!paslap` `!panuke` `!pakill` `!pamute` `!pabigtext` `!paset` `!paget` `!pavote` `!pactf` `!pabomb` `!pagear` … |
+| `poweradminurt` | Urban Terror's admin commands (slices 1-3: players, settings, teams) | `!paslap` `!panuke` `!pakill` `!pamute` `!pabigtext` `!paset` `!paget` `!pavote` `!pactf` `!pabomb` `!pagear` … |
 
 ### censor — bad language, and the escalating mute
 
@@ -373,9 +373,15 @@ plainly when it does not, rather than the plugin refusing to load by game name.
 **Slice 2** is the match settings, which are a *table* rather than twenty-one near-identical methods: the
 gametype switches (`!pactf`, `!pabomb`, `!pajump`, …), the on/off toggles (`!painstagib`, `!pahardcore`,
 …), the bounded numbers (`!pasetgravity`, `!patimelimit`, the wave delays, …), `!pastamina`, `!pamoon`,
-`!pasetnextmap`, and `!pagear` with its `+weapon`/`-weapon` bits. Still to come: team management, the
-commands that want a server verb rather than a cvar, and the background features (team balancer, skill
-balancer, name checker, spectator check, bot support, headshot counter, rotation manager, match mode).
+`!pasetnextmap`, and `!pagear` with its `+weapon`/`-weapon` bits.
+
+**Slice 3** moves players about: `!paforce <player> <red|blue|spec|free> [lock]` (the lock puts them back
+if they switch, which is the only thing that makes it a lock), `!paswap` for two players changing places,
+and `!paswapteams` / `!pashuffleteams` for everybody at once — those two name no player, which is what
+`GameProfile.server_verbs` is for. Still to come: the remaining server commands and the background
+features (team balancer, skill balancer, name checker, spectator check, bot support, headshot counter,
+rotation manager, match mode). `!pateams` and `!pabalance` come with the team balancer, since they are
+its manual trigger.
 
 One immunity rule covers all four player commands — you cannot use them on somebody at or above your own
 level. The classic had `slap_safe_level` on `!paslap`, a different comparison on `!pamute`, and *nothing*

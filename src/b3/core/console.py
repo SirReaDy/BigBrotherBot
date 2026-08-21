@@ -220,6 +220,14 @@ class Console(Protocol):
         arguments were not all supplied — never a silent half-sent command."""
         ...
 
+    def supports_server_verb(self, name: str) -> bool:
+        """Whether this engine has a verb for ``name`` that names no player — `shuffleteams`, say."""
+        ...
+
+    def apply_server_verb(self, name: str, **values: str) -> bool:
+        """Run one. False when this engine has no such verb or an argument was not supplied."""
+        ...
+
     def can_cancel_vote(self) -> bool:
         """Whether this engine has a verb for stopping a vote in progress at all.
 

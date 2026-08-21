@@ -468,6 +468,12 @@ class GameProfile:
     # title, and a plugin asking for a verb this profile does not declare is told no.
     player_verbs: dict[str, str] = field(default_factory=dict)
 
+    # Things an engine can do that name no player: Urban Terror's `swapteams`, `shuffleteams`,
+    # `map_restart`, `reload`, `cyclemap`. The same shape as `player_verbs` and asked about the same
+    # way (`Console.supports_server_verb`), separated from it because a player verb takes a client —
+    # and takes their *name*, which has to be sanitised, where these take nothing a player chose.
+    server_verbs: dict[str, str] = field(default_factory=dict)
+
     # The verb that cancels a vote already in progress. Urban Terror's is `veto`, and it is the only
     # engine here that has one — Homefront and Altitude announce a vote and take no instruction about
     # it. Empty therefore means a vote cannot be stopped, which a plugin has to be able to *ask*

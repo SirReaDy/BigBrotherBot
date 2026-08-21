@@ -16,10 +16,14 @@ parts and this module's docstring records which.
 (`!pasetgravity`, `!parespawndelay`, `!parespawngod`, `!pahotpotato`, the wave delays), `!pastamina`,
 `!pamoon`, `!pasetnextmap` and `!pagear`.
 
-**Later slices, in the order they are worth doing:** team management (`!paforce`, `!pateams`,
-`!pabalance`, `!paswap`, the shuffles), the server commands that need a verb rather than a cvar
-(`!pamaprestart`, `!pamapreload`, `!pacyclemap`, `!paexec`, `!papublic` — `player_verbs` has a shape to
-copy for those), then the background features, each of which is its own plugin-sized thing.
+**Slice 3: moving players between teams.** `!paforce` (with its lock), `!paswap`, `!paswapteams` and
+`!pashuffleteams`. Two of those name no player at all, which is what `GameProfile.server_verbs` is for.
+
+**Later slices:** the remaining server commands (`!pamaprestart`, `!pamapreload`, `!pacyclemap`,
+`!paexec`, `!papublic` — the first three are declared verbs already and want only a command each), then
+the background features, each of which is its own plugin-sized thing. `!pateams` and `!pabalance` belong
+with the **team balancer** rather than here: they are its manual trigger, and porting them without it
+would mean writing the balancing twice.
 
 **Not ported, deliberately:**
 
@@ -134,6 +138,18 @@ GEAR_NONE = sum(GEAR_BITS.values())
 MOON_GRAVITY = "100"
 NORMAL_GRAVITY = "800"
 
+#: What an admin may type for a team, and what the engine's `forceteam` calls it. `free` is not a team:
+#: it releases a lock, which is the classic's own spelling and worth keeping because operators know it.
+TEAMS = {
+    "red": "red",
+    "r": "red",
+    "blue": "blue",
+    "b": "blue",
+    "spec": "s",
+    "spectator": "s",
+    "s": "s",
+}
+
 DEFAULTS: dict[str, object] = {
     # Level for the commands that act on a player.
     "player_command_level": 40,
@@ -181,6 +197,19 @@ MESSAGES = {
     "pa_nextmap": "the next map will be {map}",
     "pa_nextmap_unsupported": "this game has no next-map setting",
     "pa_moon": "gravity is {value}",
+    "pa_force_usage": "!paforce <player> <red|blue|spec|free> [lock]",
+    "pa_forced": "{name} moved to {team}",
+    "pa_forced_you": "you have been moved to {team}",
+    "pa_forced_locked": "you have been moved to {team} and cannot switch",
+    "pa_force_released": "{name} may choose their own team again",
+    "pa_force_not_locked": "{name} was not locked to anything",
+    "pa_force_denied": "you are locked to {team}",
+    "pa_swap_usage": "!paswap <player> [player]",
+    "pa_swap_same_team": "{first} and {second} are on the same team",
+    "pa_swap_spectator": "{name} is a spectator, so there is nothing to swap",
+    "pa_swapped": "{first} and {second} have changed places",
+    "pa_teams_swapped": "the teams have been swapped",
+    "pa_teams_shuffled": "the teams have been shuffled",
 }
 
 
@@ -222,9 +251,16 @@ class PoweradminurtPlugin(Plugin):
         self.settings = {**DEFAULTS, **(config.get("settings") or {})}
         player_level = as_int(self.settings.get("player_command_level"), 40)
         server_level = as_int(self.settings.get("server_command_level"), 60)
-        for name in ("paslap", "panuke", "pakill", "pamute", "paunmute"):
+        for name in ("paslap", "panuke", "pakill", "pamute", "paunmute", "paforce", "paswap"):
             self._set_level(name, player_level)
-        for name in ("pabigtext", "paset", "paget", "pavote"):
+        for name in (
+            "pabigtext",
+            "paset",
+            "paget",
+            "pavote",
+            "paswapteams",
+            "pashuffleteams",
+        ):
             self._set_level(name, server_level)
         for name in (
             *GAMETYPES,
@@ -398,6 +434,9 @@ class PoweradminurtPlugin(Plugin):
         self.register_messages(MESSAGES)
         self.schedule(self._run_repeats, second="*", name="PoweradminurtPlugin.repeats")
         self.subscribe(EventType.CLIENT_DISCONNECT, self._on_disconnect)
+        # What makes `!paforce ... lock` mean anything: `forceteam` moves a player once and nothing
+        # stops them switching back.
+        self.subscribe(EventType.CLIENT_TEAM_CHANGE, self.on_team_change)
         self.on_load_config()
         missing = [
             verb
@@ -521,6 +560,7 @@ class PoweradminurtPlugin(Plugin):
         client = event.client
         if client is None:
             return
+        client.del_var(self, "locked_to")
         before = len(self.pending)
         self.pending = [r for r in self.pending if r.client is not client]
         if len(self.pending) != before:
@@ -540,6 +580,124 @@ class PoweradminurtPlugin(Plugin):
             repeat.due = now + REPEAT_SECONDS
             if repeat.remaining <= 0:
                 self.pending.remove(repeat)
+
+    # -- slice 3: moving players between teams -------------------------------
+
+    @command("paforce", level=40, alias="force")
+    def cmd_paforce(self, ctx: CommandContext) -> None:
+        """paforce <player> <red|blue|spec|free> [lock] - move a player, and optionally hold them"""
+        if not self.console.supports_verb("forceteam"):
+            ctx.reply(self.message("pa_unavailable", verb="forceteam"))
+            return
+        parts = ctx.args.split()
+        if len(parts) < 2:
+            ctx.reply(self.message("pa_force_usage"))
+            return
+        target = self.resolve_client(ctx, parts[0])
+        if target is None:
+            return
+        wanted = parts[1].strip().lower()
+        lock = len(parts) > 2 and parts[2].strip().lower() == "lock"
+        if wanted == "free":
+            if self.locked_to(target) is None:
+                ctx.reply(self.message("pa_force_not_locked", name=target.name))
+                return
+            target.del_var(self, "locked_to")
+            ctx.reply(self.message("pa_force_released", name=target.name))
+            self.console.tell(target, self.message("pa_force_released", name=target.name))
+            return
+        team = TEAMS.get(wanted)
+        if team is None:
+            ctx.reply(self.message("pa_force_usage"))
+            return
+        if self._protected(ctx.client, target):
+            ctx.reply(self.message("pa_protected", name=target.name))
+            return
+        if lock:
+            target.set_var(self, "locked_to", team)
+        else:
+            target.del_var(self, "locked_to")
+        self.console.apply_verb("forceteam", target, team=team)
+        readable = "spectator" if team == "s" else team
+        ctx.reply(self.message("pa_forced", name=target.name, team=readable))
+        self.console.tell(
+            target,
+            self.message("pa_forced_locked" if lock else "pa_forced_you", team=readable),
+        )
+
+    def locked_to(self, client: Client) -> str | None:
+        """The team this player is held on, or None."""
+        held = client.get_var(self, "locked_to")
+        return held if isinstance(held, str) else None
+
+    def on_team_change(self, event: Event) -> None:
+        """Put a locked player back where they were told to be.
+
+        The classic did this too, and it is the only reason the lock means anything: `forceteam` moves
+        somebody once, and nothing stops them switching straight back.
+        """
+        client = event.client
+        if client is None:
+            return
+        held = self.locked_to(client)
+        if held is None:
+            return
+        current = (client.team or "").strip().lower()
+        wanted = "spec" if held == "s" else held
+        if current == wanted:
+            return
+        self.console.apply_verb("forceteam", client, team=held)
+        self.console.tell(
+            client, self.message("pa_force_denied", team="spectator" if held == "s" else held)
+        )
+
+    @command("paswap", level=40, alias="swap")
+    def cmd_paswap(self, ctx: CommandContext) -> None:
+        """paswap <player> [player] - swap two players between their teams"""
+        if not self.console.supports_verb("swap"):
+            ctx.reply(self.message("pa_unavailable", verb="swap"))
+            return
+        parts = ctx.args.split()
+        if not parts:
+            ctx.reply(self.message("pa_swap_usage"))
+            return
+        first = self.resolve_client(ctx, parts[0])
+        if first is None:
+            return
+        second = ctx.client
+        if len(parts) > 1:
+            found = self.resolve_client(ctx, parts[1])
+            if found is None:
+                return
+            second = found
+        for player in (first, second):
+            if (player.team or "").strip().lower() in ("spec", "spectator", "s"):
+                ctx.reply(self.message("pa_swap_spectator", name=player.name))
+                return
+        if first is second:
+            ctx.reply(self.message("pa_swap_same_team", first=first.name, second=second.name))
+            return
+        if (first.team or "") == (second.team or ""):
+            ctx.reply(self.message("pa_swap_same_team", first=first.name, second=second.name))
+            return
+        self.console.apply_verb("swap", first, other=second.cid or "")
+        ctx.reply(self.message("pa_swapped", first=first.name, second=second.name))
+
+    @command("paswapteams", level=60, alias="swapteams")
+    def cmd_paswapteams(self, ctx: CommandContext) -> None:
+        """paswapteams - swap the two teams around"""
+        if not self.console.apply_server_verb("swapteams"):
+            ctx.reply(self.message("pa_unavailable", verb="swapteams"))
+            return
+        ctx.reply(self.message("pa_teams_swapped"))
+
+    @command("pashuffleteams", level=60, alias="shuffleteams")
+    def cmd_pashuffleteams(self, ctx: CommandContext) -> None:
+        """pashuffleteams - shuffle everybody into new teams"""
+        if not self.console.apply_server_verb("shuffleteams"):
+            ctx.reply(self.message("pa_unavailable", verb="shuffleteams"))
+            return
+        ctx.reply(self.message("pa_teams_shuffled"))
 
     # -- the server commands -------------------------------------------------
 
@@ -600,6 +758,7 @@ class PoweradminurtPlugin(Plugin):
 __all__ = [
     "DEFAULTS",
     "GAMETYPES",
+    "TEAMS",
     "GEAR_ALL",
     "GEAR_BITS",
     "GEAR_NONE",

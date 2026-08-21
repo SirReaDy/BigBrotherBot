@@ -32,10 +32,19 @@
 # negev. With no argument it says which are allowed — the classic sent that answer to the *server* as
 # an rcon command, so the admin saw nothing at all.
 #
-# Still to come: team management (`!paforce`, `!pabalance`, the shuffles), the commands that want a
-# server verb rather than a cvar (`!pamaprestart`, `!pamapreload`, `!pacyclemap`, `!paexec`,
-# `!papublic`), and the background features (team balancer, skill balancer, name checker, spectator
-# check, bot support, headshot counter, rotation manager, match mode).
+# **Slice 3** moves players between teams:
+#
+#   !paforce <player> <red|blue|spec|free> [lock]   move them; `lock` puts them back if they switch,
+#                                                   and `free` releases the lock (alias: !force)
+#   !paswap <player> [player]     two players change places; one name swaps them with you (alias: !swap)
+#   !paswapteams                  swap the two teams around (alias: !swapteams)
+#   !pashuffleteams               shuffle everybody (alias: !shuffleteams)
+#
+# Still to come: the commands that need a server verb rather than a cvar (`!pamaprestart`,
+# `!pamapreload`, `!pacyclemap`, `!paexec`, `!papublic`) and the background features (team balancer,
+# skill balancer, name checker, spectator check, bot support, headshot counter, rotation manager, match
+# mode). `!pateams` and `!pabalance` come with the team balancer: they are its manual trigger, and
+# porting them alone would mean writing the balancing twice.
 #
 # Two commands from the classic are deliberately absent. `!paveto` is `callvote`'s `!veto`, which works
 # on every engine that can cancel a vote rather than only this one. `!paversion` printed the plugin's
@@ -46,11 +55,12 @@
 # the game has no such command, which is how an operator finds out.
 
 settings:
-  # Level for the commands that act on a player.
+  # Level for the commands that act on a player — the four penalties, `!paforce` and `!paswap`.
   player_command_level: 40
 
   # Level for the ones that change a server setting — `!paset`, `!paget`, `!pavote`, `!pabigtext`, and
-  # every match setting in slice 2. Higher on purpose: `!paset` can change anything at all.
+  # every match setting in slice 2, plus `!paswapteams` and `!pashuffleteams` — those move everybody at
+  # once. Higher on purpose: `!paset` can change anything at all.
   server_command_level: 60
 
   # Nobody may slap, nuke, kill or mute a player at or above their own level — you can always do it to

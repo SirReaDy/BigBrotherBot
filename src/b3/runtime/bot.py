@@ -1365,6 +1365,35 @@ class Bot:
                 self._send(collapsed)
         return True
 
+    def supports_server_verb(self, name: str) -> bool:
+        """Whether this title declares a verb for ``name`` that names no player."""
+        return name in self.profile.server_verbs
+
+    def apply_server_verb(self, name: str, **values: str) -> bool:
+        """Run a verb that names no player. Same rules as `apply_verb`, minus the client."""
+        template = self.profile.server_verbs.get(name)
+        if not template:
+            log.warning("%s has no verb for %r", self.profile.name, name)
+            return False
+        try:
+            rendered = template % {
+                key: sanitize_rcon_value(str(value)) for key, value in values.items()
+            }
+        except KeyError as missing:
+            log.error(
+                "%s: the %r verb is %r and nothing was passed for %s, so it was not sent",
+                self.profile.name,
+                name,
+                template,
+                missing,
+            )
+            return False
+        for line in rendered.splitlines():
+            collapsed = " ".join(line.split())
+            if collapsed:
+                self._send(collapsed)
+        return True
+
     def can_cancel_vote(self) -> bool:
         """Whether this title has a verb for stopping a vote — see `GameProfile.veto_command`."""
         return bool(self.profile.veto_command)
