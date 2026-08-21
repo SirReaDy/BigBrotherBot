@@ -154,6 +154,8 @@ class FakeConsole:
         self.maps: list[str] = []
         self.map_names: dict[str, str] = {}  # lowercased id -> display name, as a profile carries
         self.next_map: str | None = None
+        #: The cvar this title holds the next map in — `g_nextmap` on Urban Terror, nothing on most.
+        self.next_map_cvar = ""
         self.map_changes: list[str] = []
         #: Extras passed with each map change, one entry per `map_changes` entry.
         self.map_extras: list[dict[str, str]] = []
@@ -232,6 +234,14 @@ class FakeConsole:
 
     def get_next_map(self) -> str | None:
         return self.next_map
+
+    def set_next_map(self, name: str) -> bool:
+        """A title with no such cvar answers no; tests set `next_map_cvar` when they want one."""
+        if not self.next_map_cvar:
+            return False
+        self.cvars[self.next_map_cvar] = name
+        self.next_map = name
+        return True
 
     def parse_map_request(self, text: str):  # noqa: ANN201 - MapRequest, imported lazily
         return self.map_profile.parse_map_request(text)

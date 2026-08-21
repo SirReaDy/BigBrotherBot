@@ -1157,6 +1157,13 @@ class Bot:
         rotation = self.get_cvar(self.profile.rotation_cvar)
         return status_parser.parse_rotation(rotation) if rotation else []
 
+    def set_next_map(self, name: str) -> bool:
+        """Write the map that comes next into the cvar this title holds it in."""
+        if not self.profile.next_map_cvar:
+            return False
+        self.set_cvar(self.profile.next_map_cvar, name)
+        return True
+
     def get_next_map(self) -> str | None:
         """The map after the current one in the rotation — wrapping around at the end.
 

@@ -157,6 +157,15 @@ class Console(Protocol):
 
     def get_next_map(self) -> str | None: ...
 
+    def set_next_map(self, name: str) -> bool:
+        """Say which map comes after this one. False where this engine has no such setting.
+
+        The counterpart of `get_next_map`, and it belongs here for the same reason: *which* cvar holds
+        it is a fact about the title (`GameProfile.next_map_cvar`), and three things want it — this,
+        `!nextmap`, and `callvote`'s announcement when somebody votes for a map change.
+        """
+        ...
+
     def parse_map_request(self, text: str) -> "MapRequest":
         """Split a `!map` argument into a map and this engine's extra arguments, if it takes any."""
         ...

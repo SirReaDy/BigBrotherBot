@@ -402,3 +402,214 @@ def test_the_two_command_levels_are_configurable(console):
     paset = console.command_registry.get("paset")
     assert slap is not None and slap.min_level == 80
     assert paset is not None and paset.min_level == 100
+
+
+# -- slice 2: the match settings ------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_a_gametype_switch_writes_the_engines_own_number(console):
+    """The numbers are Urban Terror's and are not guessable — 7 is capture the flag."""
+    _plugin(console)
+    admin = _join(console, "Admin", bits=64)
+
+    await _run(console, admin, "!pactf")
+
+    assert console.cvars["g_gametype"] == "7"
+    assert _told(console, admin) == ["the game is now capture the flag"]
+
+
+@pytest.mark.asyncio
+async def test_every_gametype_is_registered_and_distinct(console):
+    from b3.plugins.poweradminurt import GAMETYPES
+
+    _plugin(console)
+
+    for name in GAMETYPES:
+        assert console.command_registry.get(name) is not None
+    numbers = [number for number, _what in GAMETYPES.values()]
+    assert len(numbers) == len(set(numbers))
+
+
+@pytest.mark.asyncio
+async def test_a_toggle_takes_on_and_off(console):
+    _plugin(console)
+    admin = _join(console, "Admin", bits=64)
+
+    await _run(console, admin, "!painstagib on")
+    assert console.cvars["g_instagib"] == "1"
+
+    await _run(console, admin, "!painstagib off")
+    assert console.cvars["g_instagib"] == "0"
+
+
+@pytest.mark.asyncio
+async def test_a_toggle_refuses_anything_else(console):
+    _plugin(console)
+    admin = _join(console, "Admin", bits=64)
+
+    await _run(console, admin, "!pahardcore sideways")
+
+    assert "g_hardcore" not in console.cvars
+    assert _told(console, admin) == ["!pahardcore on|off"]
+
+
+@pytest.mark.asyncio
+async def test_a_number_command_checks_its_number(console):
+    """The classic passed the text straight to `setCvar`, so `!pasetgravity banana` set the gravity
+    to `banana` — which the server ignored while the admin was told it had worked."""
+    _plugin(console)
+    admin = _join(console, "Admin", bits=64)
+
+    await _run(console, admin, "!pasetgravity banana")
+    assert "g_gravity" not in console.cvars
+
+    await _run(console, admin, "!pasetgravity 400")
+    assert console.cvars["g_gravity"] == "400"
+
+
+@pytest.mark.asyncio
+async def test_a_number_out_of_range_is_refused(console):
+    _plugin(console)
+    admin = _join(console, "Admin", bits=64)
+
+    await _run(console, admin, "!patimelimit -5")
+    await _run(console, admin, "!patimelimit 99999")
+
+    assert "timelimit" not in console.cvars
+    assert len(_told(console, admin)) == 2
+
+
+@pytest.mark.asyncio
+async def test_stamina_is_three_named_values_not_a_toggle(console):
+    _plugin(console)
+    admin = _join(console, "Admin", bits=64)
+
+    await _run(console, admin, "!pastamina infinite")
+    assert console.cvars["g_stamina"] == "2"
+
+    await _run(console, admin, "!pastamina default")
+    assert console.cvars["g_stamina"] == "0"
+
+    await _run(console, admin, "!pastamina on")
+    assert _told(console, admin)[-1] == "!pastamina default|regain|infinite"
+
+
+@pytest.mark.asyncio
+async def test_moon_mode_puts_back_the_gravity_the_server_had(console):
+    """The classic restored a number out of its own config, not the server's."""
+    _plugin(console)
+    admin = _join(console, "Admin", bits=64)
+    console.cvars["g_gravity"] = "600"
+
+    await _run(console, admin, "!pamoon on")
+    assert console.cvars["g_gravity"] == "100"
+
+    await _run(console, admin, "!pamoon off")
+    assert console.cvars["g_gravity"] == "600"
+
+
+@pytest.mark.asyncio
+async def test_moon_mode_off_with_nothing_recorded_uses_a_normal_gravity(console):
+    _plugin(console)
+    admin = _join(console, "Admin", bits=64)
+
+    await _run(console, admin, "!pamoon off")
+
+    assert console.cvars["g_gravity"] == "800"
+
+
+# -- !pagear ------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_pagear_with_no_argument_answers_the_admin(console):
+    """The classic answered with `console.write(...)` — an **rcon command**. So the admin was told
+    nothing and the server was sent a line of colour-coded chat as a command."""
+    _plugin(console)
+    admin = _join(console, "Admin", bits=64)
+    console.cvars["g_gear"] = "0"
+
+    await _run(console, admin, "!pagear")
+
+    assert _told(console, admin) == ["allowed: nade, snipe, spas, pistol, auto, negev"]
+    assert console.rcon_sent == []
+
+
+@pytest.mark.asyncio
+async def test_pagear_all_and_none_are_the_engines_way_round(console):
+    """A set bit *forbids* a weapon, so `all` is 0 and `none` is 63."""
+    _plugin(console)
+    admin = _join(console, "Admin", bits=64)
+
+    await _run(console, admin, "!pagear none")
+    assert console.cvars["g_gear"] == "63"
+    assert _told(console, admin)[-1] == "no weapons are allowed"
+
+    await _run(console, admin, "!pagear all")
+    assert console.cvars["g_gear"] == "0"
+
+
+@pytest.mark.asyncio
+async def test_a_single_weapon_can_be_allowed_or_forbidden(console):
+    _plugin(console)
+    admin = _join(console, "Admin", bits=64)
+    console.cvars["g_gear"] = "0"
+
+    await _run(console, admin, "!pagear -negev")
+    assert console.cvars["g_gear"] == "32"
+
+    await _run(console, admin, "!pagear +negev")
+    assert console.cvars["g_gear"] == "0"
+
+
+@pytest.mark.asyncio
+async def test_gear_reset_puts_back_what_the_server_started_with(console):
+    _plugin(console)
+    admin = _join(console, "Admin", bits=64)
+    console.cvars["g_gear"] = "3"
+
+    await _run(console, admin, "!pagear none")
+    await _run(console, admin, "!pagear reset")
+
+    assert console.cvars["g_gear"] == "3"
+
+
+@pytest.mark.asyncio
+async def test_a_weapon_nobody_has_heard_of(console):
+    _plugin(console)
+    admin = _join(console, "Admin", bits=64)
+
+    await _run(console, admin, "!pagear +banana")
+
+    assert "g_gear" not in console.cvars
+    assert "weapons:" in _told(console, admin)[-1]
+
+
+# -- !pasetnextmap ------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_the_next_map_is_written_to_the_cvar_the_profile_names(console):
+    """`g_nextmap` on Urban Terror, and the profile is what knows that — `!nextmap` and `callvote`
+    read the same field."""
+    _plugin(console)
+    admin = _join(console, "Admin", bits=64)
+    console.next_map_cvar = "g_nextmap"  # as the Urban Terror profile declares
+
+    await _run(console, admin, "!pasetnextmap ut4_casa")
+
+    assert console.cvars["g_nextmap"] == "ut4_casa"
+    assert _told(console, admin) == ["the next map will be ut4_casa"]
+
+
+@pytest.mark.asyncio
+async def test_a_game_with_no_next_map_cvar_says_so(console):
+    _plugin(console)
+    admin = _join(console, "Admin", bits=64)
+    assert console.next_map_cvar == ""  # most titles have none
+
+    await _run(console, admin, "!pasetnextmap ut4_casa")
+
+    assert console.cvars == {}
+    assert _told(console, admin) == ["this game has no next-map setting"]

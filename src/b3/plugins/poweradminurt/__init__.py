@@ -6,14 +6,20 @@ and two per-version subclasses of itself, holding forty-nine commands and eleven
 manager, match mode…). Porting it as one change would be a change nobody could review, so it comes in
 parts and this module's docstring records which.
 
-**This slice: player control and server settings.** `!paslap`, `!panuke`, `!pakill`, `!pamute`,
-`!paunmute`, `!pabigtext`, `!paset`, `!paget` and `!pavote` — everything that needed the engine-verb
-seam or an existing `Console` verb, and nothing that needs new parser work.
+**Slice 1: player control and server settings.** `!paslap`, `!panuke`, `!pakill`, `!pamute`,
+`!paunmute`, `!pabigtext`, `!paset`, `!paget` and `!pavote`.
 
-**Later slices, in the order they are worth doing:** the gametype and match-setting commands (twenty of
-them, almost all a cvar and a value — `!pagear`, `!paffa`, `!pactf`, `!pasetgravity`, `!pacaplimit`…),
-then team management (`!paforce`, `!pateams`, `!pabalance`, `!paswap`, the shuffles), then the
-background features, each of which is its own plugin-sized thing.
+**Slice 2: the match settings** — twenty-one commands that each write one cvar, so they are a *table*
+(`GAMETYPES`, `TOGGLES`, `NUMBERS` below) rather than twenty-one near-identical methods. The gametype switches (`!pactf`,
+`!pabomb`, `!pajump`, …), the limits (`!pacaplimit`, `!patimelimit`, `!pafraglimit`), the toggles
+(`!painstagib`, `!pahardcore`, `!pafunstuff`, `!paskins`, `!pawaverespawns`), the numbers
+(`!pasetgravity`, `!parespawndelay`, `!parespawngod`, `!pahotpotato`, the wave delays), `!pastamina`,
+`!pamoon`, `!pasetnextmap` and `!pagear`.
+
+**Later slices, in the order they are worth doing:** team management (`!paforce`, `!pateams`,
+`!pabalance`, `!paswap`, the shuffles), the server commands that need a verb rather than a cvar
+(`!pamaprestart`, `!pamapreload`, `!pacyclemap`, `!paexec`, `!papublic` — `player_verbs` has a shape to
+copy for those), then the background features, each of which is its own plugin-sized thing.
 
 **Not ported, deliberately:**
 
@@ -46,9 +52,10 @@ Changed from the classic, and the first two are faults:
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass
 
-from b3.core.commands import CommandContext, command
+from b3.core.commands import Command, CommandContext, command
 from b3.core.console import Console
 from b3.core.events import Event, EventType
 from b3.core.plugin import Plugin
@@ -56,6 +63,9 @@ from b3.core.util import as_int
 from b3.domain.client import Client
 
 log = logging.getLogger(__name__)
+
+#: What the table-driven commands are: a handler taking the command's context.
+HandlerType = Callable[[CommandContext], None]
 
 #: The cvar Urban Terror gates voting with. `!pavote off` sets it to 0; `on` puts back what it was.
 VOTE_CVAR = "g_allowvote"
@@ -70,6 +80,59 @@ MAX_REPEATS = 25
 
 #: Seconds between the repeats of a multi-slap, as the classic slept.
 REPEAT_SECONDS = 1.0
+
+#: Urban Terror's gametype numbers, by the command that selects them. From the classic's own
+#: `setCvar('g_gametype', …)` calls — the numbers are the engine's and are not guessable.
+GAMETYPES: dict[str, tuple[int, str]] = {
+    "paffa": (0, "free for all"),
+    "palms": (1, "last man standing"),
+    "patdm": (3, "team deathmatch"),
+    "pats": (4, "team survivor"),
+    "paftl": (5, "follow the leader"),
+    "pacah": (6, "capture and hold"),
+    "pactf": (7, "capture the flag"),
+    "pabomb": (8, "bomb mode"),
+    "pajump": (9, "jump mode"),
+    "pafreeze": (10, "freeze tag"),
+    "pagungame": (11, "gun game"),
+}
+
+#: `on`/`off` commands: the cvar, and what each word writes to it.
+TOGGLES: dict[str, tuple[str, str, str]] = {
+    "painstagib": ("g_instagib", "1", "0"),
+    "pahardcore": ("g_hardcore", "1", "0"),
+    "pafunstuff": ("g_funstuff", "1", "0"),
+    "paskins": ("g_skins", "1", "0"),
+    "pawaverespawns": ("g_waverespawns", "1", "0"),
+}
+
+#: Commands that take a number and write it to a cvar. The bounds are this port's: the classic passed
+#: whatever was typed straight through, so `!pasetgravity banana` set the gravity to `banana` and
+#: `!patimelimit -5` was accepted by the plugin and then ignored by the server.
+NUMBERS: dict[str, tuple[str, int, int, str]] = {
+    "pacaplimit": ("capturelimit", 0, 100, "captures to win"),
+    "patimelimit": ("timelimit", 0, 1440, "minutes in a round"),
+    "pafraglimit": ("fraglimit", 0, 1000, "frags to win"),
+    "pasetgravity": ("g_gravity", 0, 10000, "gravity (800 is normal)"),
+    "parespawndelay": ("g_respawnDelay", 0, 300, "seconds before respawning"),
+    "parespawngod": ("g_respawnProtection", 0, 60, "seconds of protection after respawning"),
+    "pahotpotato": ("g_hotpotato", 0, 300, "seconds a flag may be held"),
+    "pabluewave": ("g_bluewave", 0, 300, "seconds between blue respawn waves"),
+    "paredwave": ("g_redwave", 0, 300, "seconds between red respawn waves"),
+}
+
+#: `!pastamina`, which is three named values rather than on/off.
+STAMINA = {"default": "0", "regain": "1", "infinite": "2"}
+
+#: `!pagear`. Urban Terror's `g_gear` bits **forbid** a weapon, so `all` is 0 and `none` is 63 — which
+#: reads backwards and is the engine's, not ours.
+GEAR_BITS = {"nade": 1, "snipe": 2, "spas": 4, "pistol": 8, "auto": 16, "negev": 32}
+GEAR_ALL = 0
+GEAR_NONE = sum(GEAR_BITS.values())
+
+#: Gravity for `!pamoon on`, and what `off` restores when nothing was recorded.
+MOON_GRAVITY = "100"
+NORMAL_GRAVITY = "800"
 
 DEFAULTS: dict[str, object] = {
     # Level for the commands that act on a player.
@@ -102,6 +165,22 @@ MESSAGES = {
     "pa_vote_usage": "!pavote on|off",
     "pa_vote_on": "voting is on",
     "pa_vote_off": "voting is off",
+    "pa_gametype": "the game is now {what}",
+    "pa_toggle_usage": "!{command} on|off",
+    "pa_toggle": "{what} is {state}",
+    "pa_number_usage": "!{command} <{what}>",
+    "pa_number_range": "{what} has to be a number from {low} to {high}",
+    "pa_number_set": "{what}: {value}",
+    "pa_stamina_usage": "!pastamina default|regain|infinite",
+    "pa_stamina": "stamina is {what}",
+    "pa_gear": "allowed: {allowed}",
+    "pa_gear_none": "no weapons are allowed",
+    "pa_gear_usage": "!pagear all|none|reset|+weapon|-weapon (weapons: {weapons})",
+    "pa_gear_changed": "gear changed; allowed: {allowed}",
+    "pa_nextmap_usage": "!pasetnextmap <map>",
+    "pa_nextmap": "the next map will be {map}",
+    "pa_nextmap_unsupported": "this game has no next-map setting",
+    "pa_moon": "gravity is {value}",
 }
 
 
@@ -131,6 +210,10 @@ class PoweradminurtPlugin(Plugin):
         self.pending: list[Repeat] = []
         #: What `g_allowvote` was before the last `!pavote off` in this session.
         self._vote_was: str | None = None
+        #: What `g_gravity` was before `!pamoon on`, and what `g_gear` was when this plugin started.
+        #: Read from the server rather than configured, so `off`/`reset` put back what was there.
+        self._gravity_was: str | None = None
+        self._gear_was: int | None = None
 
     # -- setup ---------------------------------------------------------------
 
@@ -143,6 +226,168 @@ class PoweradminurtPlugin(Plugin):
             self._set_level(name, player_level)
         for name in ("pabigtext", "paset", "paget", "pavote"):
             self._set_level(name, server_level)
+        for name in (
+            *GAMETYPES,
+            *TOGGLES,
+            *NUMBERS,
+            "pastamina",
+            "pamoon",
+            "pagear",
+            "pasetnextmap",
+        ):
+            self._set_level(name, server_level)
+
+    def register_commands(self) -> None:
+        """The decorated commands, then the twenty-one table-driven ones."""
+        super().register_commands()
+        self._register_settings()
+
+    def _register_settings(self) -> None:
+        """Register one command per row of the setting tables.
+
+        Written this way because the classic wrote them out one method at a time, and they drifted:
+        `!painstagib` validated its argument and `!pafraglimit` two hundred lines away did not, so
+        `!pafraglimit banana` set `fraglimit` to `banana` and told the admin it had worked.
+        """
+        level = as_int(self.settings.get("server_command_level"), 60)
+        for name, (number, what) in GAMETYPES.items():
+            self._add(name, level, self._gametype_handler(number, what), f"{name} - {what}")
+        for name in TOGGLES:
+            self._add(name, level, self._toggle_handler(name), f"{name} <on|off>")
+        for name, (_cvar, low, high, what) in NUMBERS.items():
+            self._add(name, level, self._number_handler(name), f"{name} <{low}-{high}> - {what}")
+        self._add("pastamina", level, self.cmd_pastamina, "pastamina <default|regain|infinite>")
+        self._add("pamoon", level, self.cmd_pamoon, "pamoon <on|off> - low gravity")
+        self._add("pagear", level, self.cmd_pagear, "pagear [all|none|reset|+weapon|-weapon]")
+        self._add(
+            "pasetnextmap",
+            level,
+            self.cmd_pasetnextmap,
+            "pasetnextmap <map> - the map after this one",
+        )
+
+    def _add(self, name: str, level: int, handler: HandlerType, help_text: str) -> None:
+        cmd = Command(name=name, handler=handler, min_level=level, help=help_text, plugin=self)
+        self.console.command_registry.register(cmd)
+        self._commands.append(cmd)
+
+    def _gametype_handler(self, number: int, what: str) -> HandlerType:
+        def handler(ctx: CommandContext) -> None:
+            self.console.set_cvar("g_gametype", str(number))
+            log.info("poweradminurt: %s set the gametype to %s", ctx.client.name, what)
+            ctx.reply(self.message("pa_gametype", what=what))
+
+        return handler
+
+    def _toggle_handler(self, name: str) -> HandlerType:
+        cvar, on_value, off_value = TOGGLES[name]
+
+        def handler(ctx: CommandContext) -> None:
+            wanted = ctx.args.strip().lower()
+            if wanted not in ("on", "off"):
+                ctx.reply(self.message("pa_toggle_usage", command=name))
+                return
+            self.console.set_cvar(cvar, on_value if wanted == "on" else off_value)
+            ctx.reply(self.message("pa_toggle", what=cvar, state=wanted))
+
+        return handler
+
+    def _number_handler(self, name: str) -> HandlerType:
+        cvar, low, high, what = NUMBERS[name]
+
+        def handler(ctx: CommandContext) -> None:
+            text = ctx.args.strip()
+            if not text:
+                ctx.reply(self.message("pa_number_usage", command=name, what=what))
+                return
+            if not text.lstrip("-").isdigit() or not low <= int(text) <= high:
+                ctx.reply(self.message("pa_number_range", what=what, low=low, high=high))
+                return
+            self.console.set_cvar(cvar, text)
+            ctx.reply(self.message("pa_number_set", what=what, value=text))
+
+        return handler
+
+    def cmd_pastamina(self, ctx: CommandContext) -> None:
+        """pastamina <default|regain|infinite> - how fast players get their breath back"""
+        wanted = ctx.args.strip().lower()
+        if wanted not in STAMINA:
+            ctx.reply(self.message("pa_stamina_usage"))
+            return
+        self.console.set_cvar("g_stamina", STAMINA[wanted])
+        ctx.reply(self.message("pa_stamina", what=wanted))
+
+    def cmd_pamoon(self, ctx: CommandContext) -> None:
+        """pamoon <on|off> - low gravity"""
+        wanted = ctx.args.strip().lower()
+        if wanted not in ("on", "off"):
+            ctx.reply(self.message("pa_toggle_usage", command="pamoon"))
+            return
+        if wanted == "on":
+            # Read before it is changed, so `off` puts back what this server actually had rather than
+            # a number out of the plugin's own config, which is what the classic restored.
+            current = self.console.get_cvar("g_gravity")
+            if current and current != MOON_GRAVITY:
+                self._gravity_was = current
+            self.console.set_cvar("g_gravity", MOON_GRAVITY)
+            ctx.reply(self.message("pa_moon", value=MOON_GRAVITY))
+            return
+        restored = self._gravity_was or NORMAL_GRAVITY
+        self.console.set_cvar("g_gravity", restored)
+        ctx.reply(self.message("pa_moon", value=restored))
+
+    def cmd_pagear(self, ctx: CommandContext) -> None:
+        """pagear [all|none|reset|+weapon|-weapon] - which weapons players may carry"""
+        current = as_int(self.console.get_cvar("g_gear") or "0", 0)
+        if self._gear_was is None:
+            self._gear_was = current
+        wanted = ctx.args.strip().lower()
+        if not wanted:
+            # The classic answered this with `console.write(...)`, which sends an **rcon command**: the
+            # admin was told nothing at all and the server was sent a line of colour-coded chat.
+            ctx.reply(self._describe_gear(current))
+            return
+        if wanted == "all":
+            new = GEAR_ALL
+        elif wanted == "none":
+            new = GEAR_NONE
+        elif wanted == "reset":
+            new = self._gear_was
+        elif wanted[:1] in ("+", "-"):
+            bit = next(
+                (value for weapon, value in GEAR_BITS.items() if weapon.startswith(wanted[1:5])),
+                None,
+            )
+            if bit is None:
+                ctx.reply(self.message("pa_gear_usage", weapons=", ".join(GEAR_BITS)))
+                return
+            # A set bit *forbids* the weapon, so `+` clears it. The engine's convention, not ours.
+            new = current & ~bit if wanted[:1] == "+" else current | bit
+        else:
+            ctx.reply(self.message("pa_gear_usage", weapons=", ".join(GEAR_BITS)))
+            return
+        self.console.set_cvar("g_gear", str(new))
+        ctx.reply(self._describe_gear(new, changed=True))
+
+    def _describe_gear(self, gear: int, changed: bool = False) -> str:
+        allowed = [weapon for weapon, bit in GEAR_BITS.items() if not gear & bit]
+        if not allowed:
+            return self.message("pa_gear_none")
+        key = "pa_gear_changed" if changed else "pa_gear"
+        return self.message(key, allowed=", ".join(allowed))
+
+    def cmd_pasetnextmap(self, ctx: CommandContext) -> None:
+        """pasetnextmap <map> - the map to load after this one"""
+        wanted = ctx.args.strip()
+        if not wanted:
+            ctx.reply(self.message("pa_nextmap_usage"))
+            return
+        # Asked of the runtime rather than writing `g_nextmap` here: which cvar holds it is a fact
+        # about the title, and `!nextmap` and `callvote`'s announcement read the same one.
+        if not self.console.set_next_map(wanted):
+            ctx.reply(self.message("pa_nextmap_unsupported"))
+            return
+        ctx.reply(self.message("pa_nextmap", map=self.console.map_display(wanted)))
 
     def _set_level(self, name: str, level: int) -> None:
         registered = self.console.command_registry.get(name)
@@ -354,9 +599,18 @@ class PoweradminurtPlugin(Plugin):
 
 __all__ = [
     "DEFAULTS",
+    "GAMETYPES",
+    "GEAR_ALL",
+    "GEAR_BITS",
+    "GEAR_NONE",
     "MAX_REPEATS",
     "MESSAGES",
+    "MOON_GRAVITY",
+    "NORMAL_GRAVITY",
+    "NUMBERS",
     "REPEAT_SECONDS",
+    "STAMINA",
+    "TOGGLES",
     "VOTE_CVAR",
     "VOTE_DEFAULT",
     "PoweradminurtPlugin",

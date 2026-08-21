@@ -35,7 +35,7 @@ list, each with an optional config of its own (see `examples/`):
 | `geolocation` | resolves where a player is connecting from, for the plugins that need it | — |
 | `location` | announces where arrivals are from, and answers for it | `!locate` `!distance` `!isp` |
 | `countryfilter` | refuses players from the countries a server does not accept | — |
-| `poweradminurt` | Urban Terror's admin commands (first slice: players and settings) | `!paslap` `!panuke` `!pakill` `!pamute` `!paunmute` `!pabigtext` `!paset` `!paget` `!pavote` |
+| `poweradminurt` | Urban Terror's admin commands (slices 1-2: players, settings, match settings) | `!paslap` `!panuke` `!pakill` `!pamute` `!pabigtext` `!paset` `!paget` `!pavote` `!pactf` `!pabomb` `!pagear` … |
 
 ### censor — bad language, and the escalating mute
 
@@ -363,13 +363,19 @@ player typed. Config: `examples/plugin_countryfilter.yaml`.
 
 ### poweradminurt — Urban Terror's own commands
 
-The classic plugin is 3,846 lines and forty-nine commands, so it is being ported in slices. **This one**
-is the commands that act on a player or a setting: `!paslap` and `!panuke` (with a repeat count up to 25,
-one a second), `!pakill`, `!pamute` / `!paunmute`, `!pabigtext`, `!paset` / `!paget`, and `!pavote`. Each
-of the first four is an engine verb, so each asks whether this title has one and says so plainly when it
-does not, rather than the plugin refusing to load by game name. Still to come: the gametype and
-match-setting commands, team management, and the background features (team balancer, skill balancer, name
-checker, spectator check, bot support, headshot counter, rotation manager, match mode).
+The classic plugin is 3,846 lines and forty-nine commands, so it is being ported in slices.
+
+**Slice 1** is the commands that act on a player or a setting: `!paslap` and `!panuke` (with a repeat
+count up to 25, one a second), `!pakill`, `!pamute` / `!paunmute`, `!pabigtext`, `!paset` / `!paget`, and
+`!pavote`. Each of the first four is an engine verb, so each asks whether this title has one and says so
+plainly when it does not, rather than the plugin refusing to load by game name.
+
+**Slice 2** is the match settings, which are a *table* rather than twenty-one near-identical methods: the
+gametype switches (`!pactf`, `!pabomb`, `!pajump`, …), the on/off toggles (`!painstagib`, `!pahardcore`,
+…), the bounded numbers (`!pasetgravity`, `!patimelimit`, the wave delays, …), `!pastamina`, `!pamoon`,
+`!pasetnextmap`, and `!pagear` with its `+weapon`/`-weapon` bits. Still to come: team management, the
+commands that want a server verb rather than a cvar, and the background features (team balancer, skill
+balancer, name checker, spectator check, bot support, headshot counter, rotation manager, match mode).
 
 One immunity rule covers all four player commands — you cannot use them on somebody at or above your own
 level. The classic had `slap_safe_level` on `!paslap`, a different comparison on `!pamute`, and *nothing*

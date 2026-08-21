@@ -151,3 +151,33 @@ async def test_a_verb_is_available_to_a_plugin_through_the_console(tmp_path):
 
     assert rcon.commands == ["nuke 3"]
     bot.storage.close()
+
+
+# -- the next map, which the profile names --------------------------------------
+
+
+def test_urban_terror_names_the_cvar_the_next_map_lives_in():
+    """`g_nextmap`. Declared while porting `!pasetnextmap`, and it fixes two other things.
+
+    Without it `get_next_map` had nothing to read on this family, so `!nextmap` answered nothing and
+    `callvote`'s "next map: …" announcement on a cyclemap vote could never fire — on the one engine
+    that plugin was written for.
+    """
+    assert IOURT42.next_map_cvar == "g_nextmap"
+
+
+def test_the_next_map_can_be_read_and_written_through_the_runtime(tmp_path):
+    bot, rcon = _bot(tmp_path)
+
+    assert bot.set_next_map("ut4_casa") is True
+    assert any("g_nextmap" in c and "ut4_casa" in c for c in rcon.commands), rcon.commands
+    bot.storage.close()
+
+
+def test_a_title_with_no_such_cvar_answers_no(tmp_path):
+    bot, rcon = _bot(tmp_path, game="cod4")
+
+    assert bot.set_next_map("mp_carentan") is False
+
+    assert rcon.commands == []
+    bot.storage.close()

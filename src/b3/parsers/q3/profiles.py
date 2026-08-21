@@ -105,6 +105,11 @@ _URT = replace(
     guid_min_length=32,
     name_max_length=32,
     saybig_template='bigtext "%s"',
+    # Urban Terror names the map coming next in a cvar, and `poweradminurt`'s `!pasetnextmap` is what
+    # writes it. Declaring it here is what makes `!nextmap` answer on this family at all — and what
+    # lets `callvote` announce the next map on a `cyclemap` vote, which is the engine that plugin was
+    # written for and the announcement could never have fired on.
+    next_map_cvar="g_nextmap",
     player_verbs={
         "slap": "slap %(cid)s",
         "nuke": "nuke %(cid)s",

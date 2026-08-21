@@ -19,8 +19,22 @@
 #   !paget <cvar>              read one
 #   !pavote on|off             let players call votes, or stop them
 #
-# Still to come: the gametype and match-setting commands, team management (`!paforce`, `!pabalance`,
-# the shuffles), and the background features (team balancer, skill balancer, name checker, spectator
+# **Slice 2** is the match settings — each one writes a single cvar:
+#
+#   gametypes   !paffa !palms !patdm !pats !paftl !pacah !pactf !pabomb !pajump !pafreeze !pagungame
+#   toggles     !painstagib !pahardcore !pafunstuff !paskins !pawaverespawns  (on|off)
+#   numbers     !pacaplimit !patimelimit !pafraglimit !pasetgravity !parespawndelay !parespawngod
+#               !pahotpotato !pabluewave !paredwave   (each bounded — the classic passed the text
+#               straight through, so `!pasetgravity banana` set the gravity to `banana`)
+#   the rest    !pastamina default|regain|infinite, !pamoon on|off, !pagear, !pasetnextmap <map>
+#
+# `!pagear` takes `all`, `none`, `reset`, or `+weapon`/`-weapon` from: nade, snipe, spas, pistol, auto,
+# negev. With no argument it says which are allowed — the classic sent that answer to the *server* as
+# an rcon command, so the admin saw nothing at all.
+#
+# Still to come: team management (`!paforce`, `!pabalance`, the shuffles), the commands that want a
+# server verb rather than a cvar (`!pamaprestart`, `!pamapreload`, `!pacyclemap`, `!paexec`,
+# `!papublic`), and the background features (team balancer, skill balancer, name checker, spectator
 # check, bot support, headshot counter, rotation manager, match mode).
 #
 # Two commands from the classic are deliberately absent. `!paveto` is `callvote`'s `!veto`, which works
@@ -35,7 +49,8 @@ settings:
   # Level for the commands that act on a player.
   player_command_level: 40
 
-  # Level for the ones that change a server setting. Higher on purpose: `!paset` can change anything.
+  # Level for the ones that change a server setting — `!paset`, `!paget`, `!pavote`, `!pabigtext`, and
+  # every match setting in slice 2. Higher on purpose: `!paset` can change anything at all.
   server_command_level: 60
 
   # Nobody may slap, nuke, kill or mute a player at or above their own level — you can always do it to
