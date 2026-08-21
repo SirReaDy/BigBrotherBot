@@ -30,6 +30,7 @@ list, each with an optional config of its own (see `examples/`):
 | `spree` | announces killing and losing streaks | `!spree [player]` |
 | `firstkill` | announces first blood, first headshot and the first team kill | `!firstkill` `!firsttk` `!firsths` |
 | `netblocker` | refuses players connecting from a listed network | — |
+| `duel` | keeps score between two players who agreed to a duel | `!duel` `!duelreset` `!duelcancel` |
 
 ### tk — team damage
 
@@ -264,6 +265,19 @@ everybody behind a listed address is refused whether they have done anything or 
 Checked at authentication *and* when an address first becomes known, since on Call of Duty and Quake 3
 the line that authenticates somebody carries no address at all. A bad entry in the list is refused at
 startup by name and the rest still load. Config: `examples/plugin_netblocker.yaml`.
+
+### duel — two players settling something
+
+`!duel <player>` challenges somebody; they accept with `!duel <you>`. After that every kill between the
+two is counted and both are told the score privately — nobody else sees any of it. `!duelreset` zeroes a
+score, `!duelcancel` calls it off, and both take a name when several duels are running. The score is
+also reported at the end of a round, and to the player left behind when their opponent leaves.
+
+Every kind of kill between the two counts, **including a team kill**: two people on the same team is the
+commonest duel there is, and the classic plugin watched ordinary kills only, so those duels stayed 0:0
+forever. A challenge nobody answers expires (the classic's waited indefinitely), and one player may have
+`max_duels` running at once, because each of them messages both players after every kill.
+Config: `examples/plugin_duel.yaml`.
 
 Anything else is a git install — see [Plugins](cli.md#plugins) and
 [Writing an installable plugin](#writing-an-installable-plugin).

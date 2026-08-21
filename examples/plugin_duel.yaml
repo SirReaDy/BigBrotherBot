@@ -1,0 +1,42 @@
+# duel — keeps score between two players who have agreed to settle it.
+#
+# Point at it from the main config:
+#
+#   plugins:
+#     - name: duel
+#       config: "@conf/plugin_duel.yaml"
+#
+# `!duel <player>` challenges somebody; they type `!duel <you>` to accept. From then on every kill
+# between the two of you is counted and both of you are told the score privately — nobody else on the
+# server sees any of it. `!duelreset` puts a score back to nothing, `!duelcancel` calls it off, and
+# both take a player's name when you have more than one duel running.
+#
+# Every kind of kill between the two counts, including a **team kill**: two people on the same team
+# is the commonest duel there is, and the classic plugin — which watched only ordinary kills — scored
+# those duels 0:0 forever.
+#
+# The plugin needs no configuration at all; everything below has a working default.
+
+settings:
+  # Level for all three commands. 1 (`user`) is the classic's, which was hardcoded there: a duel is
+  # between two people who know each other, not something a stranger starts on arrival.
+  min_level: 1
+
+  # How long an unanswered challenge stands, in seconds. 0 keeps it forever, which is what the classic
+  # did — a proposal nobody answered sat in memory until one of them left the server.
+  proposal_timeout: 300
+
+  # How many duels one player may have at once. Each running duel sends two private messages after
+  # every kill in it, so a player with a dozen is a player nobody can read past.
+  max_duels: 3
+
+# Everything the plugin says can be reworded in the main config's `messages:` block:
+#
+#   duel_proposed        to the challenger ({name})
+#   duel_challenged      to the challenged player ({name}, {handle} — their slot, which is typeable
+#                        when a name full of colour codes is not)
+#   duel_accepted_you / duel_accepted_them          ({name})
+#   duel_score           the score, sent to each player privately ({score}, {opponent_score}, {name})
+#   duel_cancelled       ({name})
+#   duel_none / duel_none_with / duel_which         nothing to act on, or too many to guess
+#   duel_yourself / duel_already / duel_too_many / duel_usage / duel_expired
