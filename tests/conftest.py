@@ -161,6 +161,10 @@ class FakeConsole:
         #: every engine here; a test for the two that take more replaces it with their profile.
         self.map_profile = GameProfile(name="fake")
         self.rotations = 0
+        #: Vote cancellations attempted, and whether this title can cancel one at all (Urban Terror
+        #: is the only family here whose engine has the verb).
+        self.vote_cancels = 0
+        self.votes_can_be_cancelled = True
         #: Operator-defined rcon lines sent through `send_rcon`, and canned replies for them.
         self.rcon_sent: list[str] = []
         self.rcon_replies: dict[str, str] = {}
@@ -246,6 +250,16 @@ class FakeConsole:
 
     def rotate_map(self) -> None:
         self.rotations += 1
+
+    def can_cancel_vote(self) -> bool:
+        return self.votes_can_be_cancelled
+
+    def cancel_vote(self) -> bool:
+        """Records the attempt; a title with no veto verb reports that it cannot."""
+        if not self.votes_can_be_cancelled:
+            return False
+        self.vote_cancels += 1
+        return True
 
     def sync(self) -> list[Client]:
         return self.clients.connected()

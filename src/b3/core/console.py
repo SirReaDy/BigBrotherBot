@@ -174,6 +174,20 @@ class Console(Protocol):
         `GameProfile.map_arguments` names them, and a title that declares none never gets any."""
         ...
 
+    def can_cancel_vote(self) -> bool:
+        """Whether this engine has a verb for stopping a vote in progress at all.
+
+        Asked rather than discovered, and that is the point of it: a plugin policing who may call a
+        vote has to know in advance whether refusing one is something it can carry out. Telling a
+        player they are not allowed a vote which then passes anyway is worse than saying nothing.
+        Urban Terror is the only family here that answers yes.
+        """
+        ...
+
+    def cancel_vote(self) -> bool:
+        """Stop the vote currently running. False where the engine has no verb for it."""
+        ...
+
     def rotate_map(self) -> None: ...
 
     def sync(self) -> list[Client]:

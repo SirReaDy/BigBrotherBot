@@ -1269,6 +1269,17 @@ class Bot:
             return
         self._send(self.profile.rotate_command)
 
+    def can_cancel_vote(self) -> bool:
+        """Whether this title has a verb for stopping a vote — see `GameProfile.veto_command`."""
+        return bool(self.profile.veto_command)
+
+    def cancel_vote(self) -> bool:
+        """Cancel the vote in progress. False where this engine has no verb for it."""
+        if not self.profile.veto_command:
+            return False
+        self._send(self.profile.veto_command)
+        return True
+
     def sync(self) -> list[Client]:
         """Reconcile the in-memory client list against the server's — the legacy ``sync``.
 

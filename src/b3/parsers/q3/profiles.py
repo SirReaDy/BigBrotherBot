@@ -88,10 +88,14 @@ ETPRO = replace(_ET, name="etpro")
 #: `name_max_length` guards the userinfo-overflow exploit: 4.2 lets a client connect with a nickname
 #: longer than the 32 characters the userinfo string holds. Declared for all three, since 32 is the
 #: protocol's limit on each of them and the exploit is in the client rather than the server build.
+#: `veto_command` is declared on 4.2 and 4.3 only, which is what the classic bot's `callvote` plugin
+#: asserted with `requiresParsers = ['iourt42', 'iourt43']`. 4.1 may well answer it too; nobody here
+#: has a 4.1 server to find out on, and the cost of guessing wrong is a plugin that reports a vote
+#: cancelled when it was not.
 _URT = replace(_BASE, family="urt", guid_min_length=32, name_max_length=32)
 IOURT41 = replace(_URT, name="iourt41")
-IOURT42 = replace(_URT, name="iourt42")
-IOURT43 = replace(_URT, name="iourt43")
+IOURT42 = replace(_URT, name="iourt42", veto_command="veto")
+IOURT43 = replace(_URT, name="iourt43", veto_command="veto")
 
 #: Every Quake3 title, by the id used in `server.game`.
 ALL: dict[str, GameProfile] = {

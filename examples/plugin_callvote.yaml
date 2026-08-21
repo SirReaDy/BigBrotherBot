@@ -1,0 +1,100 @@
+# callvote — who may call a vote, and a record of the ones that were called.
+#
+# Point at it from the main config:
+#
+#   plugins:
+#     - name: callvote
+#       config: "@conf/plugin_callvote.yaml"
+#
+# A vote is the only power an ordinary player has over the whole server, which is why it gets abused:
+# `callvote kick` on whoever is winning, `callvote map` to whatever empties the place. Give the types
+# that hurt a level, and everything else stays as open as the server was before.
+#
+# **Cancelling a vote is engine-specific.** Urban Terror 4.2/4.3 have the `veto` verb; Homefront and
+# Altitude announce a vote and take no instruction about it. On those two the level policy cannot be
+# enforced — the plugin says so once at startup and then only records and announces, rather than
+# telling a player they may not do the thing that is about to succeed.
+
+settings:
+  # Level for `!veto` and `!lastvote`.
+  min_level: 20
+
+  # Level needed for a vote type not named under `levels:` below. 0 is what the classic's config
+  # shipped for every type it knew, and the alternative is a plugin quietly forbidding a vote the
+  # operator never thought about. Raise it only if you would rather list what is allowed.
+  default_level: 0
+
+  # Below this many human voters nothing is checked and nothing is cancelled. Two, because with one
+  # voter the server has already acted on the vote by the time the log line reporting it is read, and
+  # a cancellation arriving after the map changed just looks like the bot misbehaving. Bots are not
+  # voters: they cannot vote, and counting them turns one player into eight.
+  min_voters: 2
+
+  # Say what the next map is when a cyclemap/nextmap vote starts. It is the question everybody asks.
+  announce_next_map: yes
+
+  # Keep a record of finished votes, in this plugin's own table, so `!lastvote` can answer "the map
+  # changed and nobody knows why". Rows carry the server id from `bot.server_id`, so several bots can
+  # share one database without reporting each other's votes.
+  record: yes
+
+# The level each vote type needs. A group keyword (guest user reg mod admin fulladmin senioradmin
+# superadmin) or a number 0-100. Anything not listed here uses `default_level`; an entry that is
+# neither a keyword nor a level is refused at startup, by name, and the rest still load.
+#
+# These are Urban Terror's votable types. Other engines have their own names, and any type at all can
+# be listed — the plugin does not need to know the vocabulary in advance.
+levels:
+  # The ones worth thinking about: they move everybody, or remove somebody.
+  map: guest
+  g_nextmap: guest
+  cyclemap: guest
+  kick: guest
+  clientkick: guest
+  clientkickreason: guest
+  restart: guest
+  reload: guest
+  shuffleteams: guest
+  swapteams: guest
+  exec: guest
+
+  # Match settings.
+  capturelimit: guest
+  fraglimit: guest
+  timelimit: guest
+  g_gametype: guest
+  g_gear: guest
+  g_matchmode: guest
+  g_maxrounds: guest
+  g_friendlyfire: guest
+  g_followstrict: guest
+  g_respawndelay: guest
+  g_redwaverespawndelay: guest
+  g_bluewaverespawndelay: guest
+  g_waverespawns: guest
+  g_roundtime: guest
+  g_swaproles: guest
+  g_timeouts: guest
+  g_timeoutlength: guest
+  g_bombdefusetime: guest
+  g_bombexplodetime: guest
+  g_capturescoretime: guest
+
+# A level per map, for `map` and `g_nextmap` votes. This *replaces* the level for the vote type, in
+# both directions — lock `map` down to admins and still leave open the two maps that fill the server,
+# or leave `map` open and keep the one nobody stays for behind a level.
+maps:
+  #ut4_abbey: superadmin
+  #ut4_casa: guest
+
+# Every line the plugin says can be reworded in the main config's `messages:` block:
+#
+#   callvote_denied              to the player whose vote was cancelled ({type}, {group})
+#   callvote_next_map            said to the server when a cyclemap vote starts ({map})
+#   callvote_vetoed              to the admin who typed !veto
+#   callvote_veto_impossible     !veto on an engine with no verb for it
+#   callvote_none_running        !veto with no vote in progress
+#   callvote_last                !lastvote, first line ({type}, {args}, {name}, {ago})
+#   callvote_last_result         !lastvote, second line ({outcome}, {yes}, {no}, {voters})
+#   callvote_last_result_unknown ...where the engine does not report the counts ({outcome})
+#   callvote_last_none           nothing recorded yet on this server

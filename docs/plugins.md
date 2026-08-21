@@ -26,6 +26,7 @@ list, each with an optional config of its own (see `examples/`):
 | `ipban` | kicks a connecting player whose address is behind an active ban | — |
 | `nickreg` | reserves nicknames, and warns whoever else is wearing one | `!registernick` `!deletenick` `!listnick` |
 | `makeroom` | frees a slot on a full server, and holds it for a member | `!makeroom` `!makeroomauto` |
+| `callvote` | decides who may call a vote, and records the ones that finish | `!veto` `!lastvote` |
 
 ### tk — team damage
 
@@ -207,6 +208,22 @@ a bot (the engine refills it, so nothing is freed), never an admin wearing a mas
 does not remove it), never the admin who asked, and — unless you set `only_when_full: no` — never on a
 server that still has a free slot. "Newest" means the newest *arrival*, not the newest database record.
 Config: `examples/plugin_makeroom.yaml`.
+
+### callvote — the one power a player has over everybody
+
+`callvote kick` on whoever is winning, `callvote map` to whatever empties the server. Each vote type
+gets a level in the config, a vote from below it is cancelled with a private word to the player, and a
+`maps:` table can set a level per map — which *replaces* the level for `map`, so you can lock the type
+down and still leave the two maps that fill the server open to everybody. A type nobody has listed uses
+`default_level`. `!lastvote` reports the last finished vote on this server, and `!veto` cancels the one
+running.
+
+Two things it will not do. Below `min_voters` humans nothing is checked at all, because a vote with one
+voter has already passed by the time the log line reporting it is read — and bots are not voters. And
+**cancelling a vote is engine-specific**: Urban Terror 4.2/4.3 have the verb, Homefront and Altitude
+announce a vote and take no instruction about it. On those two the plugin says so once at startup and
+then only records and announces, rather than telling a player they may not do what is about to happen
+anyway. Config: `examples/plugin_callvote.yaml`.
 
 Anything else is a git install — see [Plugins](cli.md#plugins) and
 [Writing an installable plugin](#writing-an-installable-plugin).

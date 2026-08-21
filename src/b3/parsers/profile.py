@@ -455,6 +455,13 @@ class GameProfile:
     # that way until they reconnect — the status table on these titles carries a name and a ping and
     # no persistent id at all. Empty on every engine whose status table already answers it.
     userinfo_command: str = ""
+    # The verb that cancels a vote already in progress. Urban Terror's is `veto`, and it is the only
+    # engine here that has one — Homefront and Altitude announce a vote and take no instruction about
+    # it. Empty therefore means a vote cannot be stopped, which a plugin has to be able to *ask*
+    # rather than discover by sending a verb into the dark: `callvote` enforces its level policy only
+    # where this is set, because telling a player they may not call a vote that then passes anyway is
+    # worse than saying nothing.
+    veto_command: str = ""
     # For engines that have no cvars but *do* answer a question: Ravaged has `getmaplist false`.
     # Only consulted when `rotation_cvar` is empty, and only useful if the parser can read the reply
     # (`read_maps`) -- the same division as the roster, with the asking here and the parsing there.
