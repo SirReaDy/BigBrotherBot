@@ -25,6 +25,7 @@ list, each with an optional config of its own (see `examples/`):
 | `login` | admins must type a password before their level does anything | `!login` `!setpassword` |
 | `ipban` | kicks a connecting player whose address is behind an active ban | — |
 | `nickreg` | reserves nicknames, and warns whoever else is wearing one | `!registernick` `!deletenick` `!listnick` |
+| `makeroom` | frees a slot on a full server, and holds it for a member | `!makeroom` `!makeroomauto` |
 
 ### tk — team damage
 
@@ -190,6 +191,22 @@ Names are compared as players see them: colour codes stripped, trimmed, lower-ca
 which is the point — the trick is played when the owner is away. Nothing is checked for a moment after a
 map change, because a player still loading has whatever name the engine gave them.
 Config: `examples/plugin_nickreg.yaml`.
+
+### makeroom — a slot for the people who pay for the server
+
+On a popular server the members are the ones who cannot get in. `!makeroom` (alias `!mkr`) announces
+why, kicks the newest arrival from the lowest group, and holds the slot for `retain_free_duration`
+seconds: a non-member who takes it in the meantime is kicked too, and a member arriving ends the window,
+which is the whole point of it. `!makeroomauto on|off` (alias `!mrauto`) does the same continuously,
+keeping `min_free_slots` free — off by default, because that setting is a door policy rather than
+moderation. The slot count comes from the server (`sv_maxclients`); `total_slots` in the config is for
+stating a smaller number than the truth, which is what slots reserved outside the bot look like.
+
+It removes players who have done nothing wrong, so what it refuses matters more than what it does. Never
+a bot (the engine refills it, so nothing is freed), never an admin wearing a mask (a mask hides rank, it
+does not remove it), never the admin who asked, and — unless you set `only_when_full: no` — never on a
+server that still has a free slot. "Newest" means the newest *arrival*, not the newest database record.
+Config: `examples/plugin_makeroom.yaml`.
 
 Anything else is a git install — see [Plugins](cli.md#plugins) and
 [Writing an installable plugin](#writing-an-installable-plugin).

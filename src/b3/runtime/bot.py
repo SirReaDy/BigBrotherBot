@@ -130,7 +130,7 @@ class Bot:
         # database on its way to the error.
         self.profile = games.profile_for(config.server.game)
         self.bus = EventBus()
-        self.clients = ClientManager()
+        self.clients = ClientManager(self.clock)
         self.command_registry = CommandRegistry()
         self.storage = storage or SqlAlchemyStorage(config.bot.database, clock=self.clock)
         self.messages = self._build_messages()

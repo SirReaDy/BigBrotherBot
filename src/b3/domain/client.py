@@ -101,6 +101,15 @@ class Client:
     #: keep, is a plugin doing arithmetic on players who cannot answer. The classic bot's
     #: `Client.bot`.
     is_bot: bool = False
+    #: When this bot first saw this player in this slot, as epoch seconds. Not the same thing as
+    #: `time_add`, which is when their *database row* was created — a regular who first joined two
+    #: years ago and reconnected a minute ago has an ancient `time_add`. Anything that means "who
+    #: arrived most recently" has to read this: the classic bot's `makeroom` sorted by `timeAdd` and
+    #: so freed a slot by kicking the newest *account* on the server rather than the newest arrival.
+    #: Stamped by `ClientManager.add`, the one funnel every parser creates a client through. For a
+    #: player already on the server when the bot started it is when the bot adopted them, which is
+    #: the earliest moment anything here can honestly claim to know about.
+    connected_at: float = 0.0
     #: When this player was last here, as an epoch — 0 for somebody the database has never seen.
     #: Captured at authentication and not derived later, because `time_edit` on the row *is* "last
     #: seen" and saving the session overwrites it with now: after the save there is nothing left to

@@ -133,10 +133,10 @@ class FakeConsole:
 
     def __init__(self, storage: FakeStorage | None = None) -> None:
         self.bus = EventBus()
-        self.clients = ClientManager()
+        self.clock = FakeClock()
+        self.clients = ClientManager(self.clock)
         self.storage = storage or FakeStorage()
         self.command_registry = CommandRegistry()
-        self.clock = FakeClock()
         self.messages = Messages()
         self.scheduler = Scheduler(self.clock)
 

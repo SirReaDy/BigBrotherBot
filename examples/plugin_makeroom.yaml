@@ -1,0 +1,65 @@
+# makeroom — frees a slot on a full server so a member can get in.
+#
+# Point at it from the main config:
+#
+#   plugins:
+#     - name: makeroom
+#       config: "@conf/plugin_makeroom.yaml"
+#
+# `!makeroom` (alias `!mkr`, mod) kicks the newest arrival from the lowest group and holds their slot
+# for a member. `!makeroomauto on|off` (alias `!mrauto`, fulladmin) keeps slots free continuously.
+#
+# This plugin removes players who have done nothing wrong, so the settings below are mostly about
+# who is safe from it. Two players are never candidates whatever you write here: an AI player (the
+# server just refills it) and an admin wearing a mask (a mask hides rank, it does not remove it).
+
+settings:
+  # At or below this level a player may be kicked to free a slot. 2 is `reg` — the point of the
+  # plugin being that the people who support the server keep their seat. Raise it and you are
+  # deciding that registered players are expendable too.
+  non_member_level: 2
+
+  # Seconds between the announcement and the kick, so the player being removed reads why first. 0
+  # kicks at once and says nothing to the server. Kept under 30: a warning nobody is still reading
+  # when it lands is not a warning.
+  delay: 2
+
+  # Seconds to hold the freed slot, 0-30. Any non-member who joins inside the window is kicked
+  # again; a member joining ends it, because that is what it was for. 0 gives the slot to whoever
+  # gets there first, which on a busy server is not usually the member you freed it for.
+  retain_free_duration: 15
+
+  # Refuse `!makeroom` when the server still has a free slot, and say so. Set it to `no` for the
+  # classic behaviour, which kicked somebody regardless — including when the command was a mistake.
+  only_when_full: yes
+
+  # Keep `min_free_slots` free at all times, kicking arriving non-members without being asked. This
+  # is the setting that turns moderation into a door policy, so it is off unless you say otherwise.
+  # `!makeroomauto` switches it for the session; it does not write back here.
+  automation: no
+
+  # How many slots this server has. 0 asks the server itself (`sv_maxclients`), which is right
+  # almost always. State a number only to state a *smaller* one than the truth — slots you are
+  # holding back for a clan or for rcon — because that is a fact the server cannot tell the bot.
+  total_slots: 0
+
+  # How many slots automation keeps free. Must be less than the total, or every arrival is one too
+  # many and automation stays off.
+  min_free_slots: 1
+
+# Every line the plugin says can be reworded in the main config's `messages:` block:
+#
+#   makeroom_info                 said to the server before the kick
+#   makeroom_auto_info            the same, when automation rather than an admin asked
+#   makeroom_kick_announce        who is going, said to the server ({name})
+#   makeroom_kick_reason          what the player being kicked is shown
+#   makeroom_freed                to the admin, when no slot is being held ({name})
+#   makeroom_freed_retained       to the admin, with the window ({name}, {seconds})
+#   makeroom_none                 there is nobody the plugin may kick
+#   makeroom_in_progress          a kick is already waiting out its delay
+#   makeroom_retaining            a slot is already being held ({seconds})
+#   makeroom_not_full             refused: the server has room ({players}, {slots})
+#   makeroom_auto_usage           `!makeroomauto` without on or off
+#   makeroom_auto_on              ({count}, {slots})
+#   makeroom_auto_off
+#   makeroom_auto_unavailable     automation asked for, with no slot count to work from
