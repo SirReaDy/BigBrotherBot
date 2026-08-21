@@ -1269,6 +1269,44 @@ class Bot:
             return
         self._send(self.profile.rotate_command)
 
+    def supports_verb(self, name: str) -> bool:
+        """Whether this title declares a verb for doing ``name`` to a player."""
+        return name in self.profile.player_verbs
+
+    def apply_verb(self, name: str, client: Client, **values: str) -> bool:
+        """Do ``name`` to a player — `slap`, `nuke`, `mute`. False if this engine cannot.
+
+        Everything substituted is sanitised, because `%(name)s` is a string the *player* chose. A
+        template whose arguments were not all supplied is refused and said out loud rather than sent
+        half-rendered: §1.10 is the entry about a penalty verb that could not be filled in being sent
+        anyway, and this is the same rule.
+        """
+        template = self.profile.player_verbs.get(name)
+        if not template:
+            log.warning("%s has no verb for %r", self.profile.name, name)
+            return False
+        fields = {
+            "cid": sanitize_rcon_value(client.cid or ""),
+            "name": sanitize_rcon_value(client.name),
+            **{key: sanitize_rcon_value(str(value)) for key, value in values.items()},
+        }
+        try:
+            rendered = template % fields
+        except KeyError as missing:
+            log.error(
+                "%s: the %r verb is %r and nothing was passed for %s, so it was not sent",
+                self.profile.name,
+                name,
+                template,
+                missing,
+            )
+            return False
+        for line in rendered.splitlines():
+            collapsed = " ".join(line.split())
+            if collapsed:
+                self._send(collapsed)
+        return True
+
     def can_cancel_vote(self) -> bool:
         """Whether this title has a verb for stopping a vote — see `GameProfile.veto_command`."""
         return bool(self.profile.veto_command)

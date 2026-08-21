@@ -164,6 +164,10 @@ class FakeConsole:
         #: Vote cancellations attempted, and whether this title can cancel one at all (Urban Terror
         #: is the only family here whose engine has the verb).
         self.vote_cancels = 0
+        #: Engine verbs this title has (`GameProfile.player_verbs`) and the ones a plugin applied.
+        #: Urban Terror's set by default, since it is the only family here that has any.
+        self.player_verbs: set[str] = {"slap", "nuke", "kill", "mute"}
+        self.verbs_applied: list[tuple[str, Client, dict[str, str]]] = []
         self.votes_can_be_cancelled = True
         #: Operator-defined rcon lines sent through `send_rcon`, and canned replies for them.
         self.rcon_sent: list[str] = []
@@ -250,6 +254,16 @@ class FakeConsole:
 
     def rotate_map(self) -> None:
         self.rotations += 1
+
+    def supports_verb(self, name: str) -> bool:
+        return name in self.player_verbs
+
+    def apply_verb(self, name: str, client: Client, **values: str) -> bool:
+        """Records the attempt. `player_verbs` is what a title's profile declares."""
+        if name not in self.player_verbs:
+            return False
+        self.verbs_applied.append((name, client, dict(values)))
+        return True
 
     def can_cancel_vote(self) -> bool:
         return self.votes_can_be_cancelled

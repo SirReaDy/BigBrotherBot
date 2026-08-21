@@ -213,12 +213,34 @@ async def test_a_warning_is_recorded_with_its_lifetime(console):
     assert penalties[0].duration == 5
 
 
-def test_an_engine_verb_penalty_is_refused_by_name(console):
-    """`slap`, `nuke` and `kill` were `inflictCustomPenalty` calls — verbs this bot has no seam for.
+def test_an_engine_verb_penalty_works_where_the_engine_has_the_verb(console):
+    """`slap`, `nuke` and `kill` are engine verbs (`GameProfile.player_verbs`), not penalties."""
+    plugin = _plugin(console, kill={"penalty": "slap"}, hit={"penalty": "nuke"})
 
-    Configuring one falls back to the default rather than silently doing nothing at all, which is what
-    a plugin that accepted the setting and had no way to carry it out would do.
+    assert plugin.windows["kill"].penalty == "slap"
+    assert plugin.windows["hit"].penalty == "nuke"
+
+
+@pytest.mark.asyncio
+async def test_a_slap_is_sent_as_the_engines_verb_and_recorded_nowhere(console):
+    """Nothing a future admin needs to read happened, so nothing is written down."""
+    _plugin(console, kill={"penalty": "slap", "delay": 3})
+    bob, ann = _join(console, "Bob"), _join(console, "Ann", team="blue")
+    await _spawn(console, ann)
+
+    await _event(console, EventType.CLIENT_KILL, bob, ann)
+
+    assert [(name, who.name) for name, who, _values in console.verbs_applied] == [("slap", "Bob")]
+    assert console.warned == []
+    assert console.kicked == []
+
+
+def test_an_engine_verb_penalty_is_refused_where_the_engine_has_none(console):
+    """A penalty that silently does nothing is worse than one that says it cannot be carried out.
+
+    The classic sent `slap` through `inflictCustomPenalty` on any title at all.
     """
+    console.player_verbs = set()  # a title with no such verbs — every family but Urban Terror
     plugin = _plugin(console, kill={"penalty": "slap"}, hit={"penalty": "nuke"})
 
     assert plugin.windows["kill"].penalty == "warn"

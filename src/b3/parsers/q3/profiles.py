@@ -96,12 +96,21 @@ ETPRO = replace(_ET, name="etpro")
 #: and the rest have none, so `say_big` falls back to `say` there. The classic bot's `firstkill`
 #: reached for it by checking the game's *name*, which is the kind of per-title branch a profile
 #: field exists to remove.
+#: `player_verbs` are Urban Terror's own: `slap` and `nuke` move a player about, `smite` kills them
+#: where they stand, and `mute` silences them for a number of seconds (0 lifts it, which is how the
+#: classic's `censorurt` un-muted). Taken from the classic `iourt42` parser's command table.
 _URT = replace(
     _BASE,
     family="urt",
     guid_min_length=32,
     name_max_length=32,
     saybig_template='bigtext "%s"',
+    player_verbs={
+        "slap": "slap %(cid)s",
+        "nuke": "nuke %(cid)s",
+        "kill": "smite %(cid)s",
+        "mute": "mute %(cid)s %(seconds)s",
+    },
 )
 IOURT41 = replace(_URT, name="iourt41")
 IOURT42 = replace(_URT, name="iourt42", veto_command="veto")

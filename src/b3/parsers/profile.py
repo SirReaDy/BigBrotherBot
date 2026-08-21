@@ -455,6 +455,19 @@ class GameProfile:
     # that way until they reconnect — the status table on these titles carries a name and a ping and
     # no persistent id at all. Empty on every engine whose status table already answers it.
     userinfo_command: str = ""
+    # Things an engine can do TO one player that this bot has no portable concept of: Urban Terror's
+    # `slap`, `nuke`, `smite` and `mute`. Named `%(cid)s`/`%(name)s` substitution, plus whatever else
+    # the caller passes — `mute %(cid)s %(seconds)s` is why extras exist.
+    #
+    # This is the honest half of the classic bot's `inflictCustomPenalty`. The other half — inventing a
+    # sixth *penalty type* in the database — was refused (TODO §4.5); a verb is not a penalty, it is a
+    # thing the server can be asked to do, and a plugin has to be able to find out whether this title
+    # can do it before offering it. `Console.supports_verb` is that question.
+    #
+    # Empty on every engine that has none, which is most of them: nothing here is invented for a
+    # title, and a plugin asking for a verb this profile does not declare is told no.
+    player_verbs: dict[str, str] = field(default_factory=dict)
+
     # The verb that cancels a vote already in progress. Urban Terror's is `veto`, and it is the only
     # engine here that has one — Homefront and Altitude announce a vote and take no instruction about
     # it. Empty therefore means a vote cannot be stopped, which a plugin has to be able to *ask*

@@ -174,6 +174,21 @@ class Console(Protocol):
         `GameProfile.map_arguments` names them, and a title that declares none never gets any."""
         ...
 
+    def supports_verb(self, name: str) -> bool:
+        """Whether this engine has a verb for doing ``name`` to a player — `slap`, `mute`, and so on.
+
+        Asked before offering it, which is the whole point: the classic bot's `inflictCustomPenalty`
+        sent a command into the dark and reported nothing, so a plugin could offer "slap" on a title
+        with no such verb and the operator would see a penalty that silently did nothing.
+        `GameProfile.player_verbs` is where the answers live.
+        """
+        ...
+
+    def apply_verb(self, name: str, client: Client, **values: str) -> bool:
+        """Do ``name`` to a player. False when this engine has no such verb, or the template's
+        arguments were not all supplied — never a silent half-sent command."""
+        ...
+
     def can_cancel_vote(self) -> bool:
         """Whether this engine has a verb for stopping a vote in progress at all.
 

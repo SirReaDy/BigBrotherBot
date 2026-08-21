@@ -25,11 +25,11 @@ Changed, and the first two are faults:
 * **The settings are per instance.** The classic held them in a dict on the *class* and mutated it in
   place at load, so the defaults were permanently overwritten and two instances shared one table.
 
-**One thing is deliberately not ported.** The classic offered `slap`, `nuke` and `kill` as penalties,
-through `inflictCustomPenalty` — engine verbs that this bot does not have (see TODO §4.5 and the note
-about an engine-verb seam, which belongs with `poweradminurt`). Configuring one of those is refused at
-load, by name, with what is available instead: pretending to slap somebody and doing nothing would be
-worse than saying so.
+**`slap`, `nuke` and `kill` work where the engine has the verb.** The classic offered them through
+`inflictCustomPenalty`, which sent a command into the dark on any title. They are `GameProfile.player_verbs`
+here, asked for with `Console.supports_verb` before being offered: configuring one on a title that has
+none is refused at load, by name, and falls back to `warn` — because a penalty that silently does
+nothing is worse than one that says it cannot.
 """
 
 from __future__ import annotations
@@ -45,11 +45,12 @@ from b3.domain.client import Client
 
 log = logging.getLogger(__name__)
 
-#: Penalties this bot can actually carry out.
+#: Penalties every engine can carry out, because they are the bot's own.
 PENALTIES = ("warn", "kick", "tempban")
 
-#: Penalties the classic offered through `inflictCustomPenalty`, which are engine verbs rather than
-#: recorded penalties. Named separately so the refusal can say *why* rather than "unknown value".
+#: Penalties that are *engine verbs* rather than recorded penalties — the classic's
+#: `inflictCustomPenalty` set. Available only where the title declares one (`GameProfile.player_verbs`,
+#: which today means the Urban Terror family), and refused at load with a reason where it does not.
 ENGINE_PENALTIES = ("slap", "nuke", "kill")
 
 #: A hit that counts against the window. Team damage included, which the classic left out: a
@@ -117,17 +118,19 @@ class SpawnkillPlugin(Plugin):
         defaults = DEFAULTS[name]
         values = {**defaults, **(section if isinstance(section, dict) else {})}
         penalty = str(values.get("penalty") or "warn").strip().lower()
-        if penalty in ENGINE_PENALTIES:
+        if penalty in ENGINE_PENALTIES and not self.console.supports_verb(penalty):
             log.error(
-                "spawnkill: %s.penalty is %r, which is a game-server verb this bot has no seam for; "
-                "using %r instead. Available: %s",
+                "spawnkill: %s.penalty is %r, which this game has no verb for; using %r instead. "
+                "Available here: %s",
                 name,
                 penalty,
                 defaults["penalty"],
-                ", ".join(PENALTIES),
+                ", ".join(
+                    (*PENALTIES, *(v for v in ENGINE_PENALTIES if self.console.supports_verb(v)))
+                ),
             )
             penalty = str(defaults["penalty"])
-        elif penalty not in PENALTIES:
+        elif penalty not in PENALTIES and penalty not in ENGINE_PENALTIES:
             log.error(
                 "spawnkill: %s.penalty is %r, which is not one of %s; using %r",
                 name,
@@ -206,7 +209,12 @@ class SpawnkillPlugin(Plugin):
         return True
 
     def punish(self, window: Window, client: Client) -> None:
-        if window.penalty == "kick":
+        if window.penalty in ENGINE_PENALTIES:
+            # A verb rather than a penalty: nothing is recorded, because nothing happened that a
+            # future admin needs to read. The reason still goes to the player where the engine's verb
+            # carries one; `slap` and `nuke` do not, so the log line is the record.
+            self.console.apply_verb(window.penalty, client)
+        elif window.penalty == "kick":
             self.console.kick(client, reason=window.reason)
         elif window.penalty == "tempban":
             self.console.tempban(client, minutes=window.duration, reason=window.reason)
