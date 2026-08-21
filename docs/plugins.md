@@ -31,6 +31,7 @@ list, each with an optional config of its own (see `examples/`):
 | `firstkill` | announces first blood, first headshot and the first team kill | `!firstkill` `!firsttk` `!firsths` |
 | `netblocker` | refuses players connecting from a listed network | — |
 | `duel` | keeps score between two players who agreed to a duel | `!duel` `!duelreset` `!duelcancel` |
+| `spawnkill` | warns, kicks or bans players who shoot somebody who just spawned | — |
 
 ### tk — team damage
 
@@ -278,6 +279,20 @@ commonest duel there is, and the classic plugin watched ordinary kills only, so 
 forever. A challenge nobody answers expires (the classic's waited indefinitely), and one player may have
 `max_duels` running at once, because each of them messages both players after every kill.
 Config: `examples/plugin_duel.yaml`.
+
+### spawnkill — shooting somebody who cannot shoot back yet
+
+Two windows measured from the moment a player spawns: `hit` (shooting them) and `kill`, each with its own
+delay, exempt level, penalty and reason. Every kind of shot counts, **team kills and team damage
+included** — from the victim's side it makes no difference whose bullet it was, and the classic plugin
+punished neither.
+
+A player the bot has not seen spawn is never a victim, which is what makes a bot started mid-round safe.
+The plugin needs the engine to report spawns (the Quake 3 family and Frostbite do); where it does not,
+nothing is recorded and nobody is punished, with no game names anywhere in the plugin. `warn`, `kick` and
+`tempban` are the penalties; the classic's `slap`, `nuke` and `kill` were game-server verbs this bot has
+no seam for, and configuring one is refused at startup rather than silently doing nothing.
+Config: `examples/plugin_spawnkill.yaml`.
 
 Anything else is a git install — see [Plugins](cli.md#plugins) and
 [Writing an installable plugin](#writing-an-installable-plugin).

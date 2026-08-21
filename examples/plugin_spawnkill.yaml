@@ -1,0 +1,46 @@
+# spawnkill — punishes shooting players who have only just spawned.
+#
+# Point at it from the main config:
+#
+#   plugins:
+#     - name: spawnkill
+#       config: "@conf/plugin_spawnkill.yaml"
+#
+# A player who has been alive for a second cannot fight back, and camping the place people appear is
+# the most demoralising thing anybody can do on a small map. Two windows, each with its own penalty:
+# shooting somebody that recently (`hit`) and killing them (`kill`).
+#
+# Every kind of shot counts, including a **team kill** and team damage: from the victim's side it makes
+# no difference whose bullet it was. The classic plugin punished neither.
+#
+# This needs the game server to report spawns. The Quake 3 family (`ClientSpawn:`) and Frostbite do;
+# where an engine does not, nothing is ever recorded and so nobody is ever punished — there is nothing
+# to configure for that, and no game name is mentioned anywhere in the plugin.
+
+hit:
+  # At or above this level nobody is checked. 40 is `admin`.
+  max_level: 40
+
+  # Seconds after somebody spawns during which shooting them counts. Keep it short: two seconds is
+  # about how long it takes to become able to shoot back.
+  delay: 2
+
+  # warn, kick or tempban.
+  #
+  # The classic also offered `slap`, `nuke` and `kill`. Those are game-server verbs rather than
+  # recorded penalties, and this bot has no seam for them yet — configuring one is refused at startup
+  # by name and falls back to `warn`, because a penalty that silently does nothing is worse than a
+  # message saying it cannot be done.
+  penalty: warn
+
+  # Minutes. How long the warning lives, or how long a tempban lasts.
+  duration: 3
+
+  reason: do not shoot players who have just spawned
+
+kill:
+  max_level: 40
+  delay: 3
+  penalty: warn
+  duration: 5
+  reason: spawn-killing is not allowed here
