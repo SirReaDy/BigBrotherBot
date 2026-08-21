@@ -1,0 +1,70 @@
+# countryfilter — decides which countries may play here.
+#
+# Point at it from the main config, **after** geolocation:
+#
+#   plugins:
+#     - name: geolocation
+#       config: "@conf/plugin_geolocation.yaml"
+#     - name: countryfilter
+#       config: "@conf/plugin_countryfilter.yaml"
+#
+# This removes people for where they are, not for anything they did. It is the bluntest tool in the
+# box: everybody behind an address in a listed country is refused, including the player who has done
+# nothing and the one sharing a carrier with somebody who has. `max_level` matters — a registered
+# player is exempt by default.
+#
+# THE TWO ORDERINGS are Apache's, which is what the classic plugin modelled itself on:
+#
+#   deny,allow   allowed unless denied. The deny list is applied first and the allow list SECOND,
+#                so allow **overrides** deny. Use it for a blocklist.
+#   allow,deny   denied unless allowed. Use it for a whitelist.
+#
+# The trap, and the reason `allow_from` is empty below: under `deny,allow`, `allow_from: all` overrides
+# the whole deny list, so nothing is ever refused. The classic shipped exactly that as its default, so
+# an operator would add a country to `deny_from`, restart, and watch nothing happen. Writing that
+# combination now produces a warning at startup naming it.
+#
+# A country the database cannot name is in **neither** list: it is not a country, so it cannot be the
+# one that was denied. Under `allow,deny` that means such a player is refused (they are not on the
+# guest list); under `deny,allow` it means they are let in.
+
+settings:
+  order: deny,allow
+
+  # ISO two-letter country codes, or `all`. A list, or one comma-separated string — both work.
+  deny_from: []
+    # - CN
+    # - RU
+  allow_from: []
+
+  # At or below this level a player is subject to the filter. 1 (`user`) is the classic's default, so
+  # anybody who has typed !register is already exempt. 0 subjects registered players to it too.
+  max_level: 1
+
+  # Exemptions, checked before the country lists and before `blocked_ips`.
+  #
+  # WARNING about `exempt_names`: a name is whatever the player typed. Anybody who learns an exempt
+  # name can wear it and walk straight past this filter. It is here because operators use it; prefer
+  # `exempt_ips`, or give the player a group — neither of those can be faked.
+  exempt_names: []
+  exempt_ips: []
+
+  # Addresses that may never connect, whatever the country lists say. An exemption above still wins.
+  blocked_ips: []
+
+  # What to say. Both announcements are held for `startup_silence` seconds after the bot starts, since
+  # a restart mid-match places everybody at once — the classic held the "accepted" one and not the
+  # "refused" one, so a restarting bot was silent about who it let in and loud about who it removed.
+  announce_accepted: yes
+  announce_rejected: yes
+  startup_silence: 300
+
+  # Countries to say nothing about either way — for the ones that arrive constantly and would fill
+  # the chat. `all` here silences both announcements without switching the filter off.
+  quiet_countries: []
+
+# The three lines can be reworded in the main config's `messages:` block:
+#
+#   countryfilter_accepted     ({name}, {country})
+#   countryfilter_rejected     ({name}, {country})
+#   countryfilter_kick_reason  what the refused player is shown

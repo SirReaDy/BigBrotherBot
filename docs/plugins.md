@@ -34,6 +34,7 @@ list, each with an optional config of its own (see `examples/`):
 | `spawnkill` | warns, kicks or bans players who shoot somebody who just spawned | — |
 | `geolocation` | resolves where a player is connecting from, for the plugins that need it | — |
 | `location` | announces where arrivals are from, and answers for it | `!locate` `!distance` `!isp` |
+| `countryfilter` | refuses players from the countries a server does not accept | — |
 
 ### tk — team damage
 
@@ -330,6 +331,20 @@ fields produce the message that says so — the classic substituted them as `--`
 database answered "Bob is connected from -- (Germany)". Nothing is announced for the first few minutes
 after the bot starts, since a restart mid-match authenticates everybody at once.
 Config: `examples/plugin_location.yaml`.
+
+### countryfilter — which countries may play here
+
+Apache's model, which is what the classic modelled it on: `deny,allow` (allowed unless denied — a
+blocklist) or `allow,deny` (denied unless allowed — a whitelist), with `all` available in either list.
+Exemptions by level, name and address are checked first, then an address blocklist, then the countries.
+
+Two things worth knowing before switching it on. **Under `deny,allow` the allow list overrides the deny
+list**, so `allow_from: all` — which the classic shipped as its default — makes any blocklist a no-op;
+`allow_from` starts empty here and writing that combination logs a warning naming it. And a country the
+database cannot name is in **neither** list, so it is refused by a whitelist and admitted by a
+blocklist: the classic matched with `str.find`, and an empty string is found in anything, so those
+players were refused by *any* deny list. `exempt_names` works but is spoofable — a name is whatever the
+player typed. Config: `examples/plugin_countryfilter.yaml`.
 
 Anything else is a git install — see [Plugins](cli.md#plugins) and
 [Writing an installable plugin](#writing-an-installable-plugin).
