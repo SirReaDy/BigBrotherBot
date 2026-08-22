@@ -54,8 +54,7 @@
 #   !paexec <file>     run a config file. Level 80, above the other server commands, because what a
 #                      config file contains is anything; the name must look like a filename
 #   !papublic on|off   open the server to everybody, or put a password on it (alias: !public)
-#
-# Still to come: the other policies — match mode and vote delay.
+#   !pamatch on|off    put the server into match mode, and the plugins with it (alias: !match)
 #
 # Two commands from the classic are deliberately absent. `!paveto` is `callvote`'s `!veto`, which works
 # on every engine that can cancel a vote rather than only this one. `!paversion` printed the plugin's
@@ -358,6 +357,46 @@ settings:
   rotation_medium: ""
   rotation_large: ""
 
+  # -- match mode ------------------------------------------------------------------------------
+  #
+  # `!pamatch on` (alias `!match`) tells the engine a match is being played, switches off the plugins
+  # named here, and runs a config file; `off` puts it all back. Everything automatic in this plugin —
+  # both balancers, the spectator and name checks, the headshot counter, the bots — stands down while
+  # a match is on: those policies exist to keep a *public* server pleasant, and the people in a match
+  # have agreed the teams between themselves.
+
+  # Plugins to switch off for the duration, comma-separated. Only the ones that were actually running
+  # are switched back on afterwards; the classic re-enabled everything on its list, so a plugin an
+  # operator had deliberately turned off came back on because a match had happened.
+  matchmode_plugins: ""
+
+  # Config files run when a match starts and when it ends. Named, not paths: the file has to be one
+  # the *server* can find, and the classic checked for it on the bot's own disk before sending the
+  # command — so with the bot on another machine, which this project supports, a perfectly good
+  # config was skipped without a word.
+  matchmode_on_config: ""
+  matchmode_off_config: ""
+
+  # A config file per gametype, run when the gametype command for it is used. A match on capture the
+  # flag can want a different time limit from one on team deathmatch, and an operator who has written
+  # that down should not have to type it as well. Names: ffa lms tdm ts ftl cah ctf bomb jump freeze
+  # gungame.
+  matchmode_configs: {}
+  #  ctf: config_ctf.cfg
+  #  ts:  config_ts.cfg
+
+  # -- the vote delay --------------------------------------------------------------------------
+  #
+  # Minutes at the start of a round during which nobody may call a vote; 0 turns it off. A vote called
+  # in the first thirty seconds is one called before anybody has seen the map, and it decides the next
+  # twenty minutes for everybody.
+  #
+  # Voting is put back to whatever it was, and a server whose operator keeps voting off is not handed
+  # voting a minute later. A round starting inside a running delay restarts it — the classic started a
+  # thread per round and cancelled none of them, so the first would hand voting back in the middle of
+  # the second round.
+  vote_delay_minutes: 0
+
 # Everything it says can be reworded in the main config's `messages:` block:
 #
 #   pa_slapped / pa_nuked / pa_killed / pa_muted / pa_unmuted     ({name}, {minutes})
@@ -381,3 +420,5 @@ settings:
 #   pa_name_changes_left                                          ({count})
 #   pa_headshot_one / pa_headshots / pa_headshots_percent          ({name}, {count}, {percent})
 #   pa_advice_helmet / pa_advice_kevlar                            ({count})
+#   pa_match_usage / pa_match_on / pa_match_off / pa_match_reload
+#   pa_match_plugins_off / pa_match_plugins_on                     ({plugins})

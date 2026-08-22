@@ -2639,6 +2639,309 @@ async def test_the_rotation_is_only_written_when_it_changes(console):
     assert console.cvars == {}
 
 
+# -- match mode ---------------------------------------------------------------------------------
+
+
+class _Switchable:
+    """A plugin that can be switched off, as the console's registry hands them out."""
+
+    def __init__(self, enabled: bool = True) -> None:
+        self.enabled = enabled
+
+    def is_enabled(self) -> bool:
+        return self.enabled
+
+    def enable(self) -> None:
+        self.enabled = True
+
+    def disable(self) -> None:
+        self.enabled = False
+
+
+@pytest.mark.asyncio
+async def test_match_mode_tells_the_engine(console):
+    _plugin(console)
+    admin = _join(console, "Admin", bits=64)
+
+    await _run(console, admin, "!pamatch on")
+
+    assert console.cvars["g_matchmode"] == "1"
+    assert console.said_big == ["match mode is on"]
+
+
+@pytest.mark.asyncio
+async def test_match_mode_works_without_the_pa(console):
+    _plugin(console)
+    admin = _join(console, "Admin", bits=64)
+
+    await _run(console, admin, "!match off")
+
+    assert console.cvars["g_matchmode"] == "0"
+
+
+@pytest.mark.asyncio
+async def test_a_match_mode_nobody_has_heard_of_is_refused(console):
+    _plugin(console)
+    admin = _join(console, "Admin", bits=64)
+
+    await _run(console, admin, "!pamatch sideways")
+
+    assert console.cvars == {}
+    assert _told(console, admin) == ["!pamatch on|off"]
+
+
+@pytest.mark.asyncio
+async def test_the_named_plugins_are_switched_off(console):
+    plugin = _plugin(console, matchmode_plugins="tk, spamcontrol")
+    console.plugins["tk"] = _Switchable()
+    console.plugins["spamcontrol"] = _Switchable()
+    admin = _join(console, "Admin", bits=64)
+
+    await _run(console, admin, "!pamatch on")
+
+    assert not console.plugins["tk"].enabled
+    assert not console.plugins["spamcontrol"].enabled
+    assert plugin.match_mode
+
+
+@pytest.mark.asyncio
+async def test_only_the_ones_this_switched_off_come_back(console):
+    """The classic re-enabled every plugin on its list when the match ended, so one an operator had
+    deliberately switched off came back on because a match had happened."""
+    _plugin(console, matchmode_plugins="tk, spamcontrol")
+    console.plugins["tk"] = _Switchable()
+    console.plugins["spamcontrol"] = _Switchable(enabled=False)  # off on purpose
+    admin = _join(console, "Admin", bits=64)
+
+    await _run(console, admin, "!pamatch on")
+    await _run(console, admin, "!pamatch off")
+
+    assert console.plugins["tk"].enabled
+    assert not console.plugins["spamcontrol"].enabled
+
+
+@pytest.mark.asyncio
+async def test_a_plugin_that_is_not_loaded_is_not_a_problem(console):
+    _plugin(console, matchmode_plugins="tk, nosuchplugin")
+    console.plugins["tk"] = _Switchable()
+    admin = _join(console, "Admin", bits=64)
+
+    await _run(console, admin, "!pamatch on")
+
+    assert not console.plugins["tk"].enabled
+
+
+@pytest.mark.asyncio
+async def test_the_match_config_is_run(console):
+    _plugin(console, matchmode_on_config="match_on.cfg", matchmode_off_config="match_off.cfg")
+    admin = _join(console, "Admin", bits=64)
+
+    await _run(console, admin, "!pamatch on")
+    await _run(console, admin, "!pamatch off")
+
+    assert [values["file"] for name, values in console.server_verbs_applied if name == "exec"] == [
+        "match_on.cfg",
+        "match_off.cfg",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_a_config_name_that_is_not_a_filename_is_refused(console, caplog):
+    """`exec` takes a filename, and a "filename" with a semicolon in it is somebody running a second
+    command — the same rule `!paexec` applies to what an admin types."""
+    _plugin(console, matchmode_on_config="match.cfg; quit")
+    admin = _join(console, "Admin", bits=64)
+
+    with caplog.at_level("WARNING"):
+        await _run(console, admin, "!pamatch on")
+
+    assert console.server_verbs_applied == []
+    assert "quit" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_a_gametype_command_runs_the_config_kept_for_it(console):
+    _plugin(console, matchmode_configs={"ctf": "config_ctf.cfg"})
+    admin = _join(console, "Admin", bits=64)
+
+    await _run(console, admin, "!pactf")
+
+    assert ("exec", {"file": "config_ctf.cfg"}) in console.server_verbs_applied
+
+
+@pytest.mark.asyncio
+async def test_a_gametype_with_no_config_runs_nothing(console):
+    _plugin(console, matchmode_configs={"ctf": "config_ctf.cfg"})
+    admin = _join(console, "Admin", bits=64)
+
+    await _run(console, admin, "!patdm")
+
+    assert console.server_verbs_applied == []
+
+
+@pytest.mark.asyncio
+async def test_everything_automatic_stands_down_during_a_match(console):
+    """Each of these exists to keep a *public* server pleasant, and the people in a match have
+    agreed the teams between themselves. The classic checked its flag separately in six places."""
+    plugin = _balancer(console, speccheck_min_players=2)
+    admin = _join(console, "Admin", bits=64)
+    _sides(console, plugin, red=5, blue=1)
+    _watcher(console, plugin, "Watcher")
+    await _run(console, admin, "!pamatch on")
+    console.verbs_applied.clear()
+    console.warned.clear()
+
+    plugin._teamcheck()
+    plugin.skillcheck()
+    plugin.namecheck()
+    plugin.speccheck()
+
+    assert console.verbs_applied == []
+    assert console.warned == []
+
+
+@pytest.mark.asyncio
+async def test_the_headshot_counter_stands_down_too(console):
+    plugin = _plugin(console, headshot_counter=True)
+    admin = _join(console, "Admin", bits=64)
+    bob = _teamed(console, "Bob", "red", bits=0)
+    ann = _teamed(console, "Ann", "blue", bits=0)
+    await _run(console, admin, "!pamatch on")
+    console.said_big.clear()
+
+    await _hit(console, bob, ann, "head")
+
+    assert console.said_big == []
+    assert plugin.hits(bob).head == 0
+
+
+@pytest.mark.asyncio
+async def test_the_bots_go_away_for_a_match(console):
+    console.game.map_name = "ut4_abbey"
+    _plugin(console, botsupport_enable=True, botsupport_maps="ut4_abbey")
+    admin = _join(console, "Admin", bits=64)
+    assert console.cvars["bot_minplayers"] == "4"
+
+    await _run(console, admin, "!pamatch on")
+
+    assert console.cvars["bot_minplayers"] == "0"
+
+
+# -- the vote delay -----------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_voting_is_stopped_at_the_start_of_a_round(console):
+    """A vote called in the first thirty seconds is one called before anybody has seen the map."""
+    _plugin(console, vote_delay_minutes=2)
+    console.cvars["g_allowvote"] = "536870911"
+
+    await console.bus.publish(Event(EventType.GAME_ROUND_START))
+
+    assert console.cvars["g_allowvote"] == "0"
+
+
+@pytest.mark.asyncio
+async def test_voting_comes_back_when_the_delay_is_up(console):
+    plugin = _plugin(console, vote_delay_minutes=2)
+    console.cvars["g_allowvote"] = "536870911"
+    await console.bus.publish(Event(EventType.GAME_ROUND_START))
+
+    console.clock.advance(121)
+    plugin._run_repeats()
+
+    assert console.cvars["g_allowvote"] == "536870911"
+
+
+@pytest.mark.asyncio
+async def test_voting_stays_off_until_then(console):
+    plugin = _plugin(console, vote_delay_minutes=2)
+    console.cvars["g_allowvote"] = "536870911"
+    await console.bus.publish(Event(EventType.GAME_ROUND_START))
+
+    console.clock.advance(60)
+    plugin._run_repeats()
+
+    assert console.cvars["g_allowvote"] == "0"
+
+
+@pytest.mark.asyncio
+async def test_a_second_round_inside_the_delay_does_not_hand_voting_back_early(console):
+    """The classic started a `threading.Timer` per round and cancelled none of them, so the first
+    one handed voting back while the second round still expected it off."""
+    plugin = _plugin(console, vote_delay_minutes=2)
+    console.cvars["g_allowvote"] = "536870911"
+    await console.bus.publish(Event(EventType.GAME_ROUND_START))
+
+    console.clock.advance(90)
+    await console.bus.publish(Event(EventType.GAME_ROUND_START))
+    console.clock.advance(40)  # past the *first* round's deadline
+    plugin._run_repeats()
+
+    assert console.cvars["g_allowvote"] == "0"
+
+    console.clock.advance(90)
+    plugin._run_repeats()
+    assert console.cvars["g_allowvote"] == "536870911"
+
+
+@pytest.mark.asyncio
+async def test_the_delay_puts_back_what_was_there(console):
+    plugin = _plugin(console, vote_delay_minutes=1)
+    console.cvars["g_allowvote"] = "12345"
+    await console.bus.publish(Event(EventType.GAME_ROUND_START))
+
+    console.clock.advance(61)
+    plugin._run_repeats()
+
+    assert console.cvars["g_allowvote"] == "12345"
+
+
+@pytest.mark.asyncio
+async def test_a_server_with_voting_already_off_is_left_alone(console):
+    _plugin(console, vote_delay_minutes=2)
+    console.cvars["g_allowvote"] = "0"
+
+    await console.bus.publish(Event(EventType.GAME_ROUND_START))
+
+    assert console.cvars["g_allowvote"] == "0"
+
+
+@pytest.mark.asyncio
+async def test_voting_is_not_handed_back_to_a_server_that_never_had_it(console):
+    plugin = _plugin(console, vote_delay_minutes=2)
+    console.cvars["g_allowvote"] = "0"
+    await console.bus.publish(Event(EventType.GAME_ROUND_START))
+
+    console.clock.advance(300)
+    plugin._run_repeats()
+
+    assert console.cvars["g_allowvote"] == "0"
+
+
+@pytest.mark.asyncio
+async def test_the_delay_can_be_switched_off(console):
+    _plugin(console, vote_delay_minutes=0)
+    console.cvars["g_allowvote"] = "536870911"
+
+    await console.bus.publish(Event(EventType.GAME_ROUND_START))
+
+    assert console.cvars["g_allowvote"] == "536870911"
+
+
+@pytest.mark.asyncio
+async def test_no_delay_during_a_match(console):
+    """The people in a match called it; they do not need protecting from each other's votes."""
+    _plugin(console, vote_delay_minutes=2)
+    admin = _join(console, "Admin", bits=64)
+    console.cvars["g_allowvote"] = "536870911"
+    await _run(console, admin, "!pamatch on")
+
+    await console.bus.publish(Event(EventType.GAME_ROUND_START))
+
+    assert console.cvars["g_allowvote"] == "536870911"
+
+
 # -- through a real bot ----------------------------------------------------------------------------
 
 

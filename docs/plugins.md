@@ -421,6 +421,18 @@ a name registered to somebody else?" where this answers "is this a name at all?"
 as players see them — colours stripped, trimmed, lower-cased — where the classic compared raw strings,
 so `^1Bob` and `^2Bob` were not duplicates of each other.
 
+**Match mode** — `!pamatch on` tells the engine a match is being played, switches off the plugins an
+operator named for it, and runs a config file. Everything automatic in this plugin stands down while it
+is on, since those policies exist to keep a *public* server pleasant. Only the plugins it switched off
+come back: the classic re-enabled its whole list, so one an operator had deliberately turned off
+returned because a match had happened. Its config files are not looked for on the bot's own disk
+either — the classic did that before sending `exec`, so with the bot on another machine a perfectly
+good config was skipped in silence.
+
+**The vote delay**, which stops players calling a vote for the first few minutes of a round. A deadline
+rather than the classic's thread per round, none of which it cancelled: two rounds inside the delay
+left two timers running and the first handed voting back mid-round.
+
 **The rotation manager**, which switches the map list by how busy the server is, with a margin either
 side of each switch point. The classic's hysteresis took a "was the last thing a join or a part?"
 argument and had the join case backwards, so joining a player could *shrink* the maps; here the margin
@@ -459,8 +471,6 @@ bounded numbers (`!pasetgravity`, `!patimelimit`, the wave delays, …), `!pasta
 config file contains is anything, and the name has to look like a filename rather than being sanitised
 into one — and `!papublic on|off`, whose private password is built from a configured word plus fresh
 digits, sent to the admin privately and never written to the log.
-
-Still to come: the other policies — match mode and vote delay.
 
 One immunity rule covers all four player commands — you cannot use them on somebody at or above your own
 level. The classic had `slap_safe_level` on `!paslap`, a different comparison on `!pamute`, and *nothing*

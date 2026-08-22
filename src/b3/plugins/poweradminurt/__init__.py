@@ -31,6 +31,17 @@ map — somebody who changes name every thirty seconds cannot be talked about, c
 reported. It does **not** overlap `nickreg`, which was worth checking before writing it: that plugin
 answers "is this a name registered to somebody else?", and this one answers "is this a name at all?".
 
+**Match mode.** `!pamatch on` tells the engine a match is being played, switches off the plugins an
+operator has named for it, and runs a config file; `off` puts it all back. Everything automatic in this
+plugin stands down while it is on — every one of those policies exists to keep a *public* server
+pleasant, and the people in a match have agreed the teams between themselves. Each gametype command can
+run a config of its own as well, since a match on capture the flag may want a different time limit from
+one on team deathmatch.
+
+**The vote delay**, which stops players calling a vote for the first few minutes of a round: a vote
+called in the first thirty seconds is one called before anybody has seen the map, and it decides the
+next twenty minutes for everybody.
+
 **The rotation manager**, which switches the server's map list by how busy it is: small maps for a
 handful of players, big ones for a full server, with a margin either side of each switch so that a
 server hovering on one does not change its list every time somebody joins.
@@ -59,8 +70,6 @@ the wave delays), `!pastamina`, `!pamoon`, `!pasetnextmap` and `!pagear`.
 
 **The server commands.** `!pabigtext`, `!paset`, `!paget`, `!pavote`, `!pamaprestart`, `!pamapreload`,
 `!pacyclemap`, `!paexec` and `!papublic`.
-
-**Still to come:** the other policies — match mode and vote delay.
 
 **Not ported, deliberately:**
 
@@ -157,6 +166,19 @@ Changed from the classic, most of them faults:
   classic warned every one of them on every sweep. And the rename limit's exemption is a level rather
   than the classic's hard-coded `9`, which is not a group anybody has.
 
+* **Only the plugins match mode switched off are switched back on.** The classic re-enabled every
+  plugin on its list when the match ended, so one an operator had deliberately switched off came back
+  on because a match had happened.
+* **A match config is not looked for on the bot's own disk.** The classic called `os.path.isfile` on
+  a path built from `fs_homepath` before sending `exec`, so on any of the setups this project supports
+  where the bot is not on the game server — an FTP or HTTP log tail — a perfectly good config file was
+  skipped without a word. The name is checked the way `!paexec` checks one, and then sent.
+* **The vote delay is a deadline, not a thread.** The classic started a `threading.Timer` per round
+  and cancelled none of them: two rounds starting inside the delay left two timers running, the first
+  of which handed voting back while the second round still expected it off, and a plugin switched off
+  mid-delay had voting re-enabled by a thread nothing could reach. A round starting inside a running
+  delay restarts it here. It also reads whether voting was on *before* turning it off, so a server
+  whose operator keeps voting disabled is not handed voting a minute later.
 * **Joining a player cannot shrink the map rotation.** The classic's hysteresis took a `delta`
   saying whether the last thing to happen was a join or a part, and had the join case backwards:
   with the switch at four and a margin of two, five players who had just been *joined* were put on
@@ -451,6 +473,24 @@ DEFAULTS: dict[str, object] = {
     "rotation_small": "",
     "rotation_medium": "",
     "rotation_large": "",
+    # -- match mode ---------------------------------------------------------------------------
+    # Plugins to switch off while a match is being played, comma-separated. Only the ones that were
+    # running are switched back on afterwards.
+    "matchmode_plugins": "",
+    # Config files run when a match starts and when it ends.
+    "matchmode_on_config": "",
+    "matchmode_off_config": "",
+    # A config file per gametype, run when the gametype command for it is used: a match on capture
+    # the flag can want a different time limit from one on team deathmatch, and an operator who has
+    # written that down should not have to type it as well.
+    #     matchmode_configs:
+    #       ctf: config_ctf.cfg
+    #       ts:  config_ts.cfg
+    "matchmode_configs": {},
+    # -- the vote delay -----------------------------------------------------------------------
+    # Minutes at the start of a round during which nobody may call a vote; 0 turns it off. A vote
+    # called in the first thirty seconds is one called before anybody has seen the map.
+    "vote_delay_minutes": 0,
 }
 
 MESSAGES = {
@@ -544,6 +584,12 @@ MESSAGES = {
     "pa_name_forbidden": "that name is not allowed here",
     "pa_name_changes_kick": "too many name changes",
     "pa_name_changes_left": "{count} more name changes allowed on this map",
+    "pa_match_usage": "!pamatch on|off",
+    "pa_match_on": "match mode is on",
+    "pa_match_off": "match mode is off",
+    "pa_match_plugins_off": "switched off for the match: {plugins}",
+    "pa_match_plugins_on": "switched back on: {plugins}",
+    "pa_match_reload": "type !mapreload to apply it",
     "pa_headshot_one": "{name}: 1 headshot!",
     "pa_headshots": "{name}: {count} headshots!",
     "pa_headshots_percent": "{name}: {count} headshots! ({percent}%)",
@@ -626,6 +672,9 @@ ROTATION_CVAR = "g_mapcycle"
 
 #: The three rotations, smallest first.
 SMALL, MEDIUM, LARGE = 1, 2, 3
+
+#: The cvar that tells the engine a match is being played.
+MATCH_CVAR = "g_matchmode"
 
 #: How few name changes have to be left before the player is told how many. The classic's number.
 NAME_CHANGE_WARNING_AT = 4
@@ -756,6 +805,12 @@ class PoweradminurtPlugin(Plugin):
         self._last_advice: tuple[str, str, float] | None = None
         #: The map rotation being played, as a band: 0 until one has been chosen.
         self._rotation = 0
+        #: Whether a match is being played. Everything automatic stands down while it is.
+        self.match_mode = False
+        #: When voting comes back after the delay at the start of a round; None when none is running.
+        self._voting_back_at: float | None = None
+        #: The plugins *this* switched off, so that only those are switched back on.
+        self._disabled_for_match: list[str] = []
         #: Whether this plugin currently has the server topping itself up with AI players, and
         #: whether it has ever written the bot cvars at all. Both so that a server whose operator
         #: manages bots by hand is not quietly switched over by a plugin that is not using them.
@@ -837,6 +892,7 @@ class PoweradminurtPlugin(Plugin):
         def handler(ctx: CommandContext) -> None:
             self.console.set_cvar("g_gametype", str(number))
             log.info("poweradminurt: %s set the gametype to %s", ctx.client.name, what)
+            self.apply_gametype_config(GAMETYPE_NAMES.get(number, ""))
             ctx.reply(self.message("pa_gametype", what=what))
 
         return handler
@@ -1144,7 +1200,12 @@ class PoweradminurtPlugin(Plugin):
             log.debug("poweradminurt: %s left, so the rest of their slapping stops", client.name)
 
     def _run_repeats(self) -> None:
-        """One pass over the outstanding repeats. Nothing sleeps and nothing is a thread."""
+        """One pass over everything this plugin owes on a deadline.
+
+        Nothing sleeps and nothing is a thread: the outstanding slaps and nukes, and giving voting
+        back after the delay at the start of a round.
+        """
+        self._check_vote_delay()
         now = self.console.clock.now()
         for repeat in list(self.pending):
             if now < repeat.due:
@@ -1256,8 +1317,13 @@ class PoweradminurtPlugin(Plugin):
         self._quiet_until = self.console.clock.now() + max(0.0, seconds)
 
     def holding_off(self) -> bool:
-        """Whether the automatic checks are currently standing down."""
-        return self.console.clock.now() < self._quiet_until
+        """Whether the automatic checks are currently standing down.
+
+        A match counts: every one of these policies exists to keep a public server pleasant, and
+        during a match the people playing have agreed the teams between themselves. The classic
+        checked its `_matchmode` flag separately in each of six places.
+        """
+        return self.match_mode or self.console.clock.now() < self._quiet_until
 
     def _gametypes(self, key: str) -> set[str]:
         """One of the two gametype lists, as the names the engine's numbers map to."""
@@ -1425,6 +1491,7 @@ class PoweradminurtPlugin(Plugin):
 
     def _on_round_start(self, _event: Event) -> None:
         self._reset_hits("round")
+        self._start_vote_delay()
         self._round_ended = False
         self._last_balance = self.console.clock.now()
         self._forget_contributions()
@@ -1457,6 +1524,94 @@ class PoweradminurtPlugin(Plugin):
             return
         for client in self.console.clients.connected():
             client.del_var(self, "locked_to")
+
+    # -- match mode ----------------------------------------------------------
+
+    def _exec_config(self, name: object) -> bool:
+        """Run a config file on the server, if it is named and the name is a filename.
+
+        Checked the way `!paexec` checks: `exec` takes a filename, and a "filename" with a semicolon
+        in it is somebody running a second command. What is *not* done here is the classic's
+        `os.path.isfile` — it looked for the file on the **bot's** filesystem before sending the
+        command, so on any of the setups this project supports where the bot is not on the game
+        server (an FTP or HTTP log tail), a perfectly good config was skipped without a word.
+        """
+        filename = str(name or "").strip()
+        if not filename:
+            return False
+        if not CONFIG_FILE_RE.match(filename):
+            log.warning("poweradminurt: %r is not a config file name I will run", filename)
+            return False
+        return self.console.apply_server_verb("exec", file=filename)
+
+    def apply_gametype_config(self, gametype: str) -> None:
+        """Run the config an operator keeps for this gametype, then the match one.
+
+        The classic ran these from inside each of its gametype commands, and this does the same —
+        switching to capture the flag can want a different time limit from team deathmatch, and an
+        operator who has written that down should not have to type it as well.
+        """
+        configs = self.settings.get("matchmode_configs")
+        if isinstance(configs, dict):
+            self._exec_config(configs.get(gametype))
+        self._apply_match_config()
+
+    def _apply_match_config(self) -> None:
+        key = "matchmode_on_config" if self.match_mode else "matchmode_off_config"
+        self._exec_config(self.settings.get(key))
+
+    def _match_plugins(self) -> list[str]:
+        raw = str(self.settings.get("matchmode_plugins") or "")
+        return [name.strip() for name in re.split(r"[\s,]+", raw) if name.strip()]
+
+    def _set_match_mode(self, on: bool) -> list[str]:
+        """Turn match mode on or off. Returns the plugins that changed state because of it."""
+        self.match_mode = on
+        self.console.set_cvar(MATCH_CVAR, "1" if on else "0")
+        changed: list[str] = []
+        if on:
+            for name in self._match_plugins():
+                plugin = self.console.get_plugin(name)
+                # Only the ones that were actually running. The classic re-enabled every plugin on
+                # its list when the match ended, so a plugin an operator had deliberately switched
+                # off came back on because a match had happened.
+                if plugin is None or not getattr(plugin, "is_enabled", bool)():
+                    continue
+                plugin.disable()
+                changed.append(name)
+            self._disabled_for_match = list(changed)
+        else:
+            for name in self._disabled_for_match:
+                plugin = self.console.get_plugin(name)
+                if plugin is None:
+                    continue
+                plugin.enable()
+                changed.append(name)
+            self._disabled_for_match = []
+        # The bots are not a plugin, so they need saying separately: a match is played by the people
+        # who turned up for it.
+        self.botsupport()
+        self._apply_match_config()
+        return changed
+
+    @command("pamatch", level=60, alias="match")
+    def cmd_pamatch(self, ctx: CommandContext) -> None:
+        """pamatch <on|off> - put the server into match mode, and the plugins with it"""
+        wanted = ctx.args.strip().lower()
+        if wanted not in ("on", "off"):
+            ctx.reply(self.message("pa_match_usage"))
+            return
+        on = wanted == "on"
+        changed = self._set_match_mode(on)
+        self._announce(self.message("pa_match_on" if on else "pa_match_off"))
+        if changed:
+            ctx.reply(
+                self.message(
+                    "pa_match_plugins_off" if on else "pa_match_plugins_on",
+                    plugins=", ".join(changed),
+                )
+            )
+        ctx.reply(self.message("pa_match_reload"))
 
     # -- the rotation manager ------------------------------------------------
 
@@ -1560,6 +1715,8 @@ class PoweradminurtPlugin(Plugin):
             return
         if not self.is_enabled() or not self.settings.get("headshot_counter"):
             return
+        if self.match_mode:
+            return
         where = str(getattr(event.data, "hit_location", "") or "").strip().lower()
         if not where:
             # Nothing to count. An engine that reports a hit without saying where is not one this
@@ -1652,7 +1809,7 @@ class PoweradminurtPlugin(Plugin):
         SERVER PLENTY!" and answers it with a list of maps bots have been seen to survive. That list
         is the feature, so it is kept — and an empty one means no map, rather than every map.
         """
-        if not self.is_enabled() or not self.settings.get("botsupport_enable"):
+        if not self.is_enabled() or not self.settings.get("botsupport_enable") or self.match_mode:
             self._set_bot_count(0)
             return
         current = (self.console.game.map_name or "").strip().lower()
@@ -2582,17 +2739,56 @@ class PoweradminurtPlugin(Plugin):
         if wanted not in ("on", "off"):
             ctx.reply(self.message("pa_vote_usage"))
             return
-        if wanted == "off":
-            # Read now rather than at startup: the classic kept the bot-start value in an attribute,
-            # so `!pavote on` after a restart put back whatever the plugin happened to remember.
-            current = self.console.get_cvar(VOTE_CVAR)
-            if current and current != "0":
-                self._vote_was = current
-            self.console.set_cvar(VOTE_CVAR, "0")
-            ctx.reply(self.message("pa_vote_off"))
+        self.set_voting(wanted == "on")
+        ctx.reply(self.message("pa_vote_on" if wanted == "on" else "pa_vote_off"))
+
+    def set_voting(self, on: bool) -> None:
+        """Let players call votes, or stop them. Shared with the round-start delay."""
+        if on:
+            self.console.set_cvar(VOTE_CVAR, self._vote_was or VOTE_DEFAULT)
             return
-        self.console.set_cvar(VOTE_CVAR, self._vote_was or VOTE_DEFAULT)
-        ctx.reply(self.message("pa_vote_on"))
+        # Read now rather than at startup: the classic kept the bot-start value in an attribute, so
+        # `!pavote on` after a restart put back whatever the plugin happened to remember.
+        current = self.console.get_cvar(VOTE_CVAR)
+        if current and current != "0":
+            self._vote_was = current
+        self.console.set_cvar(VOTE_CVAR, "0")
+
+    def voting_is_on(self) -> bool:
+        return (self.console.get_cvar(VOTE_CVAR) or "0").strip() not in ("", "0")
+
+    # -- the vote delay ------------------------------------------------------
+
+    def _start_vote_delay(self) -> None:
+        """Stop players calling votes for the first few minutes of a round.
+
+        A vote called in the first thirty seconds is a vote called before anybody has seen the map,
+        and it decides the next twenty minutes for everybody.
+        """
+        minutes = as_int(self.settings.get("vote_delay_minutes"), 0)
+        if minutes <= 0 or self.match_mode:
+            return
+        if self._voting_back_at is None:
+            if not self.voting_is_on():
+                # A server whose operator has voting off is not one to hand voting to in a minute.
+                return
+            self.set_voting(False)
+        # A round starting inside the previous round's delay restarts it, rather than leaving the
+        # older deadline to hand voting back in the middle of this one.
+        self._voting_back_at = self.console.clock.now() + minutes * 60
+
+    def _check_vote_delay(self) -> None:
+        """Give voting back when the delay is up — a deadline, not a thread.
+
+        The classic started a `threading.Timer` per round and cancelled none of them: two rounds
+        starting inside the delay left two timers running, the first of which handed voting back
+        while the second round still expected it off, and a plugin switched off mid-delay had
+        voting re-enabled by a thread nobody could reach.
+        """
+        if self._voting_back_at is None or self.console.clock.now() < self._voting_back_at:
+            return
+        self._voting_back_at = None
+        self.set_voting(True)
 
 
 __all__ = [
@@ -2607,6 +2803,7 @@ __all__ = [
     "BOT_SKILL_CVAR",
     "HIT_LOG_CVAR",
     "LARGE",
+    "MATCH_CVAR",
     "MEDIUM",
     "ROTATION_CVAR",
     "SMALL",
