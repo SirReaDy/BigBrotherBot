@@ -1992,6 +1992,163 @@ async def test_gear_arrives_from_the_infostring(console):
     assert p.clients.get_by_cid("3").gear == "GZAORWA"
 
 
+# -- the spectator check ------------------------------------------------------------------------
+
+
+def _watcher(console, plugin, name, minutes=30.0, bits=0):  # noqa: ANN001, ANN202
+    """Somebody who has been in the spectators for `minutes`."""
+    client = _teamed(console, name, "spec", bits=bits)
+    client.set_var(plugin, "team_time", console.clock.now() - minutes * 60)
+    return client
+
+
+@pytest.mark.asyncio
+async def test_a_long_idle_spectator_is_warned_on_a_full_server(console):
+    plugin = _balancer(console, speccheck_min_players=2, speccheck_max_spec_minutes=5)
+    _watcher(console, plugin, "Watcher")
+    _teamed(console, "Player", "red", bits=0)
+
+    plugin.speccheck()
+
+    assert [c.name for c, _reason, _admin in console.warned] == ["Watcher"]
+    assert console.warned[0][1] == "spectator too long on a full server"
+
+
+@pytest.mark.asyncio
+async def test_a_spectator_who_only_just_sat_down_is_left_alone(console):
+    plugin = _balancer(console, speccheck_min_players=2, speccheck_max_spec_minutes=5)
+    _watcher(console, plugin, "Watcher", minutes=1)
+    _teamed(console, "Player", "red", bits=0)
+
+    plugin.speccheck()
+
+    assert console.warned == []
+
+
+@pytest.mark.asyncio
+async def test_a_quiet_server_is_nobody_elses_business(console):
+    """The point of the check is that somebody else wants the slot."""
+    plugin = _balancer(console, speccheck_min_players=8)
+    _watcher(console, plugin, "Watcher")
+    _teamed(console, "Player", "red", bits=0)
+
+    plugin.speccheck()
+
+    assert console.warned == []
+
+
+@pytest.mark.asyncio
+async def test_an_admin_may_watch_as_long_as_they_like(console):
+    plugin = _balancer(console, speccheck_min_players=2, speccheck_max_level=20)
+    _watcher(console, plugin, "Boss", bits=64)
+    _teamed(console, "Player", "red", bits=0)
+
+    plugin.speccheck()
+
+    assert console.warned == []
+
+
+@pytest.mark.asyncio
+async def test_the_default_level_does_not_exempt_everybody(console):
+    """The classic's default for this was 0, which exempts every player there is — so a server that
+    set the interval and left the rest alone ran the check and skipped the whole roster."""
+    plugin = _balancer(console, speccheck_min_players=2)
+    _watcher(console, plugin, "Watcher")
+    _teamed(console, "Player", "red", bits=0)
+
+    assert plugin.settings["speccheck_max_level"] == 20
+
+    plugin.speccheck()
+
+    assert [c.name for c, _reason, _admin in console.warned] == ["Watcher"]
+
+
+@pytest.mark.asyncio
+async def test_a_player_an_admin_put_in_the_spectators_is_left_there(console):
+    plugin = _balancer(console, speccheck_min_players=2)
+    watcher = _watcher(console, plugin, "Watcher")
+    watcher.set_var(plugin, "locked_to", "s")
+    _teamed(console, "Player", "red", bits=0)
+
+    plugin.speccheck()
+
+    assert console.warned == []
+
+
+@pytest.mark.asyncio
+async def test_a_bot_is_not_asked_to_play_or_leave(console):
+    """It fills a slot, so it counts towards the server being full; it cannot read a warning, so it
+    never gets one. The classic warned bots, and the escalation kicked one — whereupon its own bot
+    support added another."""
+    plugin = _balancer(console, speccheck_min_players=2)
+    bot = _watcher(console, plugin, "Bot")
+    bot.is_bot = True
+    human = _watcher(console, plugin, "Human")
+
+    plugin.speccheck()
+
+    assert [c.name for c, _reason, _admin in console.warned] == [human.name]
+
+
+@pytest.mark.asyncio
+async def test_nothing_happens_while_the_server_manages_its_own_slots(console):
+    """`g_maxGameClients` means the *server* is putting the surplus into the spectators. Warning
+    them for it would be the bot punishing players for what the server did to them."""
+    plugin = _balancer(console, speccheck_min_players=2)
+    console.cvars["g_maxGameClients"] = "12"
+    _watcher(console, plugin, "Watcher")
+    _teamed(console, "Player", "red", bits=0)
+
+    plugin.speccheck()
+
+    assert console.warned == []
+
+
+@pytest.mark.asyncio
+async def test_that_cvar_is_read_when_the_check_runs(console):
+    """The classic read it once at bot start, into an attribute — with no error handling, so a
+    server that answered nothing for it raised inside `onStartup` and the whole plugin, all
+    forty-nine commands of it, failed to load."""
+    plugin = _balancer(console, speccheck_min_players=2)
+    console.cvars["g_maxGameClients"] = "12"
+    _watcher(console, plugin, "Watcher")
+    _teamed(console, "Player", "red", bits=0)
+    plugin.speccheck()
+    assert console.warned == []
+
+    console.cvars["g_maxGameClients"] = "0"
+    plugin.speccheck()
+
+    assert [c.name for c, _reason, _admin in console.warned] == ["Watcher"]
+
+
+@pytest.mark.asyncio
+async def test_how_full_is_full_comes_from_the_servers_own_slots(console):
+    """With sixteen slots and four of them reserved, twelve players is a full public server."""
+    plugin = _balancer(console, speccheck_min_players=0)
+    console.game.max_players = 16
+    console.cvars["sv_privateClients"] = "4"
+    for index in range(11):
+        _teamed(console, f"P{index}", "red", bits=0)
+    _watcher(console, plugin, "Watcher")
+
+    plugin.speccheck()
+
+    assert [c.name for c, _reason, _admin in console.warned] == ["Watcher"]
+
+
+@pytest.mark.asyncio
+async def test_the_check_stands_down_in_the_quiet_window(console):
+    plugin = _balancer(console, speccheck_min_players=2)
+    _watcher(console, plugin, "Watcher")
+    _teamed(console, "Player", "red", bits=0)
+    plugin.hold_off()
+
+    plugin.speccheck()
+
+    assert console.warned == []
+
+
 # -- through a real bot ----------------------------------------------------------------------------
 
 

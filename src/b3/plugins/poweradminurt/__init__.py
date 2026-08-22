@@ -24,6 +24,11 @@ found. `!paskuffle` shuffles, `!pabalance` gets the same result by moving as few
 automatically. Where the score cannot be improved any further, the shuffle distributes the *snipers*
 instead: a rifle that kills in one shot decides a game on its own if they all end up on one side.
 
+**The spectator check**, which asks whoever has been watching rather than playing to do one or the
+other, once the server is busy enough that somebody wants the slot. It warns; `admin`'s own escalation
+is what eventually removes them, which is the classic's design and the right one — the number of
+warnings before a kick is a server's policy, not this feature's.
+
 **The match settings** — twenty-one commands that each write one cvar, so they are a *table*
 (`GAMETYPES`, `TOGGLES`, `NUMBERS` below) rather than twenty-one near-identical methods. The gametype
 switches (`!pactf`, `!pabomb`, `!pajump`, …), the limits (`!pacaplimit`, `!patimelimit`,
@@ -34,8 +39,8 @@ the wave delays), `!pastamina`, `!pamoon`, `!pasetnextmap` and `!pagear`.
 **The server commands.** `!pabigtext`, `!paset`, `!paget`, `!pavote`, `!pamaprestart`, `!pamapreload`,
 `!pacyclemap`, `!paexec` and `!papublic`.
 
-**Still to come:** the other policies — name checker, spectator check, bot support, headshot counter,
-rotation manager, match mode, vote delay.
+**Still to come:** the other policies — name checker, bot support, headshot counter, rotation manager,
+match mode, vote delay.
 
 **Not ported, deliberately:**
 
@@ -104,6 +109,18 @@ Changed from the classic, most of them faults:
   player who asked twice in a row almost always got two shuffles.
 * **`!paadvise` refuses rather than reporting on an empty server.** It printed "Avg kill ratio diff is
   0.00, skill diff is 0.00" to nobody in particular.
+
+* **The spectator check reads `g_maxGameClients` when it runs.** The classic read it once in
+  `onStartup`, straight into an attribute with no error handling — so on a server that answered
+  nothing for that cvar the read raised and the **whole plugin** failed to load, taking all
+  forty-nine commands with it. Reading it per check also means an operator who changes it mid-map
+  gets what they asked for.
+* **Its exemption level defaults to something that exempts somebody.** The classic's default was
+  `0`, and the rule is "at or above this level is exempt" — so a server that set the interval and
+  left the rest of the section alone ran the check, skipped every player on it, and said nothing.
+* **A bot is counted but never warned.** It fills a slot somebody wants, so it counts towards the
+  server being full; it cannot read a warning, so it does not get one. The classic warned bots, and
+  the escalation eventually kicked one — whereupon its own bot support added another.
 
 And one fault that was not in this plugin at all: `!paforce … lock` had never held anybody, because
 **no Quake3 parser published `CLIENT_TEAM_CHANGE`**. The team is a field of the infostring rather than
@@ -291,6 +308,21 @@ DEFAULTS: dict[str, object] = {
     # A player carrying an SR8 or PSG-1 counts as a sniper worth separating from the other snipers
     # only above this kill ratio. Below it they are carrying a rifle, not using one.
     "sniper_kill_ratio": 1.2,
+    # -- the spectator check ------------------------------------------------------------------
+    # Minutes between checks; 0 turns it off. Somebody warned repeatedly is kicked by `admin`'s own
+    # escalation, so how quickly that happens is this interval times the warnings it takes.
+    "speccheck_interval": 0,
+    # Minutes a player may watch rather than play once the server is busy.
+    "speccheck_max_spec_minutes": 5,
+    # How many connected clients make the server busy enough to police the spectators. 0 works it
+    # out from the server's own slots, minus any reserved ones.
+    "speccheck_min_players": 0,
+    # Nobody at or above this level is asked to play or leave. The classic's default for this was
+    # **0**, which exempts everybody — so a server that set the interval and left the rest alone ran
+    # the check, skipped every player, and reported nothing.
+    "speccheck_max_level": 20,
+    # How long each warning lives.
+    "speccheck_warn_minutes": 5,
 }
 
 MESSAGES = {
@@ -379,6 +411,7 @@ MESSAGES = {
     "pa_skill_mode": "skill balancing is {mode}; options are {options}",
     "pa_skill_mode_set": "skill balancing is now {mode}",
     "pa_skill_mode_usage": "!paautoskuffle {options}",
+    "pa_spec_reason": "spectator too long on a full server",
 }
 
 
@@ -766,6 +799,13 @@ class PoweradminurtPlugin(Plugin):
         if interval > 0:
             self.schedule(
                 self._teamcheck, minute=f"*/{min(interval, 59)}", name="PoweradminurtPlugin.teams"
+            )
+        spec_interval = as_int(self.settings.get("speccheck_interval"), 0)
+        if spec_interval > 0:
+            self.schedule(
+                self.speccheck,
+                minute=f"*/{min(spec_interval, 59)}",
+                name="PoweradminurtPlugin.spectators",
             )
         skill_interval = as_int(self.settings.get("skillbalance_interval"), 0)
         if skill_interval > 0:
@@ -1209,6 +1249,65 @@ class PoweradminurtPlugin(Plugin):
             return
         for client in self.console.clients.connected():
             client.del_var(self, "locked_to")
+
+    # -- the spectator check -------------------------------------------------
+
+    def _slots_are_managed(self) -> bool:
+        """Whether the *server* is deciding who plays and who watches.
+
+        `g_maxGameClients` caps how many of the connected clients may be on a team, so above it the
+        server puts people in the spectators itself. Warning them for sitting there would be the bot
+        punishing players for something the server did to them.
+
+        Read now rather than at startup, which is where the classic read it — once, into an attribute,
+        with no error handling: on a server that answered nothing for that cvar the read raised inside
+        `onStartup` and the **whole plugin** failed to load, taking all forty-nine commands with it.
+        """
+        value = (self.console.get_cvar("g_maxGameClients") or "").strip()
+        return value not in ("", "0")
+
+    def _spec_min_players(self) -> int:
+        """How many connected clients make this server busy enough to police the spectators.
+
+        Zero means "work it out": the public slots, which is every slot minus the reserved ones. The
+        classic worked that out once when the config loaded, so a server whose reserved slots changed
+        went on using the old number until it was restarted.
+        """
+        configured = as_int(self.settings.get("speccheck_min_players"), 0)
+        if configured > 0:
+            return configured
+        total = self.console.game.max_players or as_int(self.console.get_cvar("sv_maxclients"), 0)
+        private = as_int(self.console.get_cvar("sv_privateClients"), 0)
+        return max(1, total - private)
+
+    def speccheck(self) -> None:
+        """Warn whoever has been watching rather than playing while others want a slot."""
+        if not self.is_enabled() or self.holding_off():
+            return
+        if self._slots_are_managed():
+            return
+        connected = list(self.console.clients.connected())
+        # Bots are counted, because a bot fills a slot somebody wants, and never warned, because a
+        # warning is a thing you say to a person. The classic warned them, and the escalation
+        # eventually kicked one — whereupon `botsupport` added it straight back.
+        if len(connected) < self._spec_min_players():
+            return
+        max_level = as_int(self.settings.get("speccheck_max_level"), 20)
+        allowed = as_int(self.settings.get("speccheck_max_spec_minutes"), 5) * 60
+        minutes = as_int(self.settings.get("speccheck_warn_minutes"), 5)
+        now = self.console.clock.now()
+        for client in connected:
+            if client.is_bot or (client.team or "").strip().lower() != "spec":
+                continue
+            if client.max_level() >= max_level:
+                continue
+            if self.locked_to(client) is not None:
+                # An admin put them there on purpose.
+                continue
+            if now - self._joined_team_at(client) <= allowed:
+                continue
+            log.info("poweradminurt: warning %s for watching on a full server", client.name)
+            self.console.warn(client, reason=self.message("pa_spec_reason"), minutes=minutes)
 
     # -- the skill balancer --------------------------------------------------
 

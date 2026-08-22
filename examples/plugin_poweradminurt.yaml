@@ -55,8 +55,8 @@
 #                      config file contains is anything; the name must look like a filename
 #   !papublic on|off   open the server to everybody, or put a password on it (alias: !public)
 #
-# Still to come: the other policies — name checker, spectator check, bot support, headshot counter,
-# rotation manager, match mode, vote delay.
+# Still to come: the other policies — name checker, bot support, headshot counter, rotation manager,
+# match mode, vote delay.
 #
 # Two commands from the classic are deliberately absent. `!paveto` is `callvote`'s `!veto`, which works
 # on every engine that can cancel a vote rather than only this one. `!paversion` printed the plugin's
@@ -197,6 +197,38 @@ settings:
   # one with a worse kill ratio than this is carrying a rifle rather than using one, and is ignored.
   sniper_kill_ratio: 1.2
 
+  # -- the spectator check -------------------------------------------------------------------
+  #
+  # Once the server is busy, somebody sitting in the spectators is holding a slot another player
+  # wants. This asks them to play or leave — by warning them; `admin`'s own escalation is what
+  # eventually removes them, so how many warnings that takes is your warn policy, not this setting.
+
+  # Minutes between checks; 0 turns it off. A player is removed after roughly
+  # `speccheck_max_spec_minutes` plus this interval times the warnings your admin config allows.
+  speccheck_interval: 0
+
+  # Minutes a player may watch rather than play once the server counts as busy.
+  speccheck_max_spec_minutes: 5
+
+  # How many connected clients make it busy. 0 works it out from the server's own slots minus the
+  # reserved ones — sixteen slots with four private means twelve. The classic worked that out once
+  # when the config loaded, so a server whose reserved slots changed used the old number until it
+  # was restarted; here it is read when the check runs.
+  speccheck_min_players: 0
+
+  # Nobody at or above this level is asked to play or leave. The classic's default was 0, and the
+  # rule is "at or above is exempt" — so a server that set the interval and left the rest of this
+  # section alone ran the check, skipped every player on it, and said nothing at all.
+  speccheck_max_level: 20
+
+  # How long each of those warnings lives.
+  speccheck_warn_minutes: 5
+
+  # Nothing happens at all while `g_maxGameClients` is set, because that means the *server* is
+  # deciding who plays and putting the surplus in the spectators. Warning them for it would be the
+  # bot punishing players for something the server did to them. Bots are counted towards "busy" —
+  # a bot fills a slot — and never warned, since a warning is a thing you say to a person.
+
 # Everything it says can be reworded in the main config's `messages:` block:
 #
 #   pa_slapped / pa_nuked / pa_killed / pa_muted / pa_unmuted     ({name}, {minutes})
@@ -215,3 +247,4 @@ settings:
 #   pa_skill_use_bal / pa_skill_no_action / pa_skill_too_soon / pa_skill_too_few
 #   pa_skill_moved / pa_skill_moved_best                          ({team}, {other})
 #   pa_skill_mode / pa_skill_mode_set / pa_skill_mode_usage       ({mode}, {options})
+#   pa_spec_reason        why a spectator on a full server was warned
