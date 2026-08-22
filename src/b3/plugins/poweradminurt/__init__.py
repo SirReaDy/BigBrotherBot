@@ -31,6 +31,11 @@ map — somebody who changes name every thirty seconds cannot be talked about, c
 reported. It does **not** overlap `nickreg`, which was worth checking before writing it: that plugin
 answers "is this a name registered to somebody else?", and this one answers "is this a name at all?".
 
+**The headshot counter**, which announces how many headshots a player has landed and tells newcomers
+what the helmet and the kevlar are for. It needs an engine that reports *where* a shot landed, which in
+this family means Urban Terror — and it asks the engine to log that, since a counter switched on
+without `g_loghits` counts nothing and says nothing about why.
+
 **Bot support**, which keeps the server populated with AI players — but only on the maps an operator
 has said are safe. The classic's own configuration file shouts "BOTSUPPORT IS VERY UNSTABLE! IT MAY
 CRASH YOUR SERVER PLENTY!" and answers itself with a list of maps bots have been seen to survive; that
@@ -51,7 +56,7 @@ the wave delays), `!pastamina`, `!pamoon`, `!pasetnextmap` and `!pagear`.
 **The server commands.** `!pabigtext`, `!paset`, `!paget`, `!pavote`, `!pamaprestart`, `!pamapreload`,
 `!pacyclemap`, `!paexec` and `!papublic`.
 
-**Still to come:** the other policies — headshot counter, rotation manager, match mode, vote delay.
+**Still to come:** the other policies — rotation manager, match mode, vote delay.
 
 **Not ported, deliberately:**
 
@@ -148,6 +153,11 @@ Changed from the classic, most of them faults:
   classic warned every one of them on every sweep. And the rename limit's exemption is a level rather
   than the classic's hard-coded `9`, which is not a group anybody has.
 
+* **The headshot announcement reaches the players.** The classic's `broadcast: True` — its default —
+  handed the announcement to `console.write`, which sends an **rcon command**. A line of prose is not
+  a command, so on the setting an operator was most likely running, every headshot announcement went
+  to the server and nowhere else. It is the same `bigtext`/`say`/`off` choice the balancers use here.
+  Its own captured test only checked the counters, so nothing ever noticed.
 * **A plugin that is not running bots touches no bot cvar.** The classic wrote `g_spskill` on every
   config load whether or not bot support was on, and only ever wrote `bot_enable 1` — so switching
   the feature off and reloading left the engine's bot subsystem running with the count at zero, while
@@ -389,6 +399,29 @@ DEFAULTS: dict[str, object] = {
     # The maps bots are allowed on, and nothing outside it. Empty means no map: for a feature whose
     # own documentation warns it may take the server down, "not configured" has to mean "off".
     "botsupport_maps": "",
+    # -- the headshot counter -----------------------------------------------------------------
+    # Announce headshots and tell newcomers what the armour is for. Needs an engine that reports
+    # where a shot landed, which in this family means Urban Terror.
+    "headshot_counter": False,
+    # When the counts start again: `no`, `map` or `round`.
+    "headshot_reset": "map",
+    # How an announcement is made: `bigtext`, `say` or `off`. The classic had a `broadcast` boolean
+    # whose True branch passed the announcement to rcon as though it were a command.
+    "headshot_announce": "bigtext",
+    # Announce every headshot, rather than only counting them.
+    "headshot_announce_all": True,
+    # Add the shooter's headshot percentage once they have more than five and it beats the floor.
+    "headshot_percentages": True,
+    "headshot_percent_min": 10,
+    # Tell a victim what a helmet is for, after this many hits to the head.
+    "headshot_warn_helmet": True,
+    "headshot_warn_helmet_after": 7,
+    # And what kevlar is for, after this many to the torso.
+    "headshot_warn_kevlar": True,
+    "headshot_warn_kevlar_after": 50,
+    # Only players with fewer connections than this are advised: somebody on their two hundredth
+    # visit knows about the helmet. The classic's own rule and its number.
+    "headshot_advice_connections": 20,
 }
 
 MESSAGES = {
@@ -482,6 +515,11 @@ MESSAGES = {
     "pa_name_forbidden": "that name is not allowed here",
     "pa_name_changes_kick": "too many name changes",
     "pa_name_changes_left": "{count} more name changes allowed on this map",
+    "pa_headshot_one": "{name}: 1 headshot!",
+    "pa_headshots": "{name}: {count} headshots!",
+    "pa_headshots_percent": "{name}: {count} headshots! ({percent}%)",
+    "pa_advice_helmet": "{count} hits to the head — a helmet would have stopped some of those",
+    "pa_advice_kevlar": "{count} hits to the torso — kevlar would keep you alive longer",
 }
 
 
@@ -551,6 +589,9 @@ BOT_ENABLE_CVAR = "bot_enable"
 BOT_COUNT_CVAR = "bot_minplayers"
 BOT_SKILL_CVAR = "g_spskill"
 
+#: Without this, the server logs no `Hit:` lines at all and the headshot counter counts nothing.
+HIT_LOG_CVAR = "g_loghits"
+
 #: How few name changes have to be left before the player is told how many. The classic's number.
 NAME_CHANGE_WARNING_AT = 4
 
@@ -590,6 +631,23 @@ class SkillRecord:
     bomb_defused: int = 0
     #: `(when, +1 for a kill / -1 for a death)`, for the sliding window the advice is measured over.
     history: list[tuple[float, int]] = field(default_factory=list)
+
+
+@dataclass
+class HitRecord:
+    """Where one player has been hitting people, and where they have been hit.
+
+    Separate from `SkillRecord`, which counts *kills*: this counts hits, and only Urban Terror
+    reports those at all. Two records rather than one because they are reset on different clocks —
+    the skill figures start again when somebody changes team, and these when the operator says.
+    """
+
+    landed: int = 0
+    taken: int = 0
+    head: int = 0
+    helmet: int = 0
+    head_taken: int = 0
+    torso_taken: int = 0
 
 
 @dataclass
@@ -886,6 +944,7 @@ class PoweradminurtPlugin(Plugin):
             )
         self.subscribe(EventType.CLIENT_NAME_CHANGE, self.on_name_change)
         self.subscribe(EventType.GAME_MAP_CHANGE, self._on_map_change)
+        self.subscribe(EventType.CLIENT_DAMAGE, self.headshotcounter)
         name_interval = as_int(self.settings.get("namecheck_interval"), 0)
         if name_interval > 0:
             self.schedule(
@@ -908,6 +967,10 @@ class PoweradminurtPlugin(Plugin):
                 name="PoweradminurtPlugin.skill",
             )
         self._apply_bot_settings()
+        if self.settings.get("headshot_counter"):
+            # The engine does not log where a shot landed unless it is asked to, so a counter
+            # switched on without this counts nothing and says nothing about why.
+            self.console.set_cvar(HIT_LOG_CVAR, "1")
         # A bot that has just started is about to adopt a server full of players, each of whom looks
         # like somebody who has this moment joined a team. Nothing automatic runs until that settles.
         self.hold_off()
@@ -1318,8 +1381,10 @@ class PoweradminurtPlugin(Plugin):
     def _on_map_change(self, _event: Event) -> None:
         """A new map: the bots may or may not be welcome on it."""
         self.botsupport()
+        self._reset_hits("map")
 
     def _on_round_start(self, _event: Event) -> None:
+        self._reset_hits("round")
         self._round_ended = False
         self._last_balance = self.console.clock.now()
         self._forget_contributions()
@@ -1352,6 +1417,94 @@ class PoweradminurtPlugin(Plugin):
             return
         for client in self.console.clients.connected():
             client.del_var(self, "locked_to")
+
+    # -- the headshot counter ------------------------------------------------
+
+    def hits(self, client: Client) -> HitRecord:
+        """Where this player has been hitting people, and where they have been hit."""
+        held = client.get_var(self, "hits")
+        if not isinstance(held, HitRecord):
+            held = HitRecord()
+            client.set_var(self, "hits", held)
+        return held
+
+    def _reset_hits(self, when: str) -> None:
+        if as_word(self.settings.get("headshot_reset"), "map") != when:
+            return
+        for client in self.console.clients.connected():
+            client.del_var(self, "hits")
+
+    def headshotcounter(self, event: Event) -> None:
+        """Count where a shot landed, announce headshots, and advise whoever keeps taking them."""
+        attacker, victim = event.client, event.target
+        if attacker is None or victim is None:
+            return
+        if not self.is_enabled() or not self.settings.get("headshot_counter"):
+            return
+        where = str(getattr(event.data, "hit_location", "") or "").strip().lower()
+        if not where:
+            # Nothing to count. An engine that reports a hit without saying where is not one this
+            # feature can work on, and guessing "torso" would advise players to buy armour they do
+            # not need.
+            return
+        mine, theirs = self.hits(attacker), self.hits(victim)
+        mine.landed += 1
+        theirs.taken += 1
+        if where == "head":
+            mine.head += 1
+            theirs.head_taken += 1
+        elif where == "helmet":
+            mine.helmet += 1
+        elif where == "torso":
+            theirs.torso_taken += 1
+        if where in ("head", "helmet"):
+            self._announce_headshots(attacker, mine)
+        self._advise(victim, theirs, where)
+
+    def _announce_headshots(self, attacker: Client, record: HitRecord) -> None:
+        if not self.settings.get("headshot_announce_all"):
+            return
+        count = record.head + record.helmet
+        percent = int(count / record.landed * 100) if record.landed else 0
+        floor = as_int(self.settings.get("headshot_percent_min"), 10)
+        if self.settings.get("headshot_percentages") and count > 5 and percent > floor:
+            text = self.message(
+                "pa_headshots_percent", name=attacker.name, count=count, percent=percent
+            )
+        elif count == 1:
+            text = self.message("pa_headshot_one", name=attacker.name)
+        else:
+            text = self.message("pa_headshots", name=attacker.name, count=count)
+        # The classic's `broadcast: True` — its default — passed this text to `console.write`, which
+        # sends an **rcon command**. A line of prose is not a command, so on the setting an operator
+        # was most likely running, every headshot announcement went to the server and nowhere else.
+        # Here it is the same `bigtext`/`say`/`off` choice the balancers use.
+        how = as_word(self.settings.get("headshot_announce"), "bigtext")
+        if how == "bigtext":
+            self.console.say_big(text)
+        elif how == "say":
+            self.console.say(text)
+
+    def _advise(self, victim: Client, record: HitRecord, where: str) -> None:
+        """Tell a newcomer what the armour is for, once.
+
+        Only a newcomer: somebody with two hundred connections knows about the helmet and does not
+        need telling. The classic's own rule, and its number.
+        """
+        if victim.connections >= as_int(self.settings.get("headshot_advice_connections"), 20):
+            return
+        if (
+            where == "head"
+            and self.settings.get("headshot_warn_helmet")
+            and record.head_taken == as_int(self.settings.get("headshot_warn_helmet_after"), 7)
+        ):
+            self.console.tell(victim, self.message("pa_advice_helmet", count=record.head_taken))
+        elif (
+            where == "torso"
+            and self.settings.get("headshot_warn_kevlar")
+            and record.torso_taken == as_int(self.settings.get("headshot_warn_kevlar_after"), 50)
+        ):
+            self.console.tell(victim, self.message("pa_advice_kevlar", count=record.torso_taken))
 
     # -- bot support ---------------------------------------------------------
 
@@ -2333,6 +2486,7 @@ __all__ = [
     "BOT_COUNT_CVAR",
     "BOT_ENABLE_CVAR",
     "BOT_SKILL_CVAR",
+    "HIT_LOG_CVAR",
     "GAMETYPES",
     "GAMETYPE_ALIASES",
     "GAMETYPE_NAMES",
@@ -2346,6 +2500,7 @@ __all__ = [
     "TEAMS",
     "UNFAIR",
     "WEIGHTS",
+    "HitRecord",
     "ShuffleResult",
     "SkillRecord",
     "GEAR_ALL",

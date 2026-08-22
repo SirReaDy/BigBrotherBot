@@ -421,6 +421,13 @@ a name registered to somebody else?" where this answers "is this a name at all?"
 as players see them — colours stripped, trimmed, lower-cased — where the classic compared raw strings,
 so `^1Bob` and `^2Bob` were not duplicates of each other.
 
+**The headshot counter**, which announces how many headshots a player has landed and tells newcomers
+what the helmet and the kevlar are for. It needs an engine that reports where a shot landed — Urban
+Terror, here — and asks it to log that, since without `g_loghits` there are no hits to count. The
+classic's `broadcast: True`, its default, handed the announcement to `console.write`, which sends an
+rcon *command*: a line of prose is not one, so on the setting most operators were running the
+announcement went to the server and nowhere else.
+
 **Bot support**, which keeps the server topped up with AI players on maps an operator has listed as
 safe — the classic's config file warns in capitals that this may crash the server, and that list is the
 mitigation, so an empty one means no map rather than every map. While it is off, nothing writes a bot
@@ -446,7 +453,7 @@ config file contains is anything, and the name has to look like a filename rathe
 into one — and `!papublic on|off`, whose private password is built from a configured word plus fresh
 digits, sent to the admin privately and never written to the log.
 
-Still to come: the other policies — headshot counter, rotation manager, match mode, vote delay.
+Still to come: the other policies — rotation manager, match mode, vote delay.
 
 One immunity rule covers all four player commands — you cannot use them on somebody at or above your own
 level. The classic had `slap_safe_level` on `!paslap`, a different comparison on `!pamute`, and *nothing*

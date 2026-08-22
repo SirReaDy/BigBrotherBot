@@ -55,7 +55,7 @@
 #                      config file contains is anything; the name must look like a filename
 #   !papublic on|off   open the server to everybody, or put a password on it (alias: !public)
 #
-# Still to come: the other policies — headshot counter, rotation manager, match mode, vote delay.
+# Still to come: the other policies — rotation manager, match mode, vote delay.
 #
 # Two commands from the classic are deliberately absent. `!paveto` is `callvote`'s `!veto`, which works
 # on every engine that can cancel a vote rather than only this one. `!paversion` printed the plugin's
@@ -294,6 +294,42 @@ settings:
   # matched nothing. A map outside the list turns the bots off rather than leaving them running.
   botsupport_maps: ""
 
+  # -- the headshot counter ------------------------------------------------------------------
+  #
+  # Announces how many headshots a player has landed, and tells newcomers what the helmet and the
+  # kevlar are for. Needs an engine that reports *where* a shot landed, which in this family means
+  # Urban Terror; switching it on also sets `g_loghits 1`, without which the server logs no hits at
+  # all and the counter would count nothing while saying nothing about why.
+  headshot_counter: no
+
+  # When the counts start again: `no`, `map` or `round`.
+  headshot_reset: map
+
+  # How an announcement is made: `bigtext` across the screen, `say` in the chat, or `off` to keep
+  # counting quietly. The classic had a `broadcast` boolean whose True branch — its default — handed
+  # the announcement to rcon as though a line of prose were a command, so on the setting most
+  # operators were running, every headshot announcement went to the server and nowhere else.
+  headshot_announce: bigtext
+
+  # Announce every headshot, rather than only counting them.
+  headshot_announce_all: yes
+
+  # Add the shooter's headshot percentage, once they have more than five and it beats the floor.
+  headshot_percentages: yes
+  headshot_percent_min: 10
+
+  # Tell a victim what a helmet is for, after this many hits to the head.
+  headshot_warn_helmet: yes
+  headshot_warn_helmet_after: 7
+
+  # And what kevlar is for, after this many to the torso.
+  headshot_warn_kevlar: yes
+  headshot_warn_kevlar_after: 50
+
+  # Only players with fewer connections than this are advised: somebody on their two hundredth visit
+  # knows about the helmet. The classic's own rule, and its number.
+  headshot_advice_connections: 20
+
 # Everything it says can be reworded in the main config's `messages:` block:
 #
 #   pa_slapped / pa_nuked / pa_killed / pa_muted / pa_unmuted     ({name}, {minutes})
@@ -315,3 +351,5 @@ settings:
 #   pa_spec_reason        why a spectator on a full server was warned
 #   pa_name_duplicate / pa_name_forbidden / pa_name_changes_kick
 #   pa_name_changes_left                                          ({count})
+#   pa_headshot_one / pa_headshots / pa_headshots_percent          ({name}, {count}, {percent})
+#   pa_advice_helmet / pa_advice_kevlar                            ({count})

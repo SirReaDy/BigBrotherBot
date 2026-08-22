@@ -2269,6 +2269,225 @@ async def test_the_skill_is_kept_inside_what_the_engine_accepts(console):
     assert console.cvars["g_spskill"] == "5"
 
 
+# -- the headshot counter -----------------------------------------------------------------------
+
+
+def _hit(console, attacker, victim, where):  # noqa: ANN001, ANN202
+    return console.bus.publish(
+        Event(
+            EventType.CLIENT_DAMAGE,
+            client=attacker,
+            target=victim,
+            data=KillData(weapon="UT_MOD_M4", damage=50, hit_location=where, means_of_death=""),
+        )
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_headshot_is_announced(console):
+    _plugin(console, headshot_counter=True)
+    bob = _teamed(console, "Bob", "red", bits=0)
+    ann = _teamed(console, "Ann", "blue", bits=0)
+
+    await _hit(console, bob, ann, "head")
+
+    assert console.said_big == ["Bob: 1 headshot!"]
+
+
+@pytest.mark.asyncio
+async def test_the_announcement_reaches_the_players(console):
+    """The classic's `broadcast: True` — its default — handed the announcement to `console.write`,
+    which sends an **rcon command**. A line of prose is not a command, so on the setting an operator
+    was most likely running, every headshot announcement went to the server and nowhere else."""
+    _plugin(console, headshot_counter=True, headshot_announce="say")
+    bob = _teamed(console, "Bob", "red", bits=0)
+    ann = _teamed(console, "Ann", "blue", bits=0)
+
+    await _hit(console, bob, ann, "head")
+
+    assert console.said == ["Bob: 1 headshot!"]
+    assert console.rcon_sent == []
+
+
+@pytest.mark.asyncio
+async def test_a_helmet_hit_counts_as_a_headshot(console):
+    _plugin(console, headshot_counter=True)
+    bob = _teamed(console, "Bob", "red", bits=0)
+    ann = _teamed(console, "Ann", "blue", bits=0)
+
+    await _hit(console, bob, ann, "head")
+    await _hit(console, bob, ann, "helmet")
+
+    assert console.said_big[-1] == "Bob: 2 headshots!"
+
+
+@pytest.mark.asyncio
+async def test_the_engine_is_asked_to_log_where_shots_land(console):
+    """Without `g_loghits` the server logs no hits at all, so a counter switched on without it
+    counts nothing and says nothing about why."""
+    _plugin(console, headshot_counter=True)
+
+    assert console.cvars["g_loghits"] == "1"
+
+
+@pytest.mark.asyncio
+async def test_that_cvar_is_left_alone_while_the_counter_is_off(console):
+    _plugin(console)
+
+    assert "g_loghits" not in console.cvars
+
+
+@pytest.mark.asyncio
+async def test_a_shot_in_the_leg_is_not_announced(console):
+    _plugin(console, headshot_counter=True)
+    bob = _teamed(console, "Bob", "red", bits=0)
+    ann = _teamed(console, "Ann", "blue", bits=0)
+
+    await _hit(console, bob, ann, "legs")
+
+    assert console.said_big == []
+
+
+@pytest.mark.asyncio
+async def test_the_percentage_appears_once_there_is_enough_to_go_on(console):
+    _plugin(console, headshot_counter=True, headshot_percent_min=10)
+    bob = _teamed(console, "Bob", "red", bits=0)
+    ann = _teamed(console, "Ann", "blue", bits=0)
+
+    for _ in range(6):
+        await _hit(console, bob, ann, "head")
+
+    assert console.said_big[-1] == "Bob: 6 headshots! (100%)"
+
+
+@pytest.mark.asyncio
+async def test_a_poor_percentage_is_not_advertised(console):
+    _plugin(console, headshot_counter=True, headshot_percent_min=90)
+    bob = _teamed(console, "Bob", "red", bits=0)
+    ann = _teamed(console, "Ann", "blue", bits=0)
+    for _ in range(20):
+        await _hit(console, bob, ann, "legs")
+
+    for _ in range(6):
+        await _hit(console, bob, ann, "head")
+
+    assert console.said_big[-1] == "Bob: 6 headshots!"
+
+
+@pytest.mark.asyncio
+async def test_the_counter_can_be_left_counting_quietly(console):
+    plugin = _plugin(console, headshot_counter=True, headshot_announce="off")
+    bob = _teamed(console, "Bob", "red", bits=0)
+    ann = _teamed(console, "Ann", "blue", bits=0)
+
+    await _hit(console, bob, ann, "head")
+
+    assert (console.said, console.said_big) == ([], [])
+    assert plugin.hits(bob).head == 1
+
+
+@pytest.mark.asyncio
+async def test_nothing_is_counted_while_the_feature_is_off(console):
+    plugin = _plugin(console)
+    bob = _teamed(console, "Bob", "red", bits=0)
+    ann = _teamed(console, "Ann", "blue", bits=0)
+
+    await _hit(console, bob, ann, "head")
+
+    assert plugin.hits(bob).head == 0
+    assert console.said_big == []
+
+
+@pytest.mark.asyncio
+async def test_a_newcomer_is_told_what_a_helmet_is_for(console):
+    _plugin(console, headshot_counter=True, headshot_warn_helmet_after=3)
+    bob = _teamed(console, "Bob", "red", bits=0)
+    ann = _teamed(console, "Ann", "blue", bits=0)
+    ann.connections = 2
+
+    for _ in range(3):
+        await _hit(console, bob, ann, "head")
+
+    assert _told(console, ann) == ["3 hits to the head — a helmet would have stopped some of those"]
+
+
+@pytest.mark.asyncio
+async def test_a_regular_is_not_told_what_a_helmet_is_for(console):
+    """Somebody on their two hundredth visit knows. The classic's own rule and its number."""
+    _plugin(console, headshot_counter=True, headshot_warn_helmet_after=3)
+    bob = _teamed(console, "Bob", "red", bits=0)
+    ann = _teamed(console, "Ann", "blue", bits=0)
+    ann.connections = 200
+
+    for _ in range(3):
+        await _hit(console, bob, ann, "head")
+
+    assert _told(console, ann) == []
+
+
+@pytest.mark.asyncio
+async def test_the_advice_is_given_once(console):
+    _plugin(console, headshot_counter=True, headshot_warn_helmet_after=2)
+    bob = _teamed(console, "Bob", "red", bits=0)
+    ann = _teamed(console, "Ann", "blue", bits=0)
+    ann.connections = 2
+
+    for _ in range(6):
+        await _hit(console, bob, ann, "head")
+
+    assert len(_told(console, ann)) == 1
+
+
+@pytest.mark.asyncio
+async def test_kevlar_advice_counts_the_torso(console):
+    _plugin(console, headshot_counter=True, headshot_warn_kevlar_after=2)
+    bob = _teamed(console, "Bob", "red", bits=0)
+    ann = _teamed(console, "Ann", "blue", bits=0)
+    ann.connections = 2
+
+    for _ in range(2):
+        await _hit(console, bob, ann, "torso")
+
+    assert _told(console, ann) == ["2 hits to the torso — kevlar would keep you alive longer"]
+
+
+@pytest.mark.asyncio
+async def test_the_counts_start_again_on_a_new_map(console):
+    plugin = _plugin(console, headshot_counter=True, headshot_reset="map")
+    bob = _teamed(console, "Bob", "red", bits=0)
+    ann = _teamed(console, "Ann", "blue", bits=0)
+    await _hit(console, bob, ann, "head")
+
+    await console.bus.publish(Event(EventType.GAME_MAP_CHANGE))
+
+    assert plugin.hits(bob).head == 0
+
+
+@pytest.mark.asyncio
+async def test_the_counts_can_be_kept_across_maps(console):
+    plugin = _plugin(console, headshot_counter=True, headshot_reset="no")
+    bob = _teamed(console, "Bob", "red", bits=0)
+    ann = _teamed(console, "Ann", "blue", bits=0)
+    await _hit(console, bob, ann, "head")
+
+    await console.bus.publish(Event(EventType.GAME_MAP_CHANGE))
+    await console.bus.publish(Event(EventType.GAME_ROUND_START))
+
+    assert plugin.hits(bob).head == 1
+
+
+@pytest.mark.asyncio
+async def test_a_hit_that_says_nothing_about_where_it_landed_is_not_counted(console):
+    """Guessing "torso" would advise players to buy armour they do not need."""
+    plugin = _plugin(console, headshot_counter=True)
+    bob = _teamed(console, "Bob", "red", bits=0)
+    ann = _teamed(console, "Ann", "blue", bits=0)
+
+    await _hit(console, bob, ann, "")
+
+    assert plugin.hits(bob).landed == 0
+
+
 # -- through a real bot ----------------------------------------------------------------------------
 
 
