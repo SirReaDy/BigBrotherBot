@@ -396,6 +396,13 @@ shot decides a game if they all end up on one side. A shuffle has to beat the te
 classic's search started from nothing, so the first deal always won and `!paskuffle` on even teams
 moved half the server about and then reported the difference unchanged.
 
+**The name checker** — two players may not wear one name, a handful of names nobody may wear at all
+(the default nickname, and `all`, which is the word admin commands use to mean everybody), and a limit
+on how often one player may rename during a map. It does not overlap `nickreg`, which answers "is this
+a name registered to somebody else?" where this answers "is this a name at all?". Names are compared
+as players see them — colours stripped, trimmed, lower-cased — where the classic compared raw strings,
+so `^1Bob` and `^2Bob` were not duplicates of each other.
+
 **The spectator check**, which asks whoever has been watching rather than playing to do one or the
 other once the server is busy enough that somebody wants the slot. It warns, and `admin`'s escalation
 is what removes them — the number of warnings a kick takes is a server's policy, not this feature's.
@@ -415,8 +422,8 @@ config file contains is anything, and the name has to look like a filename rathe
 into one — and `!papublic on|off`, whose private password is built from a configured word plus fresh
 digits, sent to the admin privately and never written to the log.
 
-Still to come: the other policies — name checker, bot support, headshot counter, rotation manager,
-match mode, vote delay.
+Still to come: the other policies — bot support, headshot counter, rotation manager, match mode,
+vote delay.
 
 One immunity rule covers all four player commands — you cannot use them on somebody at or above your own
 level. The classic had `slap_safe_level` on `!paslap`, a different comparison on `!pamute`, and *nothing*

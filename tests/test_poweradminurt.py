@@ -2229,3 +2229,245 @@ async def test_a_real_urban_terror_lock_holds(tmp_path):
 
     assert any(cmd.startswith("forceteam 1 blue") for cmd in rcon.commands), rcon.commands
     bot.storage.close()
+
+
+# -- the name checker ---------------------------------------------------------------------------
+
+
+def _warned_names(console):  # noqa: ANN001, ANN202
+    return sorted(c.name for c, _reason, _admin in console.warned)
+
+
+@pytest.mark.asyncio
+async def test_two_players_wearing_one_name_are_both_warned(console):
+    """Which of them took it from the other is not knowable from here."""
+    plugin = _balancer(console)
+    _teamed(console, "Bob", "red", bits=0)
+    _teamed(console, "Bob", "blue", bits=0)
+
+    plugin.namecheck()
+
+    assert _warned_names(console) == ["Bob", "Bob"]
+
+
+@pytest.mark.asyncio
+async def test_a_name_that_only_differs_by_its_colours_is_the_same_name(console):
+    """The classic compared the raw strings, so `^1Bob` and `^2Bob` — identical on the scoreboard —
+    were not duplicates of each other, which is the exact case the check exists for."""
+    plugin = _balancer(console)
+    _teamed(console, "^1Bob", "red", bits=0)
+    _teamed(console, "^2Bob", "blue", bits=0)
+
+    plugin.namecheck()
+
+    assert len(console.warned) == 2
+
+
+@pytest.mark.asyncio
+async def test_two_different_names_are_left_alone(console):
+    plugin = _balancer(console)
+    _teamed(console, "Bob", "red", bits=0)
+    _teamed(console, "Ann", "blue", bits=0)
+
+    plugin.namecheck()
+
+    assert console.warned == []
+
+
+@pytest.mark.asyncio
+async def test_the_default_nickname_is_a_forbidden_name(console):
+    plugin = _balancer(console)
+    _teamed(console, "New UrT Player", "red", bits=0)
+
+    plugin.namecheck()
+
+    assert _warned_names(console) == ["New UrT Player"]
+    assert console.warned[0][1] == "that name is not allowed here"
+
+
+@pytest.mark.asyncio
+async def test_a_forbidden_name_in_colours_is_still_forbidden(console):
+    """The classic called `stripColors` on its own constant, which has no colours in it, rather than
+    on the player's name — so this walked straight past."""
+    plugin = _balancer(console)
+    _teamed(console, "^1New ^7UrT ^1Player", "red", bits=0)
+
+    plugin.namecheck()
+
+    assert len(console.warned) == 1
+
+
+@pytest.mark.asyncio
+async def test_the_word_admin_commands_use_for_everybody_is_forbidden(console):
+    plugin = _balancer(console)
+    _teamed(console, "all", "red", bits=0)
+
+    plugin.namecheck()
+
+    assert _warned_names(console) == ["all"]
+
+
+@pytest.mark.asyncio
+async def test_the_forbidden_list_is_a_list(console):
+    """The classic had a setting called `checkbadnames` that turned on one hard-coded word."""
+    plugin = _balancer(console, namecheck_forbidden_names="admin, owner")
+    _teamed(console, "Owner", "red", bits=0)
+    _teamed(console, "New UrT Player", "blue", bits=0)
+
+    plugin.namecheck()
+
+    assert _warned_names(console) == ["Owner"]
+
+
+@pytest.mark.asyncio
+async def test_an_admin_is_not_checked(console):
+    plugin = _balancer(console, namecheck_max_level=20)
+    _teamed(console, "all", "red", bits=64)
+
+    plugin.namecheck()
+
+    assert console.warned == []
+
+
+@pytest.mark.asyncio
+async def test_bots_sharing_a_name_are_not_warned_about_each_other(console):
+    """They cannot read a warning, and several bots on one server routinely wear one name — the
+    classic warned every one of them, on every sweep, forever."""
+    plugin = _balancer(console)
+    for index in range(3):
+        bot = _teamed(console, "UrT Bot", "red", cid=str(90 + index), bits=0)
+        bot.is_bot = True
+
+    plugin.namecheck()
+
+    assert console.warned == []
+
+
+@pytest.mark.asyncio
+async def test_the_sweep_stands_down_in_the_quiet_window(console):
+    plugin = _balancer(console)
+    _teamed(console, "Bob", "red", bits=0)
+    _teamed(console, "Bob", "blue", bits=0)
+    plugin.hold_off()
+
+    plugin.namecheck()
+
+    assert console.warned == []
+
+
+# -- changing name over and over ------------------------------------------------------------------
+
+
+async def _rename(console, client, name):  # noqa: ANN001, ANN202
+    client.name = name
+    await console.bus.publish(Event(EventType.CLIENT_NAME_CHANGE, client=client, data=name))
+
+
+@pytest.mark.asyncio
+async def test_a_player_who_will_not_settle_on_a_name_is_removed(console):
+    _balancer(console, namecheck_max_changes=3)
+    bob = _teamed(console, "Bob", "red", bits=0)
+
+    for index in range(5):
+        await _rename(console, bob, f"Bob{index}")
+
+    # Once, not once per rename after the limit: whether they have actually gone is the server's
+    # business, and kicking them again in the meantime helps nobody.
+    assert [who for who, _reason, _admin in console.kicked] == [bob]
+
+
+@pytest.mark.asyncio
+async def test_a_few_changes_are_allowed(console):
+    _balancer(console, namecheck_max_changes=7)
+    bob = _teamed(console, "Bob", "red", bits=0)
+
+    await _rename(console, bob, "Bobby")
+    await _rename(console, bob, "Robert")
+
+    assert console.kicked == []
+
+
+@pytest.mark.asyncio
+async def test_they_are_told_how_many_are_left(console):
+    _balancer(console, namecheck_max_changes=4)
+    bob = _teamed(console, "Bob", "red", bits=0)
+
+    await _rename(console, bob, "Bobby")
+    await _rename(console, bob, "Robert")
+
+    assert _told(console, bob) == [
+        "3 more name changes allowed on this map",
+        "2 more name changes allowed on this map",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_the_engine_renaming_a_reconnecting_player_does_not_count(console):
+    """Urban Terror appends `_<slot>` to a name already in use, so somebody who drops and reconnects
+    comes back as `Bob_3`. That is the engine renaming them, not them renaming themselves."""
+    _balancer(console, namecheck_max_changes=1)
+    bob = _teamed(console, "Bob", "red", cid="3", bits=0)
+
+    await _rename(console, bob, "Bob")
+    await _rename(console, bob, "Bob_3")
+    await _rename(console, bob, "Bob")
+
+    assert console.kicked == []
+
+
+@pytest.mark.asyncio
+async def test_the_count_starts_again_on_a_new_map(console):
+    _balancer(console, namecheck_max_changes=2)
+    bob = _teamed(console, "Bob", "red", bits=0)
+    await _rename(console, bob, "Bobby")
+    await _rename(console, bob, "Robert")
+
+    await console.bus.publish(Event(EventType.GAME_EXIT))
+    await _rename(console, bob, "Rob")
+    await _rename(console, bob, "Bobby")
+
+    assert console.kicked == []
+
+
+@pytest.mark.asyncio
+async def test_an_admin_may_rename_as_often_as_they_like(console):
+    """The classic hard-coded level 9 for this, which is not a group anybody has."""
+    _balancer(console, namecheck_max_changes=1)
+    boss = _teamed(console, "Boss", "red", bits=64)
+
+    for index in range(5):
+        await _rename(console, boss, f"Boss{index}")
+
+    assert console.kicked == []
+
+
+@pytest.mark.asyncio
+async def test_the_limit_can_be_switched_off(console):
+    _balancer(console, namecheck_max_changes=0)
+    bob = _teamed(console, "Bob", "red", bits=0)
+
+    for index in range(10):
+        await _rename(console, bob, f"Bob{index}")
+
+    assert console.kicked == []
+
+
+@pytest.mark.asyncio
+async def test_a_real_urban_terror_rename_is_counted(tmp_path):
+    """`CLIENT_NAME_CHANGE` had the same problem the team change did: only the Source parser ever
+    published it, so on this family `censor` could not catch somebody who connected with a clean
+    name and then changed it, and `nickreg` could not catch somebody putting on an admin's name
+    mid-session."""
+    bot, rcon, plugin = _real_bot(tmp_path, namecheck_max_changes=1)
+    await bot.replay([r"ClientUserinfoChanged: 1 n\Bob\t\1"])
+    await bot.bus.drain()
+    bob = bot.clients.get_by_cid("1")
+    assert bob is not None
+    rcon.commands.clear()
+
+    await bot.replay([r"ClientUserinfoChanged: 1 n\Robert\t\1"])
+    await bot.replay([r"ClientUserinfoChanged: 1 n\Roberto\t\1"])
+    await bot.bus.drain()
+
+    assert any("kick" in cmd.lower() for cmd in rcon.commands), rcon.commands
+    bot.storage.close()

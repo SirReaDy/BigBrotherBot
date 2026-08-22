@@ -24,6 +24,13 @@ found. `!paskuffle` shuffles, `!pabalance` gets the same result by moving as few
 automatically. Where the score cannot be improved any further, the shuffle distributes the *snipers*
 instead: a rifle that kills in one shot decides a game on its own if they all end up on one side.
 
+**The name checker**, which is three rules about names: two players may not wear one name, a handful
+of names nobody may wear at all (the default nickname somebody never changed, and `all`, which is the
+word admin commands use to mean everybody), and a limit on how often one player may rename during a
+map — somebody who changes name every thirty seconds cannot be talked about, complained about or
+reported. It does **not** overlap `nickreg`, which was worth checking before writing it: that plugin
+answers "is this a name registered to somebody else?", and this one answers "is this a name at all?".
+
 **The spectator check**, which asks whoever has been watching rather than playing to do one or the
 other, once the server is busy enough that somebody wants the slot. It warns; `admin`'s own escalation
 is what eventually removes them, which is the classic's design and the right one — the number of
@@ -39,8 +46,8 @@ the wave delays), `!pastamina`, `!pamoon`, `!pasetnextmap` and `!pagear`.
 **The server commands.** `!pabigtext`, `!paset`, `!paget`, `!pavote`, `!pamaprestart`, `!pamapreload`,
 `!pacyclemap`, `!paexec` and `!papublic`.
 
-**Still to come:** the other policies — name checker, bot support, headshot counter, rotation manager,
-match mode, vote delay.
+**Still to come:** the other policies — bot support, headshot counter, rotation manager, match mode,
+vote delay.
 
 **Not ported, deliberately:**
 
@@ -122,10 +129,24 @@ Changed from the classic, most of them faults:
   server being full; it cannot read a warning, so it does not get one. The classic warned bots, and
   the escalation eventually kicked one — whereupon its own bot support added another.
 
-And one fault that was not in this plugin at all: `!paforce … lock` had never held anybody, because
+* **Names are compared as players see them.** The classic compared the raw strings, so `^1Bob` and
+  `^2Bob` — the same name to everybody looking at the scoreboard — were not duplicates of each other,
+  which is the exact case a duplicate check exists for. Its check for the default nickname went
+  further and called `stripColors` on **its own constant**, which has no colours in it, rather than on
+  the player's name, so `^1New UrT Player` walked straight past.
+* **The forbidden names are a list.** `checkbadnames` was a boolean that turned on one hard-coded
+  word.
+* **A bot is not warned for sharing a name with another bot**, which several of them routinely do; the
+  classic warned every one of them on every sweep. And the rename limit's exemption is a level rather
+  than the classic's hard-coded `9`, which is not a group anybody has.
+
+And two faults that were not in this plugin at all: `!paforce … lock` had never held anybody, because
 **no Quake3 parser published `CLIENT_TEAM_CHANGE`**. The team is a field of the infostring rather than
 a line of its own, so nothing noticed the field changing, and a subscriber to an event nobody raises
-looks exactly like a subscriber to something that never happens. See `Q3Parser._userinfo_events`.
+looks exactly like a subscriber to something that never happens. `CLIENT_NAME_CHANGE` had it too, for
+the same reason: `censor` could not catch a player who connected with a clean name and then changed it,
+and `nickreg` could not catch one putting on an admin's name mid-session. See
+`Q3Parser._userinfo_events`.
 """
 
 from __future__ import annotations
@@ -141,7 +162,7 @@ from b3.core.commands import Command, CommandContext, command
 from b3.core.console import Console
 from b3.core.events import Event, EventType
 from b3.core.plugin import Plugin
-from b3.core.util import as_float, as_int, as_word
+from b3.core.util import as_float, as_int, as_word, normalise_name
 from b3.domain.client import Client
 from b3.plugins.firstkill import is_headshot
 
@@ -323,6 +344,22 @@ DEFAULTS: dict[str, object] = {
     "speccheck_max_level": 20,
     # How long each warning lives.
     "speccheck_warn_minutes": 5,
+    # -- the name checker ---------------------------------------------------------------------
+    # Minutes between sweeps for duplicate and forbidden names; 0 turns them off.
+    "namecheck_interval": 0,
+    # Whether two players wearing one name are both warned for it.
+    "namecheck_duplicates": True,
+    # Names nobody may wear, comma-separated and compared as players see them. `New UrT Player` is
+    # the default nickname — somebody who never set one — and `all` is the word admin commands use
+    # to mean everybody, so a player wearing it makes those commands ambiguous. The classic had a
+    # setting called `checkbadnames` that turned on exactly one hard-coded word.
+    "namecheck_forbidden_names": "New UrT Player, all",
+    # How many times a player may change name during one map before being removed; 0 allows any
+    # number. Somebody who renames every thirty seconds cannot be talked about or reported.
+    "namecheck_max_changes": 7,
+    # Nobody at or above this level is checked. The classic hard-coded 9 for the rename limit and
+    # checked nothing at all for the rest.
+    "namecheck_max_level": 20,
 }
 
 MESSAGES = {
@@ -412,6 +449,10 @@ MESSAGES = {
     "pa_skill_mode_set": "skill balancing is now {mode}",
     "pa_skill_mode_usage": "!paautoskuffle {options}",
     "pa_spec_reason": "spectator too long on a full server",
+    "pa_name_duplicate": "somebody else is already using that name",
+    "pa_name_forbidden": "that name is not allowed here",
+    "pa_name_changes_kick": "too many name changes",
+    "pa_name_changes_left": "{count} more name changes allowed on this map",
 }
 
 
@@ -474,6 +515,9 @@ ADVICE_WORDS: tuple[tuple[float, str], ...] = (
     (10.0, "godlike"),
     (float("inf"), "probably cheating"),
 )
+
+#: How few name changes have to be left before the player is told how many. The classic's number.
+NAME_CHANGE_WARNING_AT = 4
 
 #: What `!paautoskuffle` accepts, including the classic's numbers.
 SKILL_MODES = {
@@ -800,6 +844,14 @@ class PoweradminurtPlugin(Plugin):
             self.schedule(
                 self._teamcheck, minute=f"*/{min(interval, 59)}", name="PoweradminurtPlugin.teams"
             )
+        self.subscribe(EventType.CLIENT_NAME_CHANGE, self.on_name_change)
+        name_interval = as_int(self.settings.get("namecheck_interval"), 0)
+        if name_interval > 0:
+            self.schedule(
+                self.namecheck,
+                minute=f"*/{min(name_interval, 59)}",
+                name="PoweradminurtPlugin.names",
+            )
         spec_interval = as_int(self.settings.get("speccheck_interval"), 0)
         if spec_interval > 0:
             self.schedule(
@@ -940,6 +992,8 @@ class PoweradminurtPlugin(Plugin):
         if client is None:
             return
         client.del_var(self, "locked_to")
+        for key in ("name_changes", "name_seen", "name_kicked"):
+            client.del_var(self, key)
         before = len(self.pending)
         self.pending = [r for r in self.pending if r.client is not client]
         if len(self.pending) != before:
@@ -1244,11 +1298,106 @@ class PoweradminurtPlugin(Plugin):
         """The map is over: locks lapse unless the operator wanted them permanent."""
         self._balance_pending = False
         self._skill_pending = None
+        self._reset_name_changes()
         self.hold_off()
         if self.settings.get("team_locks_permanent"):
             return
         for client in self.console.clients.connected():
             client.del_var(self, "locked_to")
+
+    # -- the name checker ----------------------------------------------------
+
+    def _name_list(self, key: str) -> set[str]:
+        """One of the two lists of names nobody may wear, normalised for comparison."""
+        raw = str(self.settings.get(key) or "")
+        return {normalise_name(part) for part in raw.split(",") if part.strip()}
+
+    def _name_exempt(self, client: Client) -> bool:
+        # A bot cannot read a warning, and several bots on one server routinely wear one name — the
+        # classic warned every one of them, on every sweep, for duplicating each other.
+        if client.is_bot:
+            return True
+        return client.max_level() >= as_int(self.settings.get("namecheck_max_level"), 20)
+
+    def namecheck(self) -> None:
+        """Warn players wearing a name nobody should be wearing.
+
+        Names are compared **as players see them** — colour codes stripped, trimmed, lower-cased.
+        The classic compared the raw strings, so `^1Bob` and `^2Bob`, which are the same name to
+        everybody looking at the scoreboard, were not duplicates of each other; and its check for the
+        default nickname called `stripColors` on its own constant, which has no colours in it,
+        instead of on the player's name, so `^1New UrT Player` went past unnoticed. Both of those
+        misses are the exact case each check exists for.
+        """
+        if not self.is_enabled() or self.holding_off():
+            return
+        forbidden = self._name_list("namecheck_forbidden_names")
+        by_name: dict[str, list[Client]] = {}
+        for client in self.console.clients.connected():
+            if self._name_exempt(client):
+                continue
+            by_name.setdefault(normalise_name(client.name), []).append(client)
+        for name, wearing in by_name.items():
+            if not name:
+                continue
+            if self.settings.get("namecheck_duplicates") and len(wearing) > 1:
+                # Both are warned: which of them took it from the other is not knowable from here.
+                for client in wearing:
+                    log.info("poweradminurt: %s shares a name with somebody", client.name)
+                    self.console.warn(client, reason=self.message("pa_name_duplicate"))
+            if name in forbidden:
+                for client in wearing:
+                    log.info("poweradminurt: %s is wearing a forbidden name", client.name)
+                    self.console.warn(client, reason=self.message("pa_name_forbidden"))
+
+    def _name_changes(self, client: Client) -> int:
+        held = client.get_var(self, "name_changes")
+        return held if isinstance(held, int) else 0
+
+    def on_name_change(self, event: Event) -> None:
+        """Count a rename, and remove somebody who will not settle on a name.
+
+        A player who changes name every thirty seconds cannot be talked about, complained about or
+        reported, which is the whole reason for the limit.
+        """
+        client = event.client
+        if client is None or not self.is_enabled():
+            return
+        allowed = as_int(self.settings.get("namecheck_max_changes"), 7)
+        if allowed <= 0 or self._name_exempt(client):
+            return
+        name = normalise_name(client.name)
+        # Urban Terror appends `_<slot>` to a name already in use, so a player who drops and
+        # reconnects comes back as `Bob_3` — which is the engine renaming them, not them renaming
+        # themselves. The classic did this too, and it is worth keeping.
+        suffix = f"_{client.cid}"
+        if client.cid and name.endswith(suffix):
+            name = name[: -len(suffix)]
+        previous = client.get_var(self, "name_seen")
+        client.set_var(self, "name_seen", name)
+        if isinstance(previous, str) and name == previous:
+            # The same name as last time once the engine's suffix is off: nothing was renamed.
+            return
+        count = self._name_changes(client) + 1
+        client.set_var(self, "name_changes", count)
+        if count > allowed:
+            if client.get_var(self, "name_kicked"):
+                # Already asked to leave. Whether they have actually gone is the server's business,
+                # and kicking them once per rename in the meantime helps nobody.
+                return
+            client.set_var(self, "name_kicked", True)
+            log.info("poweradminurt: kicking %s after %d name changes", client.name, count)
+            self.console.kick(client, reason=self.message("pa_name_changes_kick"))
+            return
+        left = allowed - count
+        if left < NAME_CHANGE_WARNING_AT:
+            self.console.tell(client, self.message("pa_name_changes_left", count=left))
+
+    def _reset_name_changes(self) -> None:
+        """A new map is a fresh start, as it was in the classic."""
+        for client in self.console.clients.connected():
+            client.del_var(self, "name_changes")
+            client.del_var(self, "name_kicked")
 
     # -- the spectator check -------------------------------------------------
 
@@ -2079,6 +2228,7 @@ __all__ = [
     "SHUFFLE_SLACK",
     "SHUFFLE_TRIES",
     "SIDES",
+    "NAME_CHANGE_WARNING_AT",
     "SKILL_MODES",
     "SNIPER_GEAR",
     "SNIPER_KILL_RATIO",

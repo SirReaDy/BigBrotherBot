@@ -145,17 +145,22 @@ class Q3Parser(Parser):
         )
         return name[:limit], True
 
-    def _apply_userinfo(self, cid: str, info: dict[str, str]) -> tuple[Client, bool]:
+    def _apply_userinfo(self, cid: str, info: dict[str, str]) -> tuple[Client, bool, bool]:
         """Fold an infostring into the client for that slot — the only place identity arrives.
 
-        Returns the client and whether this line *moved* them, because on this engine a team change
-        is not a log line of its own: the team is a field of the infostring, and the only way to
-        know somebody switched is that the field now says something else.
+        Returns the client and whether this line *moved* or *renamed* them. Neither is a log line of
+        its own on this engine: the team and the name are fields of the infostring, and the only way
+        to know somebody switched or renamed is that a field now says something else.
         """
         client = self._get_or_create(cid)
         name = info.get("name") or info.get("n")
+        renamed = False
         if name:
+            before = client.name
             client.name, client.name_overflow = self._bounded_name(name, cid)
+            # A name the bot already knew, now different. Not the first one it learns: that is the
+            # player arriving, which `CLIENT_AUTH` already covers for everything that cares.
+            renamed = bool(before) and before != client.name
         guid = self._valid_guid(info.get("cl_guid") or info.get("guid") or "")
         if guid and not client.guid:
             client.guid = guid
@@ -169,7 +174,7 @@ class Q3Parser(Parser):
             mapped = self.profile.teams.get(team, team)
             moved = mapped != client.team
             client.team = mapped
-        return client, moved
+        return client, moved, renamed
 
     def read_userinfo(self, cid: str, reply: str) -> str | None:
         """Turn a ``dumpuser <cid>`` reply into the log line it is the same information as.
@@ -220,8 +225,8 @@ class Q3Parser(Parser):
 
     @handles(r"^ClientUserinfo(?:Changed)?:\s*(?P<cid>\d+)\s*(?P<info>.*)$")
     def on_userinfo(self, m: "re.Match[str]") -> list[Event]:
-        client, moved = self._apply_userinfo(m["cid"], parse_infostring(m["info"]))
-        return self._userinfo_events(client, moved)
+        client, moved, renamed = self._apply_userinfo(m["cid"], parse_infostring(m["info"]))
+        return self._userinfo_events(client, moved, renamed)
 
     @handles(r"^Userinfo:\s*(?P<info>\\.*)$")
     def on_bare_userinfo(self, m: "re.Match[str]") -> list[Event]:
@@ -229,11 +234,11 @@ class Q3Parser(Parser):
         cid, self._pending_cid = self._pending_cid, None
         if cid is None:
             return []
-        client, moved = self._apply_userinfo(cid, parse_infostring(m["info"]))
-        return self._userinfo_events(client, moved)
+        client, moved, renamed = self._apply_userinfo(cid, parse_infostring(m["info"]))
+        return self._userinfo_events(client, moved, renamed)
 
-    def _userinfo_events(self, client: Client, moved: bool) -> list[Event]:
-        """The update, and a team change when the line carried one.
+    def _userinfo_events(self, client: Client, moved: bool, renamed: bool) -> list[Event]:
+        """The update, and a team change or a rename when the line carried one.
 
         This family published **no** ``CLIENT_TEAM_CHANGE`` at all, which is not a gap anybody can
         see: subscribers simply never ran. `poweradminurt`'s ``!paforce … lock`` — whose whole point
@@ -244,11 +249,20 @@ class Q3Parser(Parser):
 
         A player whose team becomes known for the first time counts as having changed: joining a team
         *is* the move a balancer has to react to, and the classic said so the same way — its clients
-        started on ``TEAM_UNKNOWN`` and the first real team fired the event.
+        started on ``TEAM_UNKNOWN`` and the first real team fired the event. A *name* becoming known
+        for the first time does not: that is the player arriving, which `CLIENT_AUTH` already covers
+        for the two plugins that check a name on the way in.
+
+        ``CLIENT_NAME_CHANGE`` had the same problem as the team change and for the same reason — only
+        the Source parser published it — so `censor` could not catch somebody who connected with a
+        clean name and then changed it, `nickreg` could not catch somebody putting on an admin's name
+        mid-session, and `afk` did not count renaming as a sign of life.
         """
         events = [Event(EventType.CLIENT_UPDATE, client=client)]
         if moved:
             events.append(Event(EventType.CLIENT_TEAM_CHANGE, data=client.team, client=client))
+        if renamed:
+            events.append(Event(EventType.CLIENT_NAME_CHANGE, data=client.name, client=client))
         return events
 
     @handles(r"^ClientBegin:\s*(?P<cid>\d+)\s*$")

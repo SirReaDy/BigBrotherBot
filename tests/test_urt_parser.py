@@ -213,13 +213,35 @@ def test_a_team_change_is_published_when_the_infostring_says_a_different_team():
     assert events[-1].data == "blue"
 
 
-def test_a_line_that_does_not_move_anybody_is_only_an_update():
+def test_a_line_that_changes_nothing_is_only_an_update():
     p = UrtParser(IOURT42)
     p.parse_line(r"ClientUserinfoChanged: 3 n\Bob\t\1")
 
-    events = p.parse_line(r"ClientUserinfoChanged: 3 n\Bobby\t\1")
+    events = p.parse_line(r"ClientUserinfoChanged: 3 n\Bob\t\1\gear\GZAORWA")
 
     assert [e.type for e in events] == [EventType.CLIENT_UPDATE]
+
+
+def test_a_rename_is_published_when_the_infostring_carries_a_different_name():
+    """Same problem as the team change and the same cause: only the Source parser published this, so
+    on this family `censor` could not catch a clean name changed to a bad one mid-session and
+    `nickreg` could not catch somebody putting on an admin's name."""
+    p = UrtParser(IOURT42)
+    p.parse_line(r"ClientUserinfoChanged: 3 n\Bob\t\1")
+
+    events = p.parse_line(r"ClientUserinfoChanged: 3 n\Robert\t\1")
+
+    assert [e.type for e in events] == [EventType.CLIENT_UPDATE, EventType.CLIENT_NAME_CHANGE]
+    assert events[-1].data == "Robert"
+
+
+def test_the_first_name_a_slot_reports_is_not_a_rename():
+    """That is the player arriving, which `CLIENT_AUTH` already covers for everything that cares."""
+    p = UrtParser(IOURT42)
+
+    events = p.parse_line(r"ClientUserinfoChanged: 3 n\Bob\t\1")
+
+    assert EventType.CLIENT_NAME_CHANGE not in [e.type for e in events]
 
 
 def test_the_spectators_are_spelt_the_way_everything_else_spells_them():

@@ -55,8 +55,8 @@
 #                      config file contains is anything; the name must look like a filename
 #   !papublic on|off   open the server to everybody, or put a password on it (alias: !public)
 #
-# Still to come: the other policies — name checker, bot support, headshot counter, rotation manager,
-# match mode, vote delay.
+# Still to come: the other policies — bot support, headshot counter, rotation manager, match mode,
+# vote delay.
 #
 # Two commands from the classic are deliberately absent. `!paveto` is `callvote`'s `!veto`, which works
 # on every engine that can cancel a vote rather than only this one. `!paversion` printed the plugin's
@@ -229,6 +229,43 @@ settings:
   # bot punishing players for something the server did to them. Bots are counted towards "busy" —
   # a bot fills a slot — and never warned, since a warning is a thing you say to a person.
 
+  # -- the name checker ----------------------------------------------------------------------
+  #
+  # Three rules about names, and none of them overlap `nickreg`: that plugin answers "is this a name
+  # registered to somebody else?", and these answer "is this a name at all?".
+  #
+  # Names are compared the way players see them — colour codes stripped, trimmed, lower-cased. The
+  # classic compared the raw strings, so `^1Bob` and `^2Bob`, identical on the scoreboard, were not
+  # duplicates of each other; and its check for the default nickname called its colour-stripper on
+  # its own constant rather than on the player's name, so `^1New UrT Player` walked straight past.
+
+  # Minutes between sweeps for duplicate and forbidden names; 0 turns them off.
+  namecheck_interval: 0
+
+  # Whether two players wearing one name are both warned for it. Both, because which of them took it
+  # from the other is not knowable from here.
+  namecheck_duplicates: yes
+
+  # Names nobody may wear, comma-separated. `New UrT Player` is the default nickname — somebody who
+  # never set one — and `all` is the word admin commands use to mean everybody, so a player wearing
+  # it makes those commands ambiguous. The classic had a setting called `checkbadnames` that turned
+  # on exactly one hard-coded word.
+  namecheck_forbidden_names: New UrT Player, all
+
+  # How many times a player may change name during one map before being removed; 0 allows any number.
+  # Somebody who renames every thirty seconds cannot be talked about, complained about or reported,
+  # which is the whole reason for the limit. They are told how many they have left as they approach
+  # it. A reconnecting player whose name is taken comes back as `Bob_3` — that is the engine renaming
+  # them rather than them renaming themselves, and it does not count.
+  namecheck_max_changes: 7
+
+  # Nobody at or above this level is checked at all. The classic hard-coded 9 for the rename limit,
+  # which is not a level any group has, and checked nothing for the other two rules.
+  namecheck_max_level: 20
+
+  # Bots are never warned: they cannot read one, and several bots on one server routinely wear a
+  # single name — the classic warned every one of them, on every sweep.
+
 # Everything it says can be reworded in the main config's `messages:` block:
 #
 #   pa_slapped / pa_nuked / pa_killed / pa_muted / pa_unmuted     ({name}, {minutes})
@@ -248,3 +285,5 @@ settings:
 #   pa_skill_moved / pa_skill_moved_best                          ({team}, {other})
 #   pa_skill_mode / pa_skill_mode_set / pa_skill_mode_usage       ({mode}, {options})
 #   pa_spec_reason        why a spectator on a full server was warned
+#   pa_name_duplicate / pa_name_forbidden / pa_name_changes_kick
+#   pa_name_changes_left                                          ({count})

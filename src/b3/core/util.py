@@ -28,6 +28,17 @@ def strip_colors(text: str) -> str:
     return COLOR_CODE_RE.sub("", text)
 
 
+def normalise_name(name: str) -> str:
+    """A player's name reduced to what a comparison should care about.
+
+    Colour codes stripped, trimmed, lower-cased. ``^1Adm^7in`` and ``admin`` are the same name to
+    everybody looking at the server, so anything asking "is this the same name?" — a reserved
+    nickname, two players wearing one name, a forbidden word — has to ask it about this and not
+    about the bytes the engine sent.
+    """
+    return strip_colors(name).strip().lower()
+
+
 def match_names(wanted: str, options: Sequence[tuple[str, str]]) -> list[str]:
     """Resolve what somebody typed against ``(value, label)`` pairs; returns the matching values.
 

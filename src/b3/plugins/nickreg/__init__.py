@@ -39,7 +39,7 @@ from b3.core.commands import CommandContext, command
 from b3.core.console import Console
 from b3.core.events import Event, EventType
 from b3.core.plugin import Plugin
-from b3.core.util import as_int, strip_colors
+from b3.core.util import as_int, normalise_name
 from b3.domain.client import Client
 
 if TYPE_CHECKING:
@@ -95,9 +95,9 @@ class RegisteredNick(Base):
     display: Mapped[str] = mapped_column(String(64), default="")
 
 
-def normalise(name: str) -> str:
-    """A nickname reduced to what a comparison should care about."""
-    return strip_colors(name).strip().lower()
+#: Two plugins ask "is this the same name?" — this one and `poweradminurt`'s name checker — so the
+#: answer lives in the core rather than in whichever of them was written first.
+normalise = normalise_name
 
 
 class NickregPlugin(Plugin):
