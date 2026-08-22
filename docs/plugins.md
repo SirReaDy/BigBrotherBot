@@ -35,7 +35,7 @@ list, each with an optional config of its own (see `examples/`):
 | `geolocation` | resolves where a player is connecting from, for the plugins that need it | — |
 | `location` | announces where arrivals are from, and answers for it | `!locate` `!distance` `!isp` |
 | `countryfilter` | refuses players from the countries a server does not accept | — |
-| `poweradminurt` | Urban Terror's admin commands (all but the background features) | `!paslap` `!panuke` `!pakill` `!pamute` `!pabigtext` `!paset` `!paget` `!pavote` `!pactf` `!pabomb` `!pagear` … |
+| `poweradminurt` | Urban Terror's admin commands, and the team balancer | `!paslap` `!panuke` `!pakill` `!pamute` `!pateams` `!paforce` `!pabigtext` `!paset` `!paget` `!pavote` `!pactf` `!pabomb` `!pagear` … |
 
 ### censor — bad language, and the escalating mute
 
@@ -363,32 +363,40 @@ player typed. Config: `examples/plugin_countryfilter.yaml`.
 
 ### poweradminurt — Urban Terror's own commands
 
-The classic plugin is 3,846 lines and forty-nine commands, so it is being ported in slices.
+The classic plugin is 3,846 lines and forty-nine commands. What is here so far:
 
-**Slice 1** is the commands that act on a player or a setting: `!paslap` and `!panuke` (with a repeat
-count up to 25, one a second), `!pakill`, `!pamute` / `!paunmute`, `!pabigtext`, `!paset` / `!paget`, and
-`!pavote`. Each of the first four is an engine verb, so each asks whether this title has one and says so
+**Player control** — `!paslap` and `!panuke` (with a repeat count up to 25, one a second), `!pakill`,
+`!pamute` / `!paunmute`. Each is an engine verb, so each asks whether this title has one and says so
 plainly when it does not, rather than the plugin refusing to load by game name.
 
-**Slice 2** is the match settings, which are a *table* rather than twenty-one near-identical methods: the
-gametype switches (`!pactf`, `!pabomb`, `!pajump`, …), the on/off toggles (`!painstagib`, `!pahardcore`,
-…), the bounded numbers (`!pasetgravity`, `!patimelimit`, the wave delays, …), `!pastamina`, `!pamoon`,
-`!pasetnextmap`, and `!pagear` with its `+weapon`/`-weapon` bits.
-
-**Slice 3** moves players about: `!paforce <player> <red|blue|spec|free> [lock]` (the lock puts them back
-if they switch, which is the only thing that makes it a lock), `!paswap` for two players changing places,
+**Moving players about** — `!paforce <player> <red|blue|spec|free> [lock]` (the lock puts them back if
+they switch, which is the only thing that makes it a lock), `!paswap` for two players changing places,
 and `!paswapteams` / `!pashuffleteams` for everybody at once — those two name no player, which is what
 `GameProfile.server_verbs` is for.
 
-**Slice 3b** is the rest of the server commands: `!pamaprestart`, `!pamapreload` (which is what applies a
-changed password), `!pacyclemap`, `!paexec <file>` — at level 80, since what a config file contains is
-anything, and the name has to look like a filename rather than being sanitised into one — and
-`!papublic on|off`, whose private password is built from a configured word plus fresh digits, sent to the
-admin privately and never written to the log.
+**The team balancer**, which is a policy rather than a command: it keeps the two sides the same size,
+moving whoever joined theirs most recently, and puts a player back if their switch is what made the
+teams uneven. `!pateams` asks for a balance now. It works the whole move out in one pass — the classic
+moved one player, asked the server to count the teams again, and believed an answer that could not yet
+include the move it had just made, so it picked the same player up to twenty-five times. Every
+deliberate move of players (a shuffle, a swap, a `!paforce`, a round start, the bot adopting a server
+full of players) opens a quiet window the automatic checks stand down for; that is the classic's
+`ignoreSet`, and without it the balancer's next pass undoes the shuffle an admin just asked for.
 
-Still to come: the background features (team balancer, skill balancer, name checker, spectator check, bot
-support, headshot counter, rotation manager, match mode). `!pateams` and `!pabalance` come with the team
-balancer, since they are its manual trigger.
+**The match settings**, which are a *table* rather than twenty-one near-identical methods: the gametype
+switches (`!pactf`, `!pabomb`, `!pajump`, …), the on/off toggles (`!painstagib`, `!pahardcore`, …), the
+bounded numbers (`!pasetgravity`, `!patimelimit`, the wave delays, …), `!pastamina`, `!pamoon`,
+`!pasetnextmap`, and `!pagear` with its `+weapon`/`-weapon` bits.
+
+**The server commands** — `!pabigtext`, `!paset` / `!paget`, `!pavote`, `!pamaprestart`, `!pamapreload`
+(which is what applies a changed password), `!pacyclemap`, `!paexec <file>` — at level 80, since what a
+config file contains is anything, and the name has to look like a filename rather than being sanitised
+into one — and `!papublic on|off`, whose private password is built from a configured word plus fresh
+digits, sent to the admin privately and never written to the log.
+
+Still to come: the other policies — skill balancer (and `!pabalance`, which is its manual trigger, not
+the team balancer's), name checker, spectator check, bot support, headshot counter, rotation manager,
+match mode, vote delay.
 
 One immunity rule covers all four player commands — you cannot use them on somebody at or above your own
 level. The classic had `slap_safe_level` on `!paslap`, a different comparison on `!pamute`, and *nothing*

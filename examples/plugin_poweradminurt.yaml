@@ -1,4 +1,4 @@
-# poweradminurt — Urban Terror's own admin commands.
+# poweradminurt — Urban Terror's own admin commands, and the team balancer behind them.
 #
 # Point at it from the main config:
 #
@@ -6,20 +6,26 @@
 #     - name: poweradminurt
 #       config: "@conf/plugin_poweradminurt.yaml"
 #
-# The classic plugin is 3,846 lines and forty-nine commands, so it is being ported in slices. **This
-# slice** is the commands that act on a player or a server setting:
+# The classic plugin is 3,846 lines and forty-nine commands. What is here so far:
+#
+# Player control:
 #
 #   !paslap <player> [times]   throw them about, up to 25 times, one a second (alias: !slap)
 #   !panuke <player> [times]   nuke them (alias: !nuke)
 #   !pakill <player>           kill them where they stand
 #   !pamute <player> [minutes] stop them talking (alias: !mute)
 #   !paunmute <player>         let them talk again
-#   !pabigtext <text>          announce something in the biggest text the game has
-#   !paset <cvar> <value>      change a server setting
-#   !paget <cvar>              read one
-#   !pavote on|off             let players call votes, or stop them
 #
-# **Slice 2** is the match settings — each one writes a single cvar:
+# Moving players between teams:
+#
+#   !paforce <player> <red|blue|spec|free> [lock]   move them; `lock` puts them back if they switch,
+#                                                   and `free` releases the lock (alias: !force)
+#   !paswap <player> [player]     two players change places; one name swaps them with you (alias: !swap)
+#   !paswapteams                  swap the two teams around (alias: !swapteams)
+#   !pashuffleteams               shuffle everybody (alias: !shuffleteams)
+#   !pateams                      even the teams up now (alias: !teams) — see the balancer below
+#
+# The match settings — each one writes a single cvar:
 #
 #   gametypes   !paffa !palms !patdm !pats !paftl !pacah !pactf !pabomb !pajump !pafreeze !pagungame
 #   toggles     !painstagib !pahardcore !pafunstuff !paskins !pawaverespawns  (on|off)
@@ -32,27 +38,21 @@
 # negev. With no argument it says which are allowed — the classic sent that answer to the *server* as
 # an rcon command, so the admin saw nothing at all.
 #
-# **Slice 3** moves players between teams:
+# The server commands:
 #
-#   !paforce <player> <red|blue|spec|free> [lock]   move them; `lock` puts them back if they switch,
-#                                                   and `free` releases the lock (alias: !force)
-#   !paswap <player> [player]     two players change places; one name swaps them with you (alias: !swap)
-#   !paswapteams                  swap the two teams around (alias: !swapteams)
-#   !pashuffleteams               shuffle everybody (alias: !shuffleteams)
+#   !pabigtext <text>  announce something in the biggest text the game has
+#   !paset <cvar> <value> / !paget <cvar>    change a server setting, or read one
+#   !pavote on|off     let players call votes, or stop them
+#   !pamaprestart      restart the map now (alias: !maprestart)
+#   !pamapreload       reload it — which is what applies a changed password (alias: !mapreload)
+#   !pacyclemap        move on to the next map (alias: !cyclemap)
+#   !paexec <file>     run a config file. Level 80, above the other server commands, because what a
+#                      config file contains is anything; the name must look like a filename
+#   !papublic on|off   open the server to everybody, or put a password on it (alias: !public)
 #
-# **Slice 3b** is the rest of the server commands:
-#
-#   !pamaprestart    restart the map now (alias: !maprestart)
-#   !pamapreload     reload it — which is what applies a changed password (alias: !mapreload)
-#   !pacyclemap      move on to the next map (alias: !cyclemap)
-#   !paexec <file>   run a config file. Level 80, above the other server commands, because what a
-#                    config file contains is anything; the name must look like a filename
-#   !papublic on|off open the server to everybody, or put a password on it (alias: !public)
-#
-# Still to come: the background features (team balancer, skill balancer, name checker, spectator check,
-# bot support, headshot counter, rotation manager, match mode). `!pateams` and `!pabalance` come with
-# the team balancer: they are its manual trigger, and porting them alone would mean writing the
-# balancing twice.
+# Still to come: the other policies — skill balancer (with `!pabalance`, which is its manual trigger,
+# not the team balancer's), name checker, spectator check, bot support, headshot counter, rotation
+# manager, match mode, vote delay.
 #
 # Two commands from the classic are deliberately absent. `!paveto` is `callvote`'s `!veto`, which works
 # on every engine that can cancel a vote rather than only this one. `!paversion` printed the plugin's
@@ -66,9 +66,9 @@ settings:
   # Level for the commands that act on a player — the four penalties, `!paforce` and `!paswap`.
   player_command_level: 40
 
-  # Level for the ones that change a server setting — `!paset`, `!paget`, `!pavote`, `!pabigtext`, and
-  # every match setting in slice 2, plus `!paswapteams` and `!pashuffleteams` — those move everybody at
-  # once. Higher on purpose: `!paset` can change anything at all.
+  # Level for the ones that change a server setting — `!paset`, `!paget`, `!pavote`, `!pabigtext` and
+  # every match setting, plus `!paswapteams` and `!pashuffleteams`, which move everybody at once.
+  # Higher on purpose: `!paset` can change anything at all.
   server_command_level: 60
 
   # Nobody may slap, nuke, kill or mute a player at or above their own level — you can always do it to
@@ -88,6 +88,59 @@ settings:
   # set it with nothing recording that it was on.
   default_mute_minutes: 5
 
+  # -- the team balancer ---------------------------------------------------------------------
+  #
+  # It keeps the two sides the same size, moving whoever joined theirs most recently. Unlike the
+  # classic it works the whole move out in one pass: that one moved a player, asked the server to
+  # count the teams again, and believed an answer that could not yet include the move it had just
+  # made — so it kept picking the same player, up to twenty-five times.
+
+  # Minutes between automatic checks. 0 turns the balancer off entirely, which is the classic's own
+  # switch, and leaves `!pateams` working for an admin who wants to ask.
+  teambalance_interval: 30
+
+  # How many players one side may have more than the other before anybody is moved. One is usually
+  # right: on an odd number of players the teams cannot be equal.
+  teambalance_difference: 1
+
+  # Nobody at or above this level is moved, so an admin can go and prop up the weaker team without
+  # being sent straight back.
+  teambalance_max_level: 60
+
+  # How a balance is announced: `bigtext` across the screen, `say` in the chat, or `off`. The classic
+  # wrote 2, 1 and 0 for these. Nothing is announced unless somebody actually moves — the classic said
+  # it the moment it found the teams uneven and only then went looking, so a server whose bigger team
+  # was all admins was told it was being balanced every interval, forever.
+  teambalance_announce: bigtext
+
+  # Which gametypes to balance, by name. The classic's `bm` (bomb mode) and `dm` (free-for-all)
+  # spellings are understood, so a config carried across from it still means what it said.
+  # Names: ffa lms tdm ts ftl cah ctf bomb jump freeze gungame
+  teambalance_gametypes: tdm, ctf, cah, ftl
+
+  # Which of those are played in rounds. Moving somebody mid-round takes them out of a round they are
+  # in the middle of, so a balance that falls due during one waits for the end of it. A setting rather
+  # than the classic's hard-coded pair, because a server's config can make a gametype round-based.
+  teambalance_round_based: ts, bomb
+
+  # Whether a player who unbalances the teams by switching is put straight back. Only if it was *their*
+  # switch that did it: the classic asked "are the teams uneven?" instead, so with red on five and blue
+  # on two, joining blue — helping — got you forced to "the smaller team", which is the one you had
+  # just joined, plus two fabricated suicides deducted from your stats. There is no penalty here.
+  teambalance_on_team_change: yes
+
+  # Seconds of quiet after anything moves players on purpose — a shuffle, a swap, a `!paforce`, a round
+  # start, or the bot starting up and adopting a server full of players. The classic's `ignoreSet`, and
+  # what stops the balancer spending its next pass undoing a `!pashuffleteams`.
+  teambalance_quiet_seconds: 60
+
+  # Whether `!paforce <player> <team> lock` survives a map change. Off, as the classic had it: a lock is
+  # usually meant for the rest of this map.
+  team_locks_permanent: no
+
+  # Level for `!pateams`. The classic let a regular ask, and asking only ever evens the teams up.
+  teams_command_level: 2
+
 # Everything it says can be reworded in the main config's `messages:` block:
 #
 #   pa_slapped / pa_nuked / pa_killed / pa_muted / pa_unmuted     ({name}, {minutes})
@@ -97,3 +150,5 @@ settings:
 #   pa_cvar / pa_cvar_unset / pa_cvar_changed                     ({name}, {value})
 #   pa_vote_on / pa_vote_off / pa_vote_usage
 #   pa_usage_player / pa_usage_set / pa_usage_get / pa_usage_bigtext
+#   pa_teams_balancing / pa_teams_already / pa_teams_balanced / pa_teams_stuck / pa_teams_pending
+#   pa_teams_moved_you / pa_teams_put_back                        ({team})

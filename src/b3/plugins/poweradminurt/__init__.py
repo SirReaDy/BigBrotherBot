@@ -1,30 +1,32 @@
-"""Urban Terror's own admin commands — the ones that act on a player or a setting.
+"""Urban Terror's own admin commands, and the policies that run behind them.
 
-A port of the classic `poweradminurt`, **in slices**. The original is 3,846 lines across `iourt41.py`
-and two per-version subclasses of itself, holding forty-nine commands and eleven background features
-(team balancer, skill balancer, name checker, spectator check, bot support, headshot counter, rotation
-manager, match mode…). Porting it as one change would be a change nobody could review, so it comes in
-parts and this module's docstring records which.
+A port of the classic `poweradminurt`: 3,846 lines across `iourt41.py` and two per-version subclasses
+of itself, holding forty-nine commands and eleven features that run on their own.
 
-**Slice 1: player control and server settings.** `!paslap`, `!panuke`, `!pakill`, `!pamute`,
-`!paunmute`, `!pabigtext`, `!paset`, `!paget` and `!pavote`.
+**Player control.** `!paslap`, `!panuke`, `!pakill`, `!pamute` / `!paunmute` — each one an engine verb,
+so each asks whether this title has it and says so plainly when it does not.
 
-**Slice 2: the match settings** — twenty-one commands that each write one cvar, so they are a *table*
-(`GAMETYPES`, `TOGGLES`, `NUMBERS` below) rather than twenty-one near-identical methods. The gametype switches (`!pactf`,
-`!pabomb`, `!pajump`, …), the limits (`!pacaplimit`, `!patimelimit`, `!pafraglimit`), the toggles
-(`!painstagib`, `!pahardcore`, `!pafunstuff`, `!paskins`, `!pawaverespawns`), the numbers
-(`!pasetgravity`, `!parespawndelay`, `!parespawngod`, `!pahotpotato`, the wave delays), `!pastamina`,
-`!pamoon`, `!pasetnextmap` and `!pagear`.
+**Moving players between teams.** `!paforce` (with its lock), `!paswap`, `!paswapteams` and
+`!pashuffleteams`. The last two name no player at all, which is what `GameProfile.server_verbs` is for.
 
-**Slice 3: moving players between teams.** `!paforce` (with its lock), `!paswap`, `!paswapteams` and
-`!pashuffleteams`. Two of those name no player at all, which is what `GameProfile.server_verbs` is for.
+**The team balancer**, which is not a command but a policy: it keeps the sides the same size, moving
+whoever joined theirs most recently. `!pateams` is its manual trigger. With it comes the classic's
+`ignoreSet` — a quiet window after anybody moves players about on purpose, without which the balancer
+spends its next pass undoing a `!pashuffleteams`.
 
-**Slice 3b: the rest of the server commands.** `!pamaprestart`, `!pamapreload`, `!pacyclemap`,
-`!paexec` and `!papublic` — the first three are one `server_verb` each.
+**The match settings** — twenty-one commands that each write one cvar, so they are a *table*
+(`GAMETYPES`, `TOGGLES`, `NUMBERS` below) rather than twenty-one near-identical methods. The gametype
+switches (`!pactf`, `!pabomb`, `!pajump`, …), the limits (`!pacaplimit`, `!patimelimit`,
+`!pafraglimit`), the toggles (`!painstagib`, `!pahardcore`, `!pafunstuff`, `!paskins`,
+`!pawaverespawns`), the numbers (`!pasetgravity`, `!parespawndelay`, `!parespawngod`, `!pahotpotato`,
+the wave delays), `!pastamina`, `!pamoon`, `!pasetnextmap` and `!pagear`.
 
-**Later slices:** the background features, each of which is its own plugin-sized thing. `!pateams` and
-`!pabalance` belong with the **team balancer** rather than here: they are its manual trigger, and porting
-them without it would mean writing the balancing twice.
+**The server commands.** `!pabigtext`, `!paset`, `!paget`, `!pavote`, `!pamaprestart`, `!pamapreload`,
+`!pacyclemap`, `!paexec` and `!papublic`.
+
+**Still to come:** the other policies — skill balancer (and `!pabalance`, which is its manual trigger:
+it sorts by kill/death ratio and the classic configured it under `[skillbalancer]`), name checker,
+spectator check, bot support, headshot counter, rotation manager, match mode, vote delay.
 
 **Not ported, deliberately:**
 
@@ -34,7 +36,7 @@ them without it would mean writing the balancing twice.
 * `!paversion` — it printed the plugin's own version string. `!plugin info` answers that for every
   plugin.
 
-Changed from the classic, and the first two are faults:
+Changed from the classic, most of them faults:
 
 * **One immunity rule, not three.** `!paslap` refused to touch anybody at or above `slap_safe_level`
   (60) unless the admin was level 90+; `!panuke` had **no check at all**, so an admin who could not slap
@@ -52,6 +54,28 @@ Changed from the classic, and the first two are faults:
   restart re-enabled voting with whatever the plugin's default happened to be. Both are read from the
   server here, and `on` restores what was there before the last `off` in this session, falling back to
   the engine's own default.
+* **The balancer works out the whole move in one pass** instead of moving, re-reading and moving again.
+  The classic looped up to twenty-five times: force one player, then ask the server for `g_redteamlist`
+  and `g_blueteamlist` and count the characters. The counts it got back could not include the move it
+  had just made — an rcon round trip is faster than the server processing a `forceteam` and writing the
+  new team out — so it picked the same player again, and again. Here the teams are counted from the
+  roster the bot already keeps, how many have to move is arithmetic, and they all move at once.
+* **A switch is only reversed if it is the switch that unbalanced the teams.** The classic's
+  team-change handler asked "are the teams uneven?" and not "did *this* player make them uneven", so
+  with red on five and blue on two, somebody joining **blue** — helping — was forced to "the smaller
+  team", which is the one they had just joined, and charged two fabricated suicide events as a
+  stats-harvest penalty. The message explaining the penalty was inside `if xlrstats is loaded`, so on a
+  server without it the points came off in silence. There is no penalty here: they are put back, and
+  told why.
+* **Nothing is announced unless something happens.** The classic announced "Autobalancing Teams!" the
+  moment it found the teams uneven, and only then looked for somebody to move — so on a server where
+  every candidate was an admin or locked, it announced a balance it then did not perform, every
+  interval, for as long as the teams stayed uneven.
+
+And one fault that was not in this plugin at all: `!paforce … lock` had never held anybody, because
+**no Quake3 parser published `CLIENT_TEAM_CHANGE`**. The team is a field of the infostring rather than
+a line of its own, so nothing noticed the field changing, and a subscriber to an event nobody raises
+looks exactly like a subscriber to something that never happens. See `Q3Parser._userinfo_events`.
 """
 
 from __future__ import annotations
@@ -146,6 +170,18 @@ NORMAL_GRAVITY = "800"
 #: to run two commands, and the right answer is no.
 CONFIG_FILE_RE = re.compile(r"^[A-Za-z0-9._\-]{1,64}$")
 
+#: The two sides a balancer can move somebody between. `free` (Quake3's no-team, used by the
+#: deathmatch gametypes) and `spec` are not sides: there is nothing to balance.
+SIDES = ("red", "blue")
+
+#: Urban Terror's gametype numbers by short name — the reverse of `GAMETYPES` above, so the numbers
+#: are stated once. `game.gametype` holds the raw `g_gametype` cvar, which is a number.
+GAMETYPE_NAMES = {number: name[2:] for name, (number, _what) in GAMETYPES.items()}
+
+#: The classic's spellings for two of them, so a config carried across from it still means what it
+#: said: it wrote `bm` for bomb mode and `dm` for free-for-all.
+GAMETYPE_ALIASES = {"bm": "bomb", "dm": "ffa"}
+
 #: What an admin may type for a team, and what the engine's `forceteam` calls it. `free` is not a team:
 #: it releases a lock, which is the classic's own spelling and worth keeping because operators know it.
 TEAMS = {
@@ -174,6 +210,34 @@ DEFAULTS: dict[str, object] = {
     "private_password": "",
     # How many digits to add.
     "password_digits": 2,
+    # -- the team balancer --------------------------------------------------------------------
+    # Minutes between automatic checks; 0 turns the balancer off, which is the classic's own switch.
+    "teambalance_interval": 30,
+    # How many players one team may have more than the other before it counts as unbalanced.
+    "teambalance_difference": 1,
+    # Nobody at or above this level is moved, so an admin can go and help the weaker team.
+    "teambalance_max_level": 60,
+    # How a balance is announced: `bigtext` across the screen, `say` in the chat, or `off`. The
+    # classic wrote 2, 1 and 0 for these.
+    "teambalance_announce": "bigtext",
+    # Gametypes to balance. Named, not numbered, and the classic's `bm`/`dm` spellings are understood.
+    "teambalance_gametypes": "tdm, ctf, cah, ftl",
+    # Gametypes played in rounds, where moving somebody mid-round takes them out of a round they are
+    # playing: a balance falls due at the end of the round instead. A setting rather than the
+    # classic's hard-coded pair, because which gametypes are round-based is a property of the server's
+    # config as much as of the game.
+    "teambalance_round_based": "ts, bomb",
+    # Whether a player who unbalances the teams by switching is put straight back.
+    "teambalance_on_team_change": True,
+    # Seconds of quiet after anything moves players on purpose — a shuffle, a swap, a round start, the
+    # bot adopting a server full of players. The classic's `ignoreSet`, and what stops the balancer
+    # spending its next pass undoing a `!pashuffleteams`.
+    "teambalance_quiet_seconds": 60,
+    # Whether `!paforce <player> <team> lock` survives a map change. Off, as the classic had it: a lock
+    # is usually for the rest of this map.
+    "team_locks_permanent": False,
+    # Level for `!pateams`. The classic let a regular ask, and asking only ever evens the teams.
+    "teams_command_level": 2,
 }
 
 MESSAGES = {
@@ -235,6 +299,13 @@ MESSAGES = {
     "pa_public_off": "the server is going private",
     "pa_public_password": "the password is {password} — type !pamapreload to apply it",
     "pa_public_no_password": "set private_password in the plugin config first",
+    "pa_teams_balancing": "balancing the teams",
+    "pa_teams_already": "the teams are already even",
+    "pa_teams_balanced": "the teams are even now",
+    "pa_teams_stuck": "the teams are uneven, but there is nobody I am allowed to move",
+    "pa_teams_pending": "the teams will be evened up at the end of this round",
+    "pa_teams_moved_you": "you have been moved to {team} to even up the teams",
+    "pa_teams_put_back": "that would have made the teams uneven, so you are back on {team}",
 }
 
 
@@ -268,6 +339,12 @@ class PoweradminurtPlugin(Plugin):
         #: Read from the server rather than configured, so `off`/`reset` put back what was there.
         self._gravity_was: str | None = None
         self._gear_was: int | None = None
+        #: Epoch until which the automatic checks stand down — the classic's `_ignoreTill`.
+        self._quiet_until: float = 0.0
+        #: A balance that fell due mid-round on a round-based gametype, waiting for the round to end.
+        self._balance_pending = False
+        #: Whether the round has ended. A balance asked for after that need not wait for anything.
+        self._round_ended = False
 
     # -- setup ---------------------------------------------------------------
 
@@ -301,6 +378,7 @@ class PoweradminurtPlugin(Plugin):
             "pasetnextmap",
         ):
             self._set_level(name, server_level)
+        self._set_level("pateams", as_int(self.settings.get("teams_command_level"), 2))
 
     def register_commands(self) -> None:
         """The decorated commands, then the twenty-one table-driven ones."""
@@ -464,9 +542,20 @@ class PoweradminurtPlugin(Plugin):
         self.schedule(self._run_repeats, second="*", name="PoweradminurtPlugin.repeats")
         self.subscribe(EventType.CLIENT_DISCONNECT, self._on_disconnect)
         # What makes `!paforce ... lock` mean anything: `forceteam` moves a player once and nothing
-        # stops them switching back.
+        # stops them switching back. It is also how the balancer learns who joined a team last.
         self.subscribe(EventType.CLIENT_TEAM_CHANGE, self.on_team_change)
+        self.subscribe(EventType.GAME_ROUND_START, self._on_round_start)
+        self.subscribe(EventType.GAME_ROUND_END, self._on_round_end)
+        self.subscribe(EventType.GAME_EXIT, self._on_game_exit)
         self.on_load_config()
+        interval = as_int(self.settings.get("teambalance_interval"), 30)
+        if interval > 0:
+            self.schedule(
+                self._teamcheck, minute=f"*/{min(interval, 59)}", name="PoweradminurtPlugin.teams"
+            )
+        # A bot that has just started is about to adopt a server full of players, each of whom looks
+        # like somebody who has this moment joined a team. Nothing automatic runs until that settles.
+        self.hold_off()
         missing = [
             verb
             for verb in ("slap", "nuke", "kill", "mute")
@@ -610,7 +699,7 @@ class PoweradminurtPlugin(Plugin):
             if repeat.remaining <= 0:
                 self.pending.remove(repeat)
 
-    # -- slice 3: moving players between teams -------------------------------
+    # -- moving players between teams ----------------------------------------
 
     @command("paforce", level=40, alias="force")
     def cmd_paforce(self, ctx: CommandContext) -> None:
@@ -647,6 +736,9 @@ class PoweradminurtPlugin(Plugin):
         else:
             target.del_var(self, "locked_to")
         self.console.apply_verb("forceteam", target, team=team)
+        # An admin has just moved somebody on purpose: the balancer must not undo it on its next
+        # pass. The classic's `ignoreSet(30)`, and the reason it existed.
+        self.hold_off()
         readable = "spectator" if team == "s" else team
         ctx.reply(self.message("pa_forced", name=target.name, team=readable))
         self.console.tell(
@@ -660,25 +752,227 @@ class PoweradminurtPlugin(Plugin):
         return held if isinstance(held, str) else None
 
     def on_team_change(self, event: Event) -> None:
-        """Put a locked player back where they were told to be.
+        """Put a locked player back, remember when they moved, and even the teams if they broke them.
 
-        The classic did this too, and it is the only reason the lock means anything: `forceteam` moves
-        somebody once, and nothing stops them switching straight back.
+        The classic did the lock too, and it is the only reason the lock means anything: `forceteam`
+        moves somebody once, and nothing stops them switching straight back. On this family, though,
+        the event it hangs on had never been published at all — the team is a field of the infostring
+        rather than a line of its own, so nothing noticed the field changing. See
+        `Q3Parser._userinfo_events`.
         """
         client = event.client
         if client is None:
             return
+        # When they joined this team, which is what the balancer sorts on. Stamped before anything
+        # can return, so that a locked player and an admin have one too.
+        client.set_var(self, "team_time", self.console.clock.now())
         held = self.locked_to(client)
-        if held is None:
+        if held is not None:
+            current = (client.team or "").strip().lower()
+            wanted = "spec" if held == "s" else held
+            if current == wanted:
+                return
+            self.console.apply_verb("forceteam", client, team=held)
+            self.console.tell(
+                client, self.message("pa_force_denied", team="spectator" if held == "s" else held)
+            )
             return
-        current = (client.team or "").strip().lower()
-        wanted = "spec" if held == "s" else held
-        if current == wanted:
-            return
-        self.console.apply_verb("forceteam", client, team=held)
-        self.console.tell(
-            client, self.message("pa_force_denied", team="spectator" if held == "s" else held)
+        self._balance_after_switch(client)
+
+    # -- the team balancer ---------------------------------------------------
+
+    def hold_off(self, seconds: float | None = None) -> None:
+        """Stand the automatic checks down for a while — the classic's `ignoreSet`.
+
+        Every deliberate move of players calls this. Without it the balancer's next pass undoes a
+        `!pashuffleteams`, and the flurry of team changes a round start produces reads as everybody
+        switching at once.
+        """
+        if seconds is None:
+            seconds = float(as_int(self.settings.get("teambalance_quiet_seconds"), 60))
+        self._quiet_until = self.console.clock.now() + max(0.0, seconds)
+
+    def holding_off(self) -> bool:
+        """Whether the automatic checks are currently standing down."""
+        return self.console.clock.now() < self._quiet_until
+
+    def _gametypes(self, key: str) -> set[str]:
+        """One of the two gametype lists, as the names the engine's numbers map to."""
+        raw = str(self.settings.get(key) or "")
+        named = {word.strip().lower() for word in re.split(r"[\s,]+", raw) if word.strip()}
+        return {GAMETYPE_ALIASES.get(name, name) for name in named}
+
+    def gametype(self) -> str:
+        """The gametype being played, by name. Empty when the bot has not seen an `InitGame` yet."""
+        return GAMETYPE_NAMES.get(as_int(self.console.game.gametype, -1), "")
+
+    def _round_based(self) -> bool:
+        """Whether a move now would take somebody out of a round they are in the middle of."""
+        return self.gametype() in self._gametypes("teambalance_round_based")
+
+    def _sides(self) -> dict[str, list[Client]]:
+        """Who is on each side, from the roster the bot already keeps.
+
+        Not from `g_redteamlist` and `g_blueteamlist`, which is what the classic asked the server for
+        on every pass of its loop: the reply cannot yet include the `forceteam` just sent, so it read
+        the same imbalance back and moved the same player again.
+        """
+        sides: dict[str, list[Client]] = {side: [] for side in SIDES}
+        for client in self.console.clients.connected():
+            side = (client.team or "").strip().lower()
+            if side in sides:
+                sides[side].append(client)
+        return sides
+
+    def _may_move(self, client: Client) -> bool:
+        """Whether the balancer is allowed to pick this player up."""
+        if self.locked_to(client) is not None:
+            return False
+        return client.max_level() < as_int(self.settings.get("teambalance_max_level"), 60)
+
+    def _joined_team_at(self, client: Client) -> float:
+        """When this player last joined the team they are on.
+
+        Falls back to when the bot first saw them, which is the honest answer for somebody already
+        playing when it started — and is what makes "whoever joined most recently" mean something on
+        the very first check.
+        """
+        stamped = client.get_var(self, "team_time")
+        return float(stamped) if isinstance(stamped, int | float) else client.connected_at
+
+    def _move(self, client: Client, side: str) -> None:
+        """Send the player across, and believe it happened.
+
+        Recording the new team here rather than waiting for the server to say so is what lets a whole
+        balance be worked out in one pass. If the move did not take, the next infostring line for that
+        slot says a different team and the bot corrects itself — publishing the team change it would
+        have published anyway.
+        """
+        self.console.apply_verb("forceteam", client, team=side)
+        client.team = side
+        client.set_var(self, "team_time", self.console.clock.now())
+        self.console.tell(client, self.message("pa_teams_moved_you", team=side))
+
+    def balance(self) -> tuple[list[Client], bool]:
+        """Even the teams up. Returns who moved, and whether they were uneven to begin with.
+
+        The classic moved one player, asked the server to count the teams again, and went round up to
+        twenty-five times. How many have to move is arithmetic: each one taken off the bigger side and
+        put on the smaller changes the difference by two.
+        """
+        sides = self._sides()
+        red, blue = sides["red"], sides["blue"]
+        tolerance = max(1, as_int(self.settings.get("teambalance_difference"), 1))
+        surplus = abs(len(red) - len(blue))
+        if surplus <= tolerance:
+            return [], False
+        bigger, smaller = (red, "blue") if len(red) > len(blue) else (blue, "red")
+        wanted = (surplus - tolerance + 1) // 2
+        movable = sorted(
+            (c for c in bigger if self._may_move(c)), key=self._joined_team_at, reverse=True
         )
+        moving = movable[:wanted]
+        if not moving:
+            return [], True
+        self._announce(self.message("pa_teams_balancing"))
+        for client in moving:
+            self._move(client, smaller)
+        # Whoever just moved did not choose to, so nothing should read it as them unbalancing
+        # anything, and the next pass must not pick them straight back up.
+        self.hold_off()
+        return moving, True
+
+    def _announce(self, text: str) -> None:
+        """Say it the way the operator asked — or not at all.
+
+        The classic announced the moment it found the teams uneven and only then looked for somebody
+        to move, so a server whose bigger team was all admins was told the teams were being balanced
+        every interval, forever, while nothing happened.
+        """
+        how = str(self.settings.get("teambalance_announce") or "off").strip().lower()
+        if how == "bigtext":
+            self.console.say_big(text)
+        elif how == "say":
+            self.console.say(text)
+
+    def _teamcheck(self) -> None:
+        """The scheduled pass — the classic's `teamcheck` cronjob."""
+        if not self.is_enabled() or self.holding_off():
+            return
+        if self.gametype() not in self._gametypes("teambalance_gametypes"):
+            return
+        if self._round_based() and not self._round_ended:
+            # Moving somebody now takes them out of a round they are playing.
+            self._balance_pending = True
+            return
+        self.balance()
+
+    def _balance_after_switch(self, client: Client) -> None:
+        """A player switched teams. Put them back only if *they* are what made the teams uneven.
+
+        The classic asked whether the teams were uneven, not whether this switch had made them so —
+        with red on five and blue on two, somebody joining blue was "forced to the smaller team",
+        which is the team they had just joined, and charged two fabricated suicide events as an
+        anti-stats-harvesting penalty. There is no penalty here: the switch is reversed, and only when
+        reversing it helps.
+        """
+        if not self.settings.get("teambalance_on_team_change") or self.holding_off():
+            return
+        if not self.is_enabled() or not self.console.supports_verb("forceteam"):
+            return
+        side = (client.team or "").strip().lower()
+        if side not in SIDES or not self._may_move(client):
+            return
+        if self.gametype() not in self._gametypes("teambalance_gametypes"):
+            return
+        other = "blue" if side == "red" else "red"
+        sides = self._sides()
+        tolerance = max(1, as_int(self.settings.get("teambalance_difference"), 1))
+        if len(sides[side]) - len(sides[other]) <= tolerance:
+            return
+        self.console.apply_verb("forceteam", client, team=other)
+        client.team = other
+        client.set_var(self, "team_time", self.console.clock.now())
+        self.console.tell(client, self.message("pa_teams_put_back", team=other))
+
+    @command("pateams", level=2, alias="teams")
+    def cmd_pateams(self, ctx: CommandContext) -> None:
+        """pateams - even the teams up now, moving whoever joined theirs most recently"""
+        if not self.console.supports_verb("forceteam"):
+            ctx.reply(self.message("pa_unavailable", verb="forceteam"))
+            return
+        if self._round_based() and not self._round_ended:
+            self._balance_pending = True
+            ctx.reply(self.message("pa_teams_pending"))
+            return
+        moved, uneven = self.balance()
+        if not uneven:
+            ctx.reply(self.message("pa_teams_already"))
+        elif moved:
+            ctx.reply(self.message("pa_teams_balanced"))
+        else:
+            # The classic said "Teams are now balanced" here, having moved nobody at all.
+            ctx.reply(self.message("pa_teams_stuck"))
+
+    def _on_round_start(self, _event: Event) -> None:
+        self._round_ended = False
+        self.hold_off()
+
+    def _on_round_end(self, _event: Event) -> None:
+        """A balance that fell due mid-round happens now, which is what waiting for it was for."""
+        self._round_ended = True
+        if self._balance_pending:
+            self._balance_pending = False
+            self.balance()
+
+    def _on_game_exit(self, _event: Event) -> None:
+        """The map is over: locks lapse unless the operator wanted them permanent."""
+        self._balance_pending = False
+        self.hold_off()
+        if self.settings.get("team_locks_permanent"):
+            return
+        for client in self.console.clients.connected():
+            client.del_var(self, "locked_to")
 
     @command("paswap", level=40, alias="swap")
     def cmd_paswap(self, ctx: CommandContext) -> None:
@@ -710,6 +1004,7 @@ class PoweradminurtPlugin(Plugin):
             ctx.reply(self.message("pa_swap_same_team", first=first.name, second=second.name))
             return
         self.console.apply_verb("swap", first, other=second.cid or "")
+        self.hold_off()
         ctx.reply(self.message("pa_swapped", first=first.name, second=second.name))
 
     @command("paswapteams", level=60, alias="swapteams")
@@ -718,6 +1013,7 @@ class PoweradminurtPlugin(Plugin):
         if not self.console.apply_server_verb("swapteams"):
             ctx.reply(self.message("pa_unavailable", verb="swapteams"))
             return
+        self.hold_off()
         ctx.reply(self.message("pa_teams_swapped"))
 
     @command("pashuffleteams", level=60, alias="shuffleteams")
@@ -726,9 +1022,10 @@ class PoweradminurtPlugin(Plugin):
         if not self.console.apply_server_verb("shuffleteams"):
             ctx.reply(self.message("pa_unavailable", verb="shuffleteams"))
             return
+        self.hold_off()
         ctx.reply(self.message("pa_teams_shuffled"))
 
-    # -- slice 3b: the rest of the server commands ---------------------------
+    # -- the server commands -------------------------------------------------
 
     @command("pamaprestart", level=60, alias="maprestart")
     def cmd_pamaprestart(self, ctx: CommandContext) -> None:
@@ -866,6 +1163,9 @@ __all__ = [
     "CONFIG_FILE_RE",
     "DEFAULTS",
     "GAMETYPES",
+    "GAMETYPE_ALIASES",
+    "GAMETYPE_NAMES",
+    "SIDES",
     "TEAMS",
     "GEAR_ALL",
     "GEAR_BITS",

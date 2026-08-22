@@ -145,8 +145,13 @@ class Q3Parser(Parser):
         )
         return name[:limit], True
 
-    def _apply_userinfo(self, cid: str, info: dict[str, str]) -> Client:
-        """Fold an infostring into the client for that slot — the only place identity arrives."""
+    def _apply_userinfo(self, cid: str, info: dict[str, str]) -> tuple[Client, bool]:
+        """Fold an infostring into the client for that slot — the only place identity arrives.
+
+        Returns the client and whether this line *moved* them, because on this engine a team change
+        is not a log line of its own: the team is a field of the infostring, and the only way to
+        know somebody switched is that the field now says something else.
+        """
         client = self._get_or_create(cid)
         name = info.get("name") or info.get("n")
         if name:
@@ -157,9 +162,12 @@ class Q3Parser(Parser):
         if info.get("ip"):
             client.ip = info["ip"].split(":")[0]
         team = info.get("team") or info.get("t")
+        moved = False
         if team is not None:
-            client.team = self.profile.teams.get(team, team)
-        return client
+            mapped = self.profile.teams.get(team, team)
+            moved = mapped != client.team
+            client.team = mapped
+        return client, moved
 
     def read_userinfo(self, cid: str, reply: str) -> str | None:
         """Turn a ``dumpuser <cid>`` reply into the log line it is the same information as.
@@ -209,19 +217,37 @@ class Q3Parser(Parser):
         return Event(EventType.CLIENT_CONNECT, client=self._get_or_create(m["cid"]))
 
     @handles(r"^ClientUserinfo(?:Changed)?:\s*(?P<cid>\d+)\s*(?P<info>.*)$")
-    def on_userinfo(self, m: "re.Match[str]") -> Event:
-        client = self._apply_userinfo(m["cid"], parse_infostring(m["info"]))
-        return Event(EventType.CLIENT_UPDATE, client=client)
+    def on_userinfo(self, m: "re.Match[str]") -> list[Event]:
+        client, moved = self._apply_userinfo(m["cid"], parse_infostring(m["info"]))
+        return self._userinfo_events(client, moved)
 
     @handles(r"^Userinfo:\s*(?P<info>\\.*)$")
-    def on_bare_userinfo(self, m: "re.Match[str]") -> Event | None:
+    def on_bare_userinfo(self, m: "re.Match[str]") -> list[Event]:
         """ET sends the infostring on its own line, after ClientConnect/ClientBegin."""
         cid, self._pending_cid = self._pending_cid, None
         if cid is None:
-            return None
-        return Event(
-            EventType.CLIENT_UPDATE, client=self._apply_userinfo(cid, parse_infostring(m["info"]))
-        )
+            return []
+        client, moved = self._apply_userinfo(cid, parse_infostring(m["info"]))
+        return self._userinfo_events(client, moved)
+
+    def _userinfo_events(self, client: Client, moved: bool) -> list[Event]:
+        """The update, and a team change when the line carried one.
+
+        This family published **no** ``CLIENT_TEAM_CHANGE`` at all, which is not a gap anybody can
+        see: subscribers simply never ran. `poweradminurt`'s ``!paforce … lock`` — whose whole point
+        is to put a player back when they switch — had therefore never held anybody on Urban Terror,
+        and `afk` never counted a team change as a sign of life. The classic bot raised this from the
+        ``Client.team`` setter, so every parser got it free; here each parser says it, and this one
+        had not been told to.
+
+        A player whose team becomes known for the first time counts as having changed: joining a team
+        *is* the move a balancer has to react to, and the classic said so the same way — its clients
+        started on ``TEAM_UNKNOWN`` and the first real team fired the event.
+        """
+        events = [Event(EventType.CLIENT_UPDATE, client=client)]
+        if moved:
+            events.append(Event(EventType.CLIENT_TEAM_CHANGE, data=client.team, client=client))
+        return events
 
     @handles(r"^ClientBegin:\s*(?P<cid>\d+)\s*$")
     def on_begin(self, m: "re.Match[str]") -> Event:

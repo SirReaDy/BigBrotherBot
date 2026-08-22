@@ -168,7 +168,12 @@ def test_a_subclassed_family_keeps_the_whole_shared_grammar():
     """A title must never lose a line by gaining a family of its own."""
     for parser in (EtParser(ET), Sof2Parser(SOF2)):
         events = parser.parse_line(r"ClientUserinfoChanged: 3 n\Bob\t\1")
-        assert [e.type for e in events] == [EventType.CLIENT_UPDATE]
+        # The team change rides along: the line carries a team, and on this family it is the only
+        # line that ever says a player moved.
+        assert [e.type for e in events] == [
+            EventType.CLIENT_UPDATE,
+            EventType.CLIENT_TEAM_CHANGE,
+        ]
         assert parser.clients.get_by_cid("3").name == "Bob"
 
 

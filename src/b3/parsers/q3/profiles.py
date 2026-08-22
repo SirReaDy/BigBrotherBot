@@ -15,8 +15,13 @@ from dataclasses import replace
 from b3.parsers.profile import GameProfile
 from b3.parsers.q3.status import Q3_PLAYER_LINE_RE
 
-#: Quake3 team numbers, as they appear in an infostring.
-Q3_TEAMS = {"0": "free", "1": "red", "2": "blue", "3": "spectator"}
+#: Quake3 team numbers, as they appear in an infostring. `spec`, not `spectator`: every other family
+#: here spells it `spec`, and so does everything that *reads* a team — `afk`'s "a spectator is never
+#: asked", `callvote`'s voter count, `Console.smart_say`. Spelt `spectator`, this family matched none
+#: of them, so on every Quake3 title a spectator was counted as a player, asked whether they were
+#: away, and answered in a channel they cannot read. Nothing raised; the tests that cover those three
+#: set `team` by hand and so never saw what this map produces.
+Q3_TEAMS = {"0": "free", "1": "red", "2": "blue", "3": "spec"}
 
 #: Every Quake3 engine reports the world as this slot.
 WORLD = "1022"
@@ -120,7 +125,7 @@ _URT = replace(
     },
     #: The ones that name no player. `map_restart`, `reload` and `cyclemap` are declared here with
     #: the two the team commands use, because they are one table in the engine and in the classic
-    #: parser — `poweradminurt`'s remaining slice is what calls them.
+    #: parser — `poweradminurt` is what calls them.
     server_verbs={
         "swapteams": "swapteams",
         "shuffleteams": "shuffleteams",

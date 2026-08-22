@@ -193,11 +193,43 @@ def test_the_quake3_lines_are_inherited():
     events = p.parse_line(
         r"ClientUserinfoChanged: 3 n\Bob\t\1\cl_guid\A337702493AF67BB0B0F8565CE8BC6C"
     )
-    assert [e.type for e in events] == [EventType.CLIENT_UPDATE]
+    assert [e.type for e in events] == [EventType.CLIENT_UPDATE, EventType.CLIENT_TEAM_CHANGE]
     assert p.clients.get_by_cid("3").name == "Bob"
 
     kill = one(p, "Kill: 3 3 16: Bob killed Bob by UT_MOD_SPAS")
     assert kill.type is EventType.CLIENT_SUICIDE
+
+
+def test_a_team_change_is_published_when_the_infostring_says_a_different_team():
+    """There is no team-change line on this engine: the team is a field, and a change to it is the
+    only evidence anybody switched. Nothing published this event, so every subscriber to it — the
+    `!paforce` lock, the team balancer, `afk`'s idea of activity — sat dead on the whole family."""
+    p = UrtParser(IOURT42)
+    p.parse_line(r"ClientUserinfoChanged: 3 n\Bob\t\1")
+
+    events = p.parse_line(r"ClientUserinfoChanged: 3 n\Bob\t\2")
+
+    assert [e.type for e in events] == [EventType.CLIENT_UPDATE, EventType.CLIENT_TEAM_CHANGE]
+    assert events[-1].data == "blue"
+
+
+def test_a_line_that_does_not_move_anybody_is_only_an_update():
+    p = UrtParser(IOURT42)
+    p.parse_line(r"ClientUserinfoChanged: 3 n\Bob\t\1")
+
+    events = p.parse_line(r"ClientUserinfoChanged: 3 n\Bobby\t\1")
+
+    assert [e.type for e in events] == [EventType.CLIENT_UPDATE]
+
+
+def test_the_spectators_are_spelt_the_way_everything_else_spells_them():
+    """`spec`. This family said `spectator`, which matched nothing that reads a team — so a Quake3
+    spectator was counted as a player by `callvote`, asked whether they were away by `afk`, and
+    answered by `smart_say` in a channel they cannot read."""
+    p = UrtParser(IOURT42)
+    p.parse_line(r"ClientUserinfoChanged: 3 n\Bob\t\3")
+
+    assert p.clients.get_by_cid("3").team == "spec"
 
 
 def test_a_plain_quake3_server_does_not_get_the_urt_lines():

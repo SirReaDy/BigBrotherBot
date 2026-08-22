@@ -1,13 +1,11 @@
-"""`poweradminurt`, first slice — the commands that act on a player or a server setting.
+"""`poweradminurt` — Urban Terror's admin commands, and the team balancer behind them.
 
-The classic plugin is 3,846 lines across three per-version subclasses of itself, so it is ported in
-parts; this covers `!paslap`, `!panuke`, `!pakill`, `!pamute`, `!paunmute`, `!pabigtext`, `!paset`,
-`!paget` and `!pavote`.
-
-Two of its faults are pinned here. Its three player commands had **three different immunity rules** —
-`slap_safe_level` on `!paslap`, a strictly-higher-level comparison on `!pamute`, and *nothing at all*
-on `!panuke`, so an admin who could not slap a fellow admin could nuke one. And a multi-slap was a raw
-thread sleeping a second between twenty-five writes, which nothing could stop once it had started.
+Several of the classic's faults are pinned here. Its three player commands had **three different
+immunity rules** — `slap_safe_level` on `!paslap`, a strictly-higher-level comparison on `!pamute`, and
+*nothing at all* on `!panuke`, so an admin who could not slap a fellow admin could nuke one. A
+multi-slap was a raw thread sleeping a second between twenty-five writes, which nothing could stop once
+it had started. And its team balancer moved one player, asked the server to count the teams again, and
+believed the answer — which could not yet include the move it had just made.
 """
 
 from __future__ import annotations
@@ -404,7 +402,7 @@ def test_the_two_command_levels_are_configurable(console):
     assert paset is not None and paset.min_level == 100
 
 
-# -- slice 2: the match settings ------------------------------------------------------------------
+# -- the match settings -------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
@@ -615,7 +613,7 @@ async def test_a_game_with_no_next_map_cvar_says_so(console):
     assert _told(console, admin) == ["this game has no next-map setting"]
 
 
-# -- slice 3: moving players between teams -------------------------------------------------------
+# -- moving players between teams ---------------------------------------------------------------
 
 
 def _teamed(console, name, team, bits=0, cid=None):  # noqa: ANN001, ANN202
@@ -854,7 +852,7 @@ async def test_a_game_with_no_such_verb_says_so(console):
     ]
 
 
-# -- slice 3b: the rest of the server commands ---------------------------------------------------
+# -- the server commands ------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
@@ -976,3 +974,539 @@ async def test_papublic_accepts_either_case(console):
     await _run(console, admin, "!papublic ON")
 
     assert console.cvars["g_password"] == ""
+
+
+# -- the team balancer --------------------------------------------------------------------------
+
+#: `g_gametype` as the engine writes it: 3 is team deathmatch, 4 team survivor, 0 free-for-all.
+TDM, TS, FFA = "3", "4", "0"
+
+
+def _balancer(console, **settings):  # noqa: ANN001, ANN202
+    """A plugin with the quiet window already elapsed, on a gametype it balances."""
+    console.game.gametype = TDM
+    plugin = _plugin(console, **settings)
+    console.clock.advance(plugin.settings["teambalance_quiet_seconds"] + 1)
+    return plugin
+
+
+def _sides(console, plugin, red, blue):  # noqa: ANN001, ANN202
+    """`red` players on red and `blue` on blue, each having joined a second after the last."""
+    made = []
+    for team, count in (("red", red), ("blue", blue)):
+        for _ in range(count):
+            console.clock.advance(1)
+            client = _teamed(console, f"{team}{len(made)}", team, bits=0)
+            client.set_var(plugin, "team_time", console.clock.now())
+            made.append(client)
+    return made
+
+
+@pytest.mark.asyncio
+async def test_the_smallest_number_of_players_moves(console):
+    """Six against two, tolerating one: two players move, which is what the arithmetic says.
+
+    The classic moved one, asked the server to count the teams again, and went round up to
+    twenty-five times.
+    """
+    plugin = _balancer(console)
+    _sides(console, plugin, red=6, blue=2)
+
+    moved, uneven = plugin.balance()
+
+    assert uneven
+    assert len(moved) == 2
+    assert [name for name, _who, _values in console.verbs_applied] == ["forceteam", "forceteam"]
+    assert all(values == {"team": "blue"} for _n, _w, values in console.verbs_applied)
+
+
+@pytest.mark.asyncio
+async def test_whoever_joined_last_is_the_one_who_moves(console):
+    plugin = _balancer(console)
+    made = _sides(console, plugin, red=4, blue=1)
+
+    moved, _uneven = plugin.balance()
+
+    assert [c.name for c in moved] == [made[3].name]  # the last red to arrive
+
+
+@pytest.mark.asyncio
+async def test_teams_within_tolerance_are_left_alone(console):
+    plugin = _balancer(console)
+    _sides(console, plugin, red=4, blue=3)
+
+    moved, uneven = plugin.balance()
+
+    assert (moved, uneven) == ([], False)
+    assert console.verbs_applied == []
+
+
+@pytest.mark.asyncio
+async def test_a_wider_tolerance_is_honoured(console):
+    plugin = _balancer(console, teambalance_difference=3)
+    _sides(console, plugin, red=5, blue=2)
+
+    moved, uneven = plugin.balance()
+
+    assert (moved, uneven) == ([], False)
+
+
+@pytest.mark.asyncio
+async def test_an_admin_is_left_where_they_are(console):
+    """So that an admin can go and help the weaker team without being sent back."""
+    plugin = _balancer(console)
+    _sides(console, plugin, red=1, blue=3)
+    console.clock.advance(1)
+    _teamed(console, "Boss", "blue", bits=64)
+
+    moved, _uneven = plugin.balance()
+
+    assert [c.name for c in moved] == ["blue3"]
+
+
+@pytest.mark.asyncio
+async def test_a_locked_player_is_never_the_one_moved(console):
+    plugin = _balancer(console)
+    made = _sides(console, plugin, red=1, blue=3)
+    made[-1].set_var(plugin, "locked_to", "blue")
+
+    moved, _uneven = plugin.balance()
+
+    assert [c.name for c in moved] == [made[-2].name]
+
+
+@pytest.mark.asyncio
+async def test_uneven_teams_nobody_may_move_announce_nothing(console):
+    """The classic announced "Autobalancing Teams!" *before* looking for somebody to move, so a
+    server whose bigger team was all admins was told it was being balanced every interval, forever,
+    while nothing happened."""
+    plugin = _balancer(console)
+    for index in range(4):
+        console.clock.advance(1)
+        _teamed(console, f"boss{index}", "red", bits=64)
+    _teamed(console, "Lonely", "blue", bits=0)
+
+    moved, uneven = plugin.balance()
+
+    assert (moved, uneven) == ([], True)
+    assert console.said_big == []
+    assert console.verbs_applied == []
+
+
+@pytest.mark.asyncio
+async def test_spectators_are_not_a_side(console):
+    plugin = _balancer(console)
+    _sides(console, plugin, red=3, blue=2)
+    for index in range(6):
+        _teamed(console, f"watcher{index}", "spec", bits=0)
+
+    moved, uneven = plugin.balance()
+
+    assert (moved, uneven) == ([], False)
+
+
+@pytest.mark.asyncio
+async def test_the_balance_is_announced_the_way_the_operator_asked(console):
+    plugin = _balancer(console, teambalance_announce="say")
+    _sides(console, plugin, red=4, blue=1)
+
+    plugin.balance()
+
+    assert console.said == ["balancing the teams"]
+    assert console.said_big == []
+
+
+@pytest.mark.asyncio
+async def test_the_announcement_can_be_switched_off(console):
+    plugin = _balancer(console, teambalance_announce="off")
+    _sides(console, plugin, red=4, blue=1)
+
+    plugin.balance()
+
+    assert (console.said, console.said_big) == ([], [])
+
+
+# -- the quiet window (the classic's ignoreSet) ---------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_the_scheduled_check_stands_down_after_a_shuffle(console):
+    """Without this the balancer spends its next pass undoing the shuffle an admin just asked for."""
+    plugin = _balancer(console)
+    admin = _join(console, "Admin", bits=64)
+    _sides(console, plugin, red=4, blue=1)
+
+    await _run(console, admin, "!pashuffleteams")
+    console.verbs_applied.clear()
+    plugin._teamcheck()
+
+    assert console.verbs_applied == []
+
+
+@pytest.mark.asyncio
+async def test_the_quiet_window_runs_out(console):
+    plugin = _balancer(console)
+    admin = _join(console, "Admin", bits=64)
+    _sides(console, plugin, red=4, blue=1)
+    await _run(console, admin, "!pashuffleteams")
+    console.verbs_applied.clear()
+
+    console.clock.advance(plugin.settings["teambalance_quiet_seconds"] + 1)
+    plugin._teamcheck()
+
+    assert [name for name, _w, _v in console.verbs_applied] == ["forceteam"]
+
+
+@pytest.mark.asyncio
+async def test_a_round_starting_quiets_the_checks(console):
+    plugin = _balancer(console)
+    _sides(console, plugin, red=4, blue=1)
+
+    await console.bus.publish(Event(EventType.GAME_ROUND_START))
+    plugin._teamcheck()
+
+    assert console.verbs_applied == []
+
+
+@pytest.mark.asyncio
+async def test_a_bot_that_has_just_started_balances_nothing(console):
+    """It is about to adopt a server full of players, every one of whom looks like a fresh joiner."""
+    console.game.gametype = TDM
+    plugin = _plugin(console)
+    _sides(console, plugin, red=5, blue=1)
+
+    plugin._teamcheck()
+
+    assert console.verbs_applied == []
+
+
+# -- gametypes ------------------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_a_gametype_with_no_teams_is_not_balanced(console):
+    plugin = _balancer(console)
+    console.game.gametype = FFA
+    _sides(console, plugin, red=5, blue=1)
+
+    plugin._teamcheck()
+
+    assert console.verbs_applied == []
+
+
+@pytest.mark.asyncio
+async def test_a_round_based_gametype_waits_for_the_round_to_end(console):
+    """Moving somebody mid-round takes them out of a round they are playing."""
+    plugin = _balancer(console, teambalance_gametypes="tdm, ts")
+    console.game.gametype = TS
+    _sides(console, plugin, red=5, blue=1)
+
+    plugin._teamcheck()
+    assert console.verbs_applied == []
+    assert plugin._balance_pending
+
+    await console.bus.publish(Event(EventType.GAME_ROUND_END))
+
+    assert [name for name, _w, _v in console.verbs_applied] == ["forceteam", "forceteam"]
+    assert not plugin._balance_pending
+
+
+@pytest.mark.asyncio
+async def test_the_classics_spelling_for_bomb_mode_still_means_bomb_mode(console):
+    """It wrote `bm`; the command here is `!pabomb`, so the gametype is named `bomb`."""
+    plugin = _balancer(console, teambalance_gametypes="tdm, bm")
+
+    assert "bomb" in plugin._gametypes("teambalance_gametypes")
+
+
+# -- !pateams -------------------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_pateams_evens_the_teams_up(console):
+    plugin = _balancer(console)
+    admin = _join(console, "Admin", bits=64)
+    _sides(console, plugin, red=4, blue=1)
+
+    await _run(console, admin, "!pateams")
+
+    assert [name for name, _w, _v in console.verbs_applied] == ["forceteam"]
+    assert _told(console, admin) == ["the teams are even now"]
+
+
+@pytest.mark.asyncio
+async def test_pateams_works_without_the_pa(console):
+    plugin = _balancer(console)
+    admin = _join(console, "Admin", bits=64)
+    _sides(console, plugin, red=4, blue=1)
+
+    await _run(console, admin, "!teams")
+
+    assert [name for name, _w, _v in console.verbs_applied] == ["forceteam"]
+
+
+@pytest.mark.asyncio
+async def test_pateams_on_even_teams_says_so(console):
+    plugin = _balancer(console)
+    admin = _join(console, "Admin", bits=64)
+    _sides(console, plugin, red=3, blue=3)
+
+    await _run(console, admin, "!pateams")
+
+    assert console.verbs_applied == []
+    assert _told(console, admin) == ["the teams are already even"]
+
+
+@pytest.mark.asyncio
+async def test_pateams_says_when_it_could_not_move_anybody(console):
+    """The classic answered "Teams are now balanced" here, having moved nobody at all."""
+    _balancer(console)
+    admin = _join(console, "Admin", bits=64)
+    for index in range(4):
+        _teamed(console, f"boss{index}", "red", bits=64)
+    _teamed(console, "Lonely", "blue", bits=0)
+
+    await _run(console, admin, "!pateams")
+
+    assert console.verbs_applied == []
+    assert _told(console, admin) == [
+        "the teams are uneven, but there is nobody I am allowed to move"
+    ]
+
+
+@pytest.mark.asyncio
+async def test_pateams_asked_mid_round_waits(console):
+    plugin = _balancer(console, teambalance_gametypes="tdm, ts")
+    console.game.gametype = TS
+    admin = _join(console, "Admin", bits=64)
+    _sides(console, plugin, red=4, blue=1)
+
+    await _run(console, admin, "!pateams")
+
+    assert console.verbs_applied == []
+    assert _told(console, admin) == ["the teams will be evened up at the end of this round"]
+    assert plugin._balance_pending
+
+
+@pytest.mark.asyncio
+async def test_pateams_is_a_regulars_command(console):
+    """The classic let a regular ask, and asking only ever evens the teams."""
+    _balancer(console)
+
+    registered = console.command_registry.get("pateams")
+    assert registered is not None
+    assert registered.min_level == 2
+
+
+@pytest.mark.asyncio
+async def test_pateams_on_a_game_with_no_forceteam(console):
+    _balancer(console)
+    console.player_verbs = set()
+    admin = _join(console, "Admin", bits=64)
+
+    await _run(console, admin, "!pateams")
+
+    assert _told(console, admin) == ["this game has no forceteam command"]
+
+
+# -- a switch that unbalances the teams -----------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_a_switch_that_unbalances_the_teams_is_reversed(console):
+    plugin = _balancer(console)
+    _sides(console, plugin, red=2, blue=3)
+    console.clock.advance(1)
+    turncoat = _teamed(console, "Turncoat", "blue", bits=0)
+
+    await console.bus.publish(Event(EventType.CLIENT_TEAM_CHANGE, client=turncoat, data="blue"))
+
+    assert console.verbs_applied[-1][0] == "forceteam"
+    assert console.verbs_applied[-1][2] == {"team": "red"}
+    assert any("you are back on red" in text for _who, text in console.told)
+
+
+@pytest.mark.asyncio
+async def test_joining_the_smaller_team_is_never_punished(console):
+    """The classic asked "are the teams uneven?" and not "did *this* player make them uneven", so
+    with red on five and blue on two, joining blue got you forced to "the smaller team" — the one you
+    had just joined — plus two fabricated suicides deducted from your stats."""
+    plugin = _balancer(console)
+    _sides(console, plugin, red=5, blue=2)
+    console.clock.advance(1)
+    helper = _teamed(console, "Helper", "blue", bits=0)
+
+    await console.bus.publish(Event(EventType.CLIENT_TEAM_CHANGE, client=helper, data="blue"))
+
+    assert console.verbs_applied == []
+    assert console.told == []
+
+
+@pytest.mark.asyncio
+async def test_going_to_the_spectators_is_not_a_switch(console):
+    plugin = _balancer(console)
+    _sides(console, plugin, red=5, blue=1)
+    watcher = _teamed(console, "Watcher", "spec", bits=0)
+
+    await console.bus.publish(Event(EventType.CLIENT_TEAM_CHANGE, client=watcher, data="spec"))
+
+    assert console.verbs_applied == []
+
+
+@pytest.mark.asyncio
+async def test_an_admin_may_switch_to_the_bigger_team(console):
+    plugin = _balancer(console)
+    _sides(console, plugin, red=3, blue=1)
+    console.clock.advance(1)
+    boss = _teamed(console, "Boss", "red", bits=64)
+
+    await console.bus.publish(Event(EventType.CLIENT_TEAM_CHANGE, client=boss, data="red"))
+
+    assert console.verbs_applied == []
+
+
+@pytest.mark.asyncio
+async def test_reversing_a_switch_can_be_switched_off(console):
+    plugin = _balancer(console, teambalance_on_team_change=False)
+    _sides(console, plugin, red=2, blue=3)
+    console.clock.advance(1)
+    turncoat = _teamed(console, "Turncoat", "blue", bits=0)
+
+    await console.bus.publish(Event(EventType.CLIENT_TEAM_CHANGE, client=turncoat, data="blue"))
+
+    assert console.verbs_applied == []
+
+
+@pytest.mark.asyncio
+async def test_a_team_change_records_when_they_joined(console):
+    plugin = _balancer(console)
+    bob = _teamed(console, "Bob", "red", bits=0)
+
+    await console.bus.publish(Event(EventType.CLIENT_TEAM_CHANGE, client=bob, data="red"))
+
+    assert bob.get_var(plugin, "team_time") == console.clock.now()
+
+
+# -- locks and the end of a map -------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_locks_lapse_when_the_map_ends(console):
+    plugin = _balancer(console)
+    admin = _join(console, "Admin", bits=64)
+    bob = _teamed(console, "Bob", "blue", bits=0)
+    await _run(console, admin, "!paforce Bob red lock")
+
+    await console.bus.publish(Event(EventType.GAME_EXIT))
+
+    assert plugin.locked_to(bob) is None
+
+
+@pytest.mark.asyncio
+async def test_locks_can_be_asked_to_survive_the_map(console):
+    plugin = _balancer(console, team_locks_permanent=True)
+    admin = _join(console, "Admin", bits=64)
+    bob = _teamed(console, "Bob", "blue", bits=0)
+    await _run(console, admin, "!paforce Bob red lock")
+
+    await console.bus.publish(Event(EventType.GAME_EXIT))
+
+    assert plugin.locked_to(bob) == "red"
+
+
+@pytest.mark.asyncio
+async def test_a_player_locked_to_the_spectators_is_left_alone_there(console):
+    """`!paforce` spells the spectators `s` for the engine; the parser reports them as `spec`. Held
+    against each other unmapped, a locked spectator was force-teamed on every line they produced."""
+    _balancer(console)
+    admin = _join(console, "Admin", bits=64)
+    bob = _teamed(console, "Bob", "blue", bits=0)
+    await _run(console, admin, "!paforce Bob spec lock")
+    bob.team = "spec"
+    console.verbs_applied.clear()
+
+    await console.bus.publish(Event(EventType.CLIENT_TEAM_CHANGE, client=bob, data="spec"))
+
+    assert console.verbs_applied == []
+
+
+# -- through a real bot ----------------------------------------------------------------------------
+
+
+def _real_bot(tmp_path, **settings):  # noqa: ANN001, ANN202
+    from b3.config.schema import BotConfig, Config, PluginEntry, ServerConfig
+    from b3.core.clock import FakeClock
+    from b3.runtime.bot import Bot
+
+    class Rcon:
+        def __init__(self) -> None:
+            self.commands: list[str] = []
+
+        def command(self, cmd: str) -> str:
+            self.commands.append(cmd)
+            return ""
+
+    config = Config(
+        bot=BotConfig(database=f"sqlite:///{tmp_path / 'b3.sqlite'}"),
+        server=ServerConfig(game="iourt42"),
+        plugins=[PluginEntry(name="admin"), PluginEntry(name="poweradminurt")],
+    )
+    rcon = Rcon()
+    bot = Bot(config, rcon=rcon, clock=FakeClock())
+    admin = AdminPlugin(bot, None)
+    bot.add_plugin(admin, "admin")
+    plugin = PoweradminurtPlugin(bot, {"settings": settings})
+    bot.add_plugin(plugin, "poweradminurt")
+    bot.start()
+    admin.start()
+    plugin.start()
+    rcon.commands.clear()
+    return bot, rcon, plugin
+
+
+@pytest.mark.asyncio
+async def test_a_real_urban_terror_switch_is_reversed(tmp_path):
+    """End to end on real log lines, and the reason the parser changed.
+
+    Urban Terror has no team-change line: the team is the `t` field of `ClientUserinfoChanged`, and
+    this family published no `CLIENT_TEAM_CHANGE` at all — so nothing here had ever run against a
+    live server, `!paforce … lock` included.
+    """
+    bot, rcon, _plugin = _real_bot(tmp_path)
+    bot.game.gametype = "3"  # team deathmatch
+    await bot.replay(
+        [
+            rf"ClientUserinfoChanged: {cid} n\P{cid}\t\{team}"
+            for cid, team in (("1", "1"), ("2", "1"), ("3", "1"), ("4", "2"))
+        ]
+    )
+    await bot.bus.drain()
+    # Nothing was reversed while the bot was still filling its roster: that is the quiet window.
+    assert not any(cmd.startswith("forceteam") for cmd in rcon.commands), rcon.commands
+    bot.clock.advance(61)
+
+    # A fourth red arrives — red 4, blue 1, and it is this switch that made it uneven.
+    await bot.replay([r"ClientUserinfoChanged: 5 n\P5\t\1"])
+    await bot.bus.drain()
+
+    assert any(cmd.startswith("forceteam 5 blue") for cmd in rcon.commands), rcon.commands
+    bot.storage.close()
+
+
+@pytest.mark.asyncio
+async def test_a_real_urban_terror_lock_holds(tmp_path):
+    """`!paforce … lock` on real log lines. It had never once held anybody on this family."""
+    bot, rcon, plugin = _real_bot(tmp_path, teambalance_on_team_change=False)
+    await bot.replay([r"ClientUserinfoChanged: 1 n\Bob\t\2"])
+    await bot.bus.drain()
+    bob = bot.clients.get_by_cid("1")
+    assert bob is not None
+    assert bob.team == "blue"
+    bob.set_var(plugin, "locked_to", "blue")
+    rcon.commands.clear()
+
+    await bot.replay([r"ClientUserinfoChanged: 1 n\Bob\t\1"])  # switched to red
+    await bot.bus.drain()
+
+    assert any(cmd.startswith("forceteam 1 blue") for cmd in rcon.commands), rcon.commands
+    bot.storage.close()
