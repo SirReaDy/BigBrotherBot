@@ -2488,6 +2488,157 @@ async def test_a_hit_that_says_nothing_about_where_it_landed_is_not_counted(cons
     assert plugin.hits(bob).landed == 0
 
 
+# -- the rotation manager -----------------------------------------------------------------------
+
+
+ROTATIONS = {
+    "rotation_small": "small.txt",
+    "rotation_medium": "medium.txt",
+    "rotation_large": "large.txt",
+}
+
+
+def _rotator(console, **settings):  # noqa: ANN001, ANN202
+    """A rotation manager past its quiet window."""
+    plugin = _plugin(console, rotation_manager=True, **{**ROTATIONS, **settings})
+    console.clock.advance(plugin.settings["teambalance_quiet_seconds"] + 1)
+    return plugin
+
+
+def _fill(console, count, team="red"):  # noqa: ANN001, ANN202
+    return [_teamed(console, f"P{i}", team, cid=str(100 + i), bits=0) for i in range(count)]
+
+
+@pytest.mark.asyncio
+async def test_a_quiet_server_gets_the_small_maps(console):
+    plugin = _rotator(console, rotation_small_max=4, rotation_hysteresis=2)
+    _fill(console, 1)
+
+    plugin.rotation_check()
+
+    assert console.cvars["g_mapcycle"] == "small.txt"
+
+
+@pytest.mark.asyncio
+async def test_a_busy_server_gets_the_big_maps(console):
+    plugin = _rotator(console, rotation_small_max=4, rotation_medium_max=12, rotation_hysteresis=2)
+    _fill(console, 20)
+
+    plugin.rotation_check()
+
+    assert console.cvars["g_mapcycle"] == "large.txt"
+
+
+@pytest.mark.asyncio
+async def test_joining_a_player_never_shrinks_the_maps(console):
+    """The classic's hysteresis took a `delta` saying whether the last thing was a join or a part,
+    and had the join case backwards: with the switch at 4 and hysteresis 2, five players who had
+    just been *joined* were put on the small rotation, while the same five after somebody *left*
+    were on the medium one. Joining a player could shrink the maps."""
+    plugin = _rotator(console, rotation_small_max=4, rotation_medium_max=12, rotation_hysteresis=2)
+    _fill(console, 11)
+    plugin.rotation_check()
+    assert console.cvars["g_mapcycle"] == "medium.txt"
+
+    _teamed(console, "Latecomer", "blue", cid="200", bits=0)
+    await console.bus.publish(
+        Event(EventType.CLIENT_AUTH, client=console.clients.get_by_cid("200"))
+    )
+
+    assert console.cvars["g_mapcycle"] == "medium.txt"
+
+
+@pytest.mark.asyncio
+async def test_hovering_on_a_switch_point_does_not_flap(console):
+    plugin = _rotator(console, rotation_small_max=4, rotation_medium_max=12, rotation_hysteresis=2)
+    players = _fill(console, 7)
+    plugin.rotation_check()
+    assert console.cvars["g_mapcycle"] == "medium.txt"
+
+    for _ in range(2):
+        console.clients.remove(players.pop().cid)
+        plugin.rotation_check()
+
+    # Five is inside the margin either side of the switch at four: the rotation stays where it is.
+    assert console.cvars["g_mapcycle"] == "medium.txt"
+
+
+@pytest.mark.asyncio
+async def test_falling_clearly_below_the_switch_does_shrink_them(console):
+    plugin = _rotator(console, rotation_small_max=4, rotation_medium_max=12, rotation_hysteresis=2)
+    players = _fill(console, 7)
+    plugin.rotation_check()
+    assert console.cvars["g_mapcycle"] == "medium.txt"
+
+    while players:
+        console.clients.remove(players.pop().cid)
+    plugin.rotation_check()
+
+    assert console.cvars["g_mapcycle"] == "small.txt"
+
+
+@pytest.mark.asyncio
+async def test_spectators_and_bots_are_not_the_reason_for_a_bigger_map(console):
+    """A spectator is not going to be running around it, and a bot is there because this plugin's
+    own bot support put it there."""
+    plugin = _rotator(console, rotation_small_max=4, rotation_medium_max=12, rotation_hysteresis=2)
+    _fill(console, 2)
+    for index in range(20):
+        watcher = _teamed(console, f"W{index}", "spec", cid=str(300 + index), bits=0)
+        watcher.is_bot = index % 2 == 0
+
+    plugin.rotation_check()
+
+    assert console.cvars["g_mapcycle"] == "small.txt"
+
+
+@pytest.mark.asyncio
+async def test_a_half_configured_rotation_does_nothing(console):
+    """A band with no list would switch the server to an empty map cycle."""
+    plugin = _plugin(console, rotation_manager=True, rotation_small="small.txt")
+    console.clock.advance(120)
+    _fill(console, 1)
+
+    plugin.rotation_check()
+
+    assert "g_mapcycle" not in console.cvars
+
+
+@pytest.mark.asyncio
+async def test_nothing_happens_while_the_feature_is_off(console):
+    plugin = _plugin(console, **ROTATIONS)
+    console.clock.advance(120)
+    _fill(console, 20)
+
+    plugin.rotation_check()
+
+    assert "g_mapcycle" not in console.cvars
+
+
+@pytest.mark.asyncio
+async def test_the_count_is_not_taken_while_the_server_is_reconnecting(console):
+    """Everybody reconnects at a map change, so a count taken then means nothing."""
+    plugin = _rotator(console)
+    _fill(console, 20)
+    plugin.hold_off()
+
+    plugin.rotation_check()
+
+    assert "g_mapcycle" not in console.cvars
+
+
+@pytest.mark.asyncio
+async def test_the_rotation_is_only_written_when_it_changes(console):
+    plugin = _rotator(console)
+    _fill(console, 1)
+    plugin.rotation_check()
+    console.cvars.clear()
+
+    plugin.rotation_check()
+
+    assert console.cvars == {}
+
+
 # -- through a real bot ----------------------------------------------------------------------------
 
 

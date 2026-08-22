@@ -55,7 +55,7 @@
 #                      config file contains is anything; the name must look like a filename
 #   !papublic on|off   open the server to everybody, or put a password on it (alias: !public)
 #
-# Still to come: the other policies — rotation manager, match mode, vote delay.
+# Still to come: the other policies — match mode and vote delay.
 #
 # Two commands from the classic are deliberately absent. `!paveto` is `callvote`'s `!veto`, which works
 # on every engine that can cancel a vote rather than only this one. `!paversion` printed the plugin's
@@ -329,6 +329,34 @@ settings:
   # Only players with fewer connections than this are advised: somebody on their two hundredth visit
   # knows about the helmet. The classic's own rule, and its number.
   headshot_advice_connections: 20
+
+  # -- the rotation manager ------------------------------------------------------------------
+  #
+  # Switches the server's map list by how busy it is: small maps for a handful of players, big ones
+  # for a full server. Counts the players who will be *on* the map — not the spectators, and not the
+  # bots the section above may have added to fill the server up.
+  rotation_manager: no
+
+  # Up to this many players is a small map; up to the second, a medium one; above it, large.
+  rotation_small_max: 4
+  rotation_medium_max: 12
+
+  # How far past a switch point the count has to go before the list actually changes, so a server
+  # hovering on one does not change its maps every time somebody joins. The classic expressed this
+  # as "was the last thing a join or a part?" and had the join case backwards: with the switch at 4
+  # and a margin of 2, five players who had just been joined got the *small* rotation, while the
+  # same five after somebody left got the medium one — joining a player could shrink the maps.
+  rotation_hysteresis: 2
+
+  # The three map-cycle files, as `g_mapcycle` wants them: a filename the server can find, which in
+  # practice means one sitting beside `mapcycle.txt` in the game directory. All three must be named
+  # or nothing happens at all — a band with no list would switch the server to an empty map cycle.
+  #
+  # The classic had a fourth setting here, `gamepath`, which it checked for and then never used:
+  # the filename went to the cvar on its own. It is not a setting here.
+  rotation_small: ""
+  rotation_medium: ""
+  rotation_large: ""
 
 # Everything it says can be reworded in the main config's `messages:` block:
 #

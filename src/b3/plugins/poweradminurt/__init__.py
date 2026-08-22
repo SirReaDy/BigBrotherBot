@@ -31,6 +31,10 @@ map — somebody who changes name every thirty seconds cannot be talked about, c
 reported. It does **not** overlap `nickreg`, which was worth checking before writing it: that plugin
 answers "is this a name registered to somebody else?", and this one answers "is this a name at all?".
 
+**The rotation manager**, which switches the server's map list by how busy it is: small maps for a
+handful of players, big ones for a full server, with a margin either side of each switch so that a
+server hovering on one does not change its list every time somebody joins.
+
 **The headshot counter**, which announces how many headshots a player has landed and tells newcomers
 what the helmet and the kevlar are for. It needs an engine that reports *where* a shot landed, which in
 this family means Urban Terror — and it asks the engine to log that, since a counter switched on
@@ -56,7 +60,7 @@ the wave delays), `!pastamina`, `!pamoon`, `!pasetnextmap` and `!pagear`.
 **The server commands.** `!pabigtext`, `!paset`, `!paget`, `!pavote`, `!pamaprestart`, `!pamapreload`,
 `!pacyclemap`, `!paexec` and `!papublic`.
 
-**Still to come:** the other policies — rotation manager, match mode, vote delay.
+**Still to come:** the other policies — match mode and vote delay.
 
 **Not ported, deliberately:**
 
@@ -153,6 +157,17 @@ Changed from the classic, most of them faults:
   classic warned every one of them on every sweep. And the rename limit's exemption is a level rather
   than the classic's hard-coded `9`, which is not a group anybody has.
 
+* **Joining a player cannot shrink the map rotation.** The classic's hysteresis took a `delta`
+  saying whether the last thing to happen was a join or a part, and had the join case backwards:
+  with the switch at four and a margin of two, five players who had just been *joined* were put on
+  the small rotation while the same five after somebody *left* were on the medium one. Hysteresis is
+  applied against the rotation being played here, which is what the word means and needs no delta.
+  The rotation also counts the players who will be *on* the map — not the spectators, and not the
+  bots this plugin's own bot support put there to fill the server up.
+* **A half-configured rotation does nothing.** Three map lists are needed and the classic checked
+  for a fourth setting, `gamepath`, which it then never used for anything: the filename went to
+  `g_mapcycle` on its own, so the configured path was a required setting that did nothing while its
+  documentation implied it did. It is not a setting here.
 * **The headshot announcement reaches the players.** The classic's `broadcast: True` — its default —
   handed the announcement to `console.write`, which sends an **rcon command**. A line of prose is not
   a command, so on the setting an operator was most likely running, every headshot announcement went
@@ -422,6 +437,20 @@ DEFAULTS: dict[str, object] = {
     # Only players with fewer connections than this are advised: somebody on their two hundredth
     # visit knows about the helmet. The classic's own rule and its number.
     "headshot_advice_connections": 20,
+    # -- the rotation manager -----------------------------------------------------------------
+    # Switch the server's map list by how busy it is: small maps for a handful of players, big ones
+    # for a full server. All three lists must be named or nothing happens.
+    "rotation_manager": False,
+    # Up to this many players is a small map; up to the second is a medium one; above it, large.
+    "rotation_small_max": 4,
+    "rotation_medium_max": 12,
+    # How far past a switch point the count has to go before the rotation actually changes, so a
+    # server hovering on one does not change its map list every time somebody joins.
+    "rotation_hysteresis": 2,
+    # The three map-cycle files, as `g_mapcycle` wants them — a filename the server can find.
+    "rotation_small": "",
+    "rotation_medium": "",
+    "rotation_large": "",
 }
 
 MESSAGES = {
@@ -592,6 +621,12 @@ BOT_SKILL_CVAR = "g_spskill"
 #: Without this, the server logs no `Hit:` lines at all and the headshot counter counts nothing.
 HIT_LOG_CVAR = "g_loghits"
 
+#: The cvar naming the file the server takes its map order from.
+ROTATION_CVAR = "g_mapcycle"
+
+#: The three rotations, smallest first.
+SMALL, MEDIUM, LARGE = 1, 2, 3
+
 #: How few name changes have to be left before the player is told how many. The classic's number.
 NAME_CHANGE_WARNING_AT = 4
 
@@ -719,6 +754,8 @@ class PoweradminurtPlugin(Plugin):
         #: The last thing `advise` said, so it can say "remains" and "has become" rather than
         #: repeating itself: `(team, word, magnitude)`.
         self._last_advice: tuple[str, str, float] | None = None
+        #: The map rotation being played, as a band: 0 until one has been chosen.
+        self._rotation = 0
         #: Whether this plugin currently has the server topping itself up with AI players, and
         #: whether it has ever written the bot cvars at all. Both so that a server whose operator
         #: manages bots by hand is not quietly switched over by a plugin that is not using them.
@@ -945,6 +982,8 @@ class PoweradminurtPlugin(Plugin):
         self.subscribe(EventType.CLIENT_NAME_CHANGE, self.on_name_change)
         self.subscribe(EventType.GAME_MAP_CHANGE, self._on_map_change)
         self.subscribe(EventType.CLIENT_DAMAGE, self.headshotcounter)
+        self.subscribe(EventType.CLIENT_AUTH, self._on_roster_change)
+        self.subscribe(EventType.CLIENT_DISCONNECT, self._on_roster_change)
         name_interval = as_int(self.settings.get("namecheck_interval"), 0)
         if name_interval > 0:
             self.schedule(
@@ -1382,6 +1421,7 @@ class PoweradminurtPlugin(Plugin):
         """A new map: the bots may or may not be welcome on it."""
         self.botsupport()
         self._reset_hits("map")
+        self.rotation_check()
 
     def _on_round_start(self, _event: Event) -> None:
         self._reset_hits("round")
@@ -1417,6 +1457,85 @@ class PoweradminurtPlugin(Plugin):
             return
         for client in self.console.clients.connected():
             client.del_var(self, "locked_to")
+
+    # -- the rotation manager ------------------------------------------------
+
+    def _rotation_files(self) -> dict[int, str]:
+        """The map list for each size, by band. A band with no file configured is not available."""
+        return {
+            SMALL: str(self.settings.get("rotation_small") or "").strip(),
+            MEDIUM: str(self.settings.get("rotation_medium") or "").strip(),
+            LARGE: str(self.settings.get("rotation_large") or "").strip(),
+        }
+
+    def _playing(self) -> int:
+        """How many people the next map has to hold.
+
+        Not `len(everybody connected)`, which is what the classic counted: a spectator is not going
+        to be running around it, and a bot is there because *this* plugin's bot support put it there
+        — counting those would have the server pick bigger maps because it had filled itself up.
+        """
+        return sum(
+            1
+            for client in self.console.clients.connected()
+            if not client.is_bot and (client.team or "").strip().lower() in (*SIDES, "free")
+        )
+
+    def _band_for(self, players: int) -> int:
+        """Which rotation this many players wants, given the one being played.
+
+        Hysteresis means the bar to move *up* a band is higher than the bar to fall back down, so a
+        server hovering on a switch point does not change its map list every time somebody joins.
+        The classic expressed that as a `delta` argument saying whether the last thing to happen was
+        a join or a part — and got the join case backwards: with the switch at 4 and hysteresis 2, a
+        server of five that somebody *joined* was put on the **small** rotation, while the same five
+        after somebody *left* were on the medium one. Joining a player could shrink the maps.
+        """
+        small_max = as_int(self.settings.get("rotation_small_max"), 4)
+        medium_max = as_int(self.settings.get("rotation_medium_max"), 12)
+        margin = max(0, as_int(self.settings.get("rotation_hysteresis"), 2))
+        band = self._rotation
+        if not band:
+            # Nothing chosen yet, so there is nothing to be sticky about: plain bands.
+            if players > medium_max:
+                return LARGE
+            return MEDIUM if players > small_max else SMALL
+        # Otherwise a band is left alone until the count is clearly past the switch that would end
+        # it, in whichever direction. That, and not a `delta`, is what hysteresis means.
+        if players > medium_max + margin:
+            return LARGE
+        if players < small_max - margin:
+            return SMALL
+        if band == LARGE and players < medium_max - margin:
+            return MEDIUM
+        if band == SMALL and players > small_max + margin:
+            return MEDIUM
+        return band
+
+    def rotation_check(self) -> None:
+        """Pick the map list that suits how busy the server is."""
+        if not self.is_enabled() or not self.settings.get("rotation_manager"):
+            return
+        if self.holding_off():
+            # The whole server reconnects at a map change, so a count taken then means nothing. The
+            # classic had a 60-second window of its own for this; the quiet window is that window.
+            return
+        files = self._rotation_files()
+        if not all(files.values()):
+            # A band with no list would switch the server to an empty map cycle. Refusing to run at
+            # all is the only safe reading of a half-filled-in configuration.
+            return
+        band = self._band_for(self._playing())
+        if band == self._rotation:
+            return
+        self._rotation = band
+        log.info(
+            "poweradminurt: %d players, switching to the %s rotation", self._playing(), files[band]
+        )
+        self.console.set_cvar(ROTATION_CVAR, files[band])
+
+    def _on_roster_change(self, _event: Event) -> None:
+        self.rotation_check()
 
     # -- the headshot counter ------------------------------------------------
 
@@ -2487,6 +2606,10 @@ __all__ = [
     "BOT_ENABLE_CVAR",
     "BOT_SKILL_CVAR",
     "HIT_LOG_CVAR",
+    "LARGE",
+    "MEDIUM",
+    "ROTATION_CVAR",
+    "SMALL",
     "GAMETYPES",
     "GAMETYPE_ALIASES",
     "GAMETYPE_NAMES",

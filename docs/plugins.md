@@ -421,6 +421,13 @@ a name registered to somebody else?" where this answers "is this a name at all?"
 as players see them — colours stripped, trimmed, lower-cased — where the classic compared raw strings,
 so `^1Bob` and `^2Bob` were not duplicates of each other.
 
+**The rotation manager**, which switches the map list by how busy the server is, with a margin either
+side of each switch point. The classic's hysteresis took a "was the last thing a join or a part?"
+argument and had the join case backwards, so joining a player could *shrink* the maps; here the margin
+is applied against the rotation being played, which is what hysteresis means. It also counts the
+players who will be on the map rather than everybody connected — not the spectators, and not the bots
+its own bot support added.
+
 **The headshot counter**, which announces how many headshots a player has landed and tells newcomers
 what the helmet and the kevlar are for. It needs an engine that reports where a shot landed — Urban
 Terror, here — and asks it to log that, since without `g_loghits` there are no hits to count. The
@@ -453,7 +460,7 @@ config file contains is anything, and the name has to look like a filename rathe
 into one — and `!papublic on|off`, whose private password is built from a configured word plus fresh
 digits, sent to the admin privately and never written to the log.
 
-Still to come: the other policies — rotation manager, match mode, vote delay.
+Still to come: the other policies — match mode and vote delay.
 
 One immunity rule covers all four player commands — you cannot use them on somebody at or above your own
 level. The classic had `slap_safe_level` on `!paslap`, a different comparison on `!pamute`, and *nothing*
