@@ -421,6 +421,12 @@ a name registered to somebody else?" where this answers "is this a name at all?"
 as players see them — colours stripped, trimmed, lower-cased — where the classic compared raw strings,
 so `^1Bob` and `^2Bob` were not duplicates of each other.
 
+**Bot support**, which keeps the server topped up with AI players on maps an operator has listed as
+safe — the classic's config file warns in capitals that this may crash the server, and that list is the
+mitigation, so an empty one means no map rather than every map. While it is off, nothing writes a bot
+cvar at all; the classic rewrote the skill setting on every config load whether or not it was running
+bots, and never wrote `bot_enable` back to 0.
+
 **The spectator check**, which asks whoever has been watching rather than playing to do one or the
 other once the server is busy enough that somebody wants the slot. It warns, and `admin`'s escalation
 is what removes them — the number of warnings a kick takes is a server's policy, not this feature's.
@@ -440,8 +446,7 @@ config file contains is anything, and the name has to look like a filename rathe
 into one — and `!papublic on|off`, whose private password is built from a configured word plus fresh
 digits, sent to the admin privately and never written to the log.
 
-Still to come: the other policies — bot support, headshot counter, rotation manager, match mode,
-vote delay.
+Still to come: the other policies — headshot counter, rotation manager, match mode, vote delay.
 
 One immunity rule covers all four player commands — you cannot use them on somebody at or above your own
 level. The classic had `slap_safe_level` on `!paslap`, a different comparison on `!pamute`, and *nothing*

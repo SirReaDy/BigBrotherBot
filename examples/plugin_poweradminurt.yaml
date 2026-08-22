@@ -55,8 +55,7 @@
 #                      config file contains is anything; the name must look like a filename
 #   !papublic on|off   open the server to everybody, or put a password on it (alias: !public)
 #
-# Still to come: the other policies — bot support, headshot counter, rotation manager, match mode,
-# vote delay.
+# Still to come: the other policies — headshot counter, rotation manager, match mode, vote delay.
 #
 # Two commands from the classic are deliberately absent. `!paveto` is `callvote`'s `!veto`, which works
 # on every engine that can cancel a vote rather than only this one. `!paversion` printed the plugin's
@@ -265,6 +264,35 @@ settings:
 
   # Bots are never warned: they cannot read one, and several bots on one server routinely wear a
   # single name — the classic warned every one of them, on every sweep.
+
+  # -- bot support ---------------------------------------------------------------------------
+  #
+  # Keeps the server populated with AI players on maps an operator has said are safe. The classic's
+  # own configuration file put it like this, in capitals: "BOTSUPPORT IS VERY UNSTABLE! IT MAY CRASH
+  # YOUR SERVER PLENTY!" — and answered itself with a list of maps bots had been seen to survive.
+  # That list is the feature, so an empty one means no map rather than every map.
+  #
+  # While this is off, nothing here writes a bot cvar at all. The classic rewrote `g_spskill` on
+  # every config load whether or not it was running bots, and only ever wrote `bot_enable 1` — so
+  # switching the feature off and reloading left the engine's bot subsystem on with the count at
+  # zero, and a server whose operator manages bots by hand had its settings changed underneath them.
+  botsupport_enable: no
+
+  # How good they are, 1-5.
+  botsupport_skill: 4
+
+  # How many clients the server tops itself up to.
+  botsupport_min_players: 4
+
+  # The maps they are allowed on, and nowhere else. These five are the classic's own shipped list —
+  # the maps its authors had seen bots survive on — and they are Urban Terror 4.1-era, so treat them
+  # as a starting point and not as a promise:
+  #
+  #   ut4_abbey, ut4_algiers, ut4_austria, ut4_riyadh, ut4_uptown
+  #
+  # Compared case-insensitively; the classic compared exactly, so `ut4_Abbey` in the config silently
+  # matched nothing. A map outside the list turns the bots off rather than leaving them running.
+  botsupport_maps: ""
 
 # Everything it says can be reworded in the main config's `messages:` block:
 #

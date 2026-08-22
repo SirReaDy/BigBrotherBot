@@ -31,6 +31,11 @@ map — somebody who changes name every thirty seconds cannot be talked about, c
 reported. It does **not** overlap `nickreg`, which was worth checking before writing it: that plugin
 answers "is this a name registered to somebody else?", and this one answers "is this a name at all?".
 
+**Bot support**, which keeps the server populated with AI players — but only on the maps an operator
+has said are safe. The classic's own configuration file shouts "BOTSUPPORT IS VERY UNSTABLE! IT MAY
+CRASH YOUR SERVER PLENTY!" and answers itself with a list of maps bots have been seen to survive; that
+list *is* the feature, so an empty one means no map rather than every map.
+
 **The spectator check**, which asks whoever has been watching rather than playing to do one or the
 other, once the server is busy enough that somebody wants the slot. It warns; `admin`'s own escalation
 is what eventually removes them, which is the classic's design and the right one — the number of
@@ -46,8 +51,7 @@ the wave delays), `!pastamina`, `!pamoon`, `!pasetnextmap` and `!pagear`.
 **The server commands.** `!pabigtext`, `!paset`, `!paget`, `!pavote`, `!pamaprestart`, `!pamapreload`,
 `!pacyclemap`, `!paexec` and `!papublic`.
 
-**Still to come:** the other policies — bot support, headshot counter, rotation manager, match mode,
-vote delay.
+**Still to come:** the other policies — headshot counter, rotation manager, match mode, vote delay.
 
 **Not ported, deliberately:**
 
@@ -143,6 +147,16 @@ Changed from the classic, most of them faults:
 * **A bot is not warned for sharing a name with another bot**, which several of them routinely do; the
   classic warned every one of them on every sweep. And the rename limit's exemption is a level rather
   than the classic's hard-coded `9`, which is not a group anybody has.
+
+* **A plugin that is not running bots touches no bot cvar.** The classic wrote `g_spskill` on every
+  config load whether or not bot support was on, and only ever wrote `bot_enable 1` — so switching
+  the feature off and reloading left the engine's bot subsystem running with the count at zero, while
+  a server whose operator manages bots by hand had its skill setting rewritten by a feature that was
+  switched off. Nothing here writes a bot cvar until it has something to say about bots.
+* **A map bots are not allowed on turns them off**, rather than being left alone. The classic's
+  `botsupport()` did nothing at all in that case and relied on whoever called it having disabled them
+  first — which its own config reload did not, so reloading on a map outside the list left the bots it
+  had started running.
 
 And two faults that were not in this plugin at all: `!paforce … lock` had never held anybody, because
 **no Quake3 parser published `CLIENT_TEAM_CHANGE`**. The team is a field of the infostring rather than
@@ -364,6 +378,17 @@ DEFAULTS: dict[str, object] = {
     # Nobody at or above this level is checked. The classic hard-coded 9 for the rename limit and
     # checked nothing at all for the rest.
     "namecheck_max_level": 20,
+    # -- bot support --------------------------------------------------------------------------
+    # Whether the server tops itself up with AI players. The classic's own config file shouts that
+    # this may crash the server, which is why the list of maps below exists.
+    "botsupport_enable": False,
+    # How good they are, 1-5.
+    "botsupport_skill": 4,
+    # How many clients the server is kept topped up to.
+    "botsupport_min_players": 4,
+    # The maps bots are allowed on, and nothing outside it. Empty means no map: for a feature whose
+    # own documentation warns it may take the server down, "not configured" has to mean "off".
+    "botsupport_maps": "",
 }
 
 MESSAGES = {
@@ -520,6 +545,12 @@ ADVICE_WORDS: tuple[tuple[float, str], ...] = (
     (float("inf"), "probably cheating"),
 )
 
+#: The cvars Urban Terror keeps its AI players behind: whether the subsystem is on at all, how many
+#: clients the server should top itself up to, and how good they are (1-5).
+BOT_ENABLE_CVAR = "bot_enable"
+BOT_COUNT_CVAR = "bot_minplayers"
+BOT_SKILL_CVAR = "g_spskill"
+
 #: How few name changes have to be left before the player is told how many. The classic's number.
 NAME_CHANGE_WARNING_AT = 4
 
@@ -630,6 +661,11 @@ class PoweradminurtPlugin(Plugin):
         #: The last thing `advise` said, so it can say "remains" and "has become" rather than
         #: repeating itself: `(team, word, magnitude)`.
         self._last_advice: tuple[str, str, float] | None = None
+        #: Whether this plugin currently has the server topping itself up with AI players, and
+        #: whether it has ever written the bot cvars at all. Both so that a server whose operator
+        #: manages bots by hand is not quietly switched over by a plugin that is not using them.
+        self._bots_running = False
+        self._bot_cvars_written = False
         #: Seeded in tests so a shuffle can be asserted on. The classic used the module-level
         #: `random`, which is why none of its shuffling had a test.
         self.random = random.Random()
@@ -849,6 +885,7 @@ class PoweradminurtPlugin(Plugin):
                 self._teamcheck, minute=f"*/{min(interval, 59)}", name="PoweradminurtPlugin.teams"
             )
         self.subscribe(EventType.CLIENT_NAME_CHANGE, self.on_name_change)
+        self.subscribe(EventType.GAME_MAP_CHANGE, self._on_map_change)
         name_interval = as_int(self.settings.get("namecheck_interval"), 0)
         if name_interval > 0:
             self.schedule(
@@ -870,6 +907,7 @@ class PoweradminurtPlugin(Plugin):
                 minute=f"*/{min(skill_interval, 59)}",
                 name="PoweradminurtPlugin.skill",
             )
+        self._apply_bot_settings()
         # A bot that has just started is about to adopt a server full of players, each of whom looks
         # like somebody who has this moment joined a team. Nothing automatic runs until that settles.
         self.hold_off()
@@ -1277,6 +1315,10 @@ class PoweradminurtPlugin(Plugin):
             # The classic said "Teams are now balanced" here, having moved nobody at all.
             ctx.reply(self.message("pa_teams_stuck"))
 
+    def _on_map_change(self, _event: Event) -> None:
+        """A new map: the bots may or may not be welcome on it."""
+        self.botsupport()
+
     def _on_round_start(self, _event: Event) -> None:
         self._round_ended = False
         self._last_balance = self.console.clock.now()
@@ -1300,6 +1342,8 @@ class PoweradminurtPlugin(Plugin):
 
     def _on_game_exit(self, _event: Event) -> None:
         """The map is over: locks lapse unless the operator wanted them permanent."""
+        # The bots go before the next map loads: whether they are welcome on it is not yet known.
+        self._set_bot_count(0)
         self._balance_pending = False
         self._skill_pending = None
         self._reset_name_changes()
@@ -1308,6 +1352,66 @@ class PoweradminurtPlugin(Plugin):
             return
         for client in self.console.clients.connected():
             client.del_var(self, "locked_to")
+
+    # -- bot support ---------------------------------------------------------
+
+    def _bot_maps(self) -> set[str]:
+        """The maps bots may run on, lower-cased. Empty means none, and that is deliberate."""
+        raw = str(self.settings.get("botsupport_maps") or "")
+        return {part.strip().lower() for part in re.split(r"[\s,]+", raw) if part.strip()}
+
+    def _set_bot_count(self, count: int) -> None:
+        """Write the count — but never write a zero over a server this plugin has not touched.
+
+        A plugin that is not running bots should leave the engine's bot cvars alone: writing
+        `bot_minplayers 0` at startup on a server whose operator manages bots by hand would turn
+        them off, and on a title that has no such cvar it invents one. So the "off" writes only
+        happen once the "on" writes have.
+        """
+        if count <= 0 and not self._bots_running:
+            return
+        self._bots_running = count > 0
+        self.console.set_cvar(BOT_COUNT_CVAR, str(max(0, count)))
+
+    def botsupport(self) -> None:
+        """Keep the server populated with AI players, but only where that is known to be safe.
+
+        The classic's own configuration file shouts "BOTSUPPORT IS VERY UNSTABLE! IT MAY CRASH YOUR
+        SERVER PLENTY!" and answers it with a list of maps bots have been seen to survive. That list
+        is the feature, so it is kept — and an empty one means no map, rather than every map.
+        """
+        if not self.is_enabled() or not self.settings.get("botsupport_enable"):
+            self._set_bot_count(0)
+            return
+        current = (self.console.game.map_name or "").strip().lower()
+        if current and current in self._bot_maps():
+            wanted = as_int(self.settings.get("botsupport_min_players"), 4)
+            log.info("poweradminurt: filling %s up to %d players with bots", current, wanted)
+            self._set_bot_count(wanted)
+            return
+        # Off, rather than left alone. The classic's version did nothing here and relied on whoever
+        # called it having turned the bots off first — which its config reload did not do, so a
+        # reload on a map not in the list left the bots it had started running.
+        self._set_bot_count(0)
+
+    def _apply_bot_settings(self) -> None:
+        """Tell the engine what the bots should be like, and whether it should have any at all."""
+        enabled = bool(self.settings.get("botsupport_enable"))
+        if not enabled:
+            # Only if this plugin turned them on in the first place. The classic only ever wrote
+            # `bot_enable 1`, so switching the feature off in the config and reloading left the
+            # engine's bot subsystem running with only the count at zero — and it wrote the skill
+            # level on every config load whether or not it was running bots at all.
+            if self._bot_cvars_written:
+                self.botsupport()
+                self.console.set_cvar(BOT_ENABLE_CVAR, "0")
+                self._bot_cvars_written = False
+            return
+        self._bot_cvars_written = True
+        self.console.set_cvar(BOT_ENABLE_CVAR, "1")
+        skill = min(5, max(1, as_int(self.settings.get("botsupport_skill"), 4)))
+        self.console.set_cvar(BOT_SKILL_CVAR, str(skill))
+        self.botsupport()
 
     # -- the name checker ----------------------------------------------------
 
@@ -2226,6 +2330,9 @@ __all__ = [
     "ADVICE_WORDS",
     "DAMPED",
     "DAMPING_MINUTES",
+    "BOT_COUNT_CVAR",
+    "BOT_ENABLE_CVAR",
+    "BOT_SKILL_CVAR",
     "GAMETYPES",
     "GAMETYPE_ALIASES",
     "GAMETYPE_NAMES",

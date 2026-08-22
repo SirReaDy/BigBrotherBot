@@ -2149,6 +2149,126 @@ async def test_the_check_stands_down_in_the_quiet_window(console):
     assert console.warned == []
 
 
+# -- bot support --------------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_a_plugin_not_running_bots_touches_no_bot_cvar(console):
+    """Writing `bot_minplayers 0` at startup would turn off bots an operator manages by hand, and on
+    a title that has no such cvar it invents one."""
+    _plugin(console)
+
+    assert console.cvars == {}
+
+
+@pytest.mark.asyncio
+async def test_switching_the_feature_off_switches_the_engine_off(console):
+    """The classic only ever wrote `bot_enable 1`, so turning the feature off in the config and
+    reloading left the engine's bot subsystem running; only the count went to zero."""
+    console.game.map_name = "ut4_abbey"
+    plugin = _plugin(console, botsupport_enable=True, botsupport_maps="ut4_abbey")
+    assert console.cvars["bot_enable"] == "1"
+    assert console.cvars["bot_minplayers"] == "4"
+
+    plugin.settings["botsupport_enable"] = False
+    plugin._apply_bot_settings()
+
+    assert console.cvars["bot_enable"] == "0"
+    assert console.cvars["bot_minplayers"] == "0"
+
+
+@pytest.mark.asyncio
+async def test_the_skill_is_not_written_for_a_feature_that_is_off(console):
+    """The classic wrote `g_spskill` on every config load, whether or not it was running bots."""
+    _plugin(console, botsupport_enable=False, botsupport_skill=2)
+
+    assert "g_spskill" not in console.cvars
+
+
+@pytest.mark.asyncio
+async def test_bots_fill_a_map_they_are_allowed_on(console):
+    console.game.map_name = "ut4_abbey"
+    _plugin(
+        console,
+        botsupport_enable=True,
+        botsupport_maps="ut4_abbey, ut4_algiers",
+        botsupport_min_players=6,
+    )
+
+    assert console.cvars["bot_minplayers"] == "6"
+    assert console.cvars["g_spskill"] == "4"
+
+
+@pytest.mark.asyncio
+async def test_bots_stay_off_on_a_map_they_are_not_allowed_on(console):
+    console.game.map_name = "ut4_casa"
+    _plugin(console, botsupport_enable=True, botsupport_maps="ut4_abbey")
+
+    assert console.cvars.get("bot_minplayers") != "4"
+
+
+@pytest.mark.asyncio
+async def test_an_empty_map_list_means_no_map(console):
+    """For a feature whose own documentation warns it may take the server down, "not configured" has
+    to mean off rather than everywhere."""
+    console.game.map_name = "ut4_abbey"
+    _plugin(console, botsupport_enable=True, botsupport_maps="")
+
+    assert console.cvars.get("bot_minplayers") != "4"
+
+
+@pytest.mark.asyncio
+async def test_the_map_list_is_not_case_sensitive(console):
+    console.game.map_name = "ut4_abbey"
+    _plugin(console, botsupport_enable=True, botsupport_maps="UT4_Abbey")
+
+    assert console.cvars["bot_minplayers"] == "4"
+
+
+@pytest.mark.asyncio
+async def test_a_map_change_reconsiders(console):
+    console.game.map_name = "ut4_abbey"
+    _plugin(console, botsupport_enable=True, botsupport_maps="ut4_abbey")
+    assert console.cvars["bot_minplayers"] == "4"
+
+    console.game.map_name = "ut4_casa"
+    await console.bus.publish(Event(EventType.GAME_MAP_CHANGE))
+
+    assert console.cvars["bot_minplayers"] == "0"
+
+
+@pytest.mark.asyncio
+async def test_the_bots_go_before_the_next_map_loads(console):
+    console.game.map_name = "ut4_abbey"
+    _plugin(console, botsupport_enable=True, botsupport_maps="ut4_abbey")
+
+    await console.bus.publish(Event(EventType.GAME_EXIT))
+
+    assert console.cvars["bot_minplayers"] == "0"
+
+
+@pytest.mark.asyncio
+async def test_a_reload_on_a_map_bots_are_not_allowed_on_turns_them_off(console):
+    """The classic's version did nothing at all here and relied on whoever called it having turned
+    the bots off first — which its own config reload did not do."""
+    console.game.map_name = "ut4_abbey"
+    plugin = _plugin(console, botsupport_enable=True, botsupport_maps="ut4_abbey")
+    assert console.cvars["bot_minplayers"] == "4"
+
+    console.game.map_name = "ut4_casa"
+    plugin._apply_bot_settings()
+
+    assert console.cvars["bot_minplayers"] == "0"
+
+
+@pytest.mark.asyncio
+async def test_the_skill_is_kept_inside_what_the_engine_accepts(console):
+    console.game.map_name = "ut4_abbey"
+    _plugin(console, botsupport_enable=True, botsupport_maps="ut4_abbey", botsupport_skill=99)
+
+    assert console.cvars["g_spskill"] == "5"
+
+
 # -- through a real bot ----------------------------------------------------------------------------
 
 
