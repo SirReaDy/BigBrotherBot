@@ -1,5 +1,40 @@
 # spamcontrol — scores chat and warns whoever floods it.
+#
+# Spam is scored rather than counted: saying the same thing twice is worse than saying two different
+# things, and a coloured repeat is worse still. Points decay, so an ordinary talkative player never
+# trips it while somebody pasting the same advert every second does, quickly. `!spamins [player]`
+# says how close somebody is.
 settings:
   max_spamins: 10    # points at which the player is warned
   falloff_rate: 6.5  # seconds per point of decay
   mod_level: 20      # at or above this level, chat is never scored
+
+# The radio, on games that have one (Urban Terror). Scored separately because it is a different
+# thing being measured, and answered differently because a warning cannot reach it.
+#
+# A radio message is chosen from a fixed menu, so repeating one is ordinary and the words say almost
+# nothing — what marks out somebody abusing the radio is the *rate*, so a call is scored on the gap
+# since the last one rather than on its content. And the answer is a mute, not a warning: the radio
+# is a menu of buttons, so telling somebody to stop does not stop them, and they are not reading the
+# chat channel a warning arrives in.
+#
+# This was a feature of its own in the classic bot — `radio_spam_protection`, inside `poweradminurt`,
+# and only inside its Urban Terror 4.2 subclass, so a 4.1 server never had it at all.
+radio:
+  # Seconds per point of decay. Faster than chat's: five radio calls in five seconds is spam, where
+  # five typed lines in five seconds is somebody with something to say.
+  falloff_rate: 2.0
+
+  # Score at which they are silenced.
+  max_spamins: 10
+
+  # Seconds of silence. 0 warns instead, as chat does. Seconds rather than `censor`'s minutes because
+  # the radio is answered in seconds — the classic's own default here was five, which is about as
+  # long as it takes to press the button again.
+  #
+  # Needs the engine to have a `mute` verb. Where it has none the section is refused at startup, with
+  # a reason in the log, and radio spam is warned about like chat.
+  mute_seconds: 60
+
+# Wording lives in the main config's `messages:` block: `spam_warning`, `spamins` ({name}, {points})
+# and `radio_muted` ({seconds}).

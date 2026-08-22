@@ -12,7 +12,7 @@ list, each with an optional config of its own (see `examples/`):
 |---|---|---|
 | `admin` | the 59 commands, groups, warnings | — |
 | `censor` | bad language in chat, bad player names, with an optional escalating mute | — |
-| `spamcontrol` | scores chat and warns whoever floods it | `!spamins [player]` |
+| `spamcontrol` | scores chat and warns whoever floods it, and mutes whoever floods the radio | `!spamins [player]` |
 | `pingwatch` | removes players whose connection is spoiling the game | `!ci <player>` |
 | `tk` | team damage points, forgiving, and a ban for whoever will not stop | `!forgive` `!fp` `!forgiveall` `!forgivelist` `!forgiveinfo` `!forgiveclear` `!grudge` |
 | `stats` | kills, deaths, damage, a relative skill score and XP, per session | `!mapstats` `!stats` `!testscore` `!topstats` `!topxp` |
@@ -50,6 +50,24 @@ one. It is a `mute:` section here: minutes of silence escalating per offence, an
 verb (`GameProfile.player_verbs`, which today means Urban Terror); on any other title the section is
 refused at startup with a reason rather than silently doing nothing.
 Config: `examples/plugin_censor.yaml`.
+
+### spamcontrol — chat, and the radio
+
+Spam is scored rather than counted: saying the same thing twice is worse than saying two different
+things, and a coloured repeat is worse still. Points decay over time, so an ordinary talkative player
+never trips it while somebody pasting the same advert every second does, quickly. `!spamins [player]`
+says how close somebody is.
+
+**The radio is scored separately**, in a `radio:` section, on games that have one. That was a feature
+of its own in the classic — `radio_spam_protection`, inside `poweradminurt`, and only in its Urban
+Terror 4.2 subclass, so a 4.1 server never had it — but it belongs here, in the same way `censorurt`
+turned out to be a `mute:` section on `censor`. Two things make the radio not chat. A radio message is
+chosen from a fixed menu, so repeating one is ordinary and the content says almost nothing: a call is
+scored on the **gap** since the last one, which is what marks out somebody abusing it. And it is
+answered with a **mute** rather than a warning, because the radio is a menu of buttons — telling
+somebody to stop does not stop them, and they are not reading the chat a warning arrives in. That needs
+the engine's `mute` verb; where there is none the section is refused at startup with a reason and radio
+spam is warned about like chat. Config: `examples/plugin_spamcontrol.yaml`.
 
 ### tk — team damage
 

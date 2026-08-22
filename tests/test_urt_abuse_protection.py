@@ -151,7 +151,10 @@ def _radio(group: str = "7", msg: str = "2", location: str = "New Alley", text: 
 
 
 @pytest.mark.asyncio
-async def test_radio_spam_is_scored(console):
+async def test_a_radio_call_is_scored_on_the_gap_and_not_on_the_words(console):
+    """A radio message is chosen from a fixed menu, so repeating one is ordinary and the content
+    says almost nothing. What marks out somebody abusing it is the rate — which is why this is not
+    scored the way chat is, and why the classic gave it a scorer of its own."""
     plugin = SpamcontrolPlugin(console)
     plugin.start()
     bob = Client(guid="B", name="Bob", cid="2", id=7)
@@ -160,13 +163,44 @@ async def test_radio_spam_is_scored(console):
     event.client = bob
     await console.bus.publish(event)
 
-    assert plugin.score(bob) == 1  # the plugin subscribes to CLIENT_RADIO, not only to chat
+    assert plugin.score(bob) == 0  # nothing to compare the first one against
+
+
+@pytest.mark.asyncio
+async def test_a_burst_of_radio_calls_scores(console):
+    plugin = SpamcontrolPlugin(console)
+    plugin.start()
+    bob = Client(guid="B", name="Bob", cid="2", id=7)
+
+    for _ in range(2):
+        event = _radio()
+        event.client = bob
+        await console.bus.publish(event)
+
+    # No gap at all: within 20s (+1), within 2s (+1) and the same call again (+3), within 1s (+3).
+    assert plugin.score(bob, falloff=2.0) == 8
+
+
+@pytest.mark.asyncio
+async def test_radio_calls_a_minute_apart_are_not_spam(console):
+    plugin = SpamcontrolPlugin(console)
+    plugin.start()
+    bob = Client(guid="B", name="Bob", cid="2", id=7)
+
+    for _ in range(4):
+        event = _radio()
+        event.client = bob
+        await console.bus.publish(event)
+        console.clock.advance(60)
+
+    assert console.muted == {}
+    assert console.warned == []
 
 
 @pytest.mark.asyncio
 async def test_the_same_radio_call_from_a_new_location_still_counts_as_a_repeat(console):
     """The location changes as the player moves, so it must not be part of what is scored."""
-    plugin = SpamcontrolPlugin(console)
+    plugin = SpamcontrolPlugin(console, {"radio": {"max_spamins": 100}})
     plugin.start()
     bob = Client(guid="B", name="Bob", cid="2", id=7)
 
@@ -175,18 +209,80 @@ async def test_the_same_radio_call_from_a_new_location_still_counts_as_a_repeat(
         event.client = bob
         await console.bus.publish(event)
 
-    assert plugin.score(bob) == 7  # 1 for the first, then 3 + 3 for two repeats
+    assert plugin.score(bob, falloff=2.0) == 16  # nothing for the first, then 8 and 8
 
 
 @pytest.mark.asyncio
-async def test_enough_radio_spam_earns_a_warning(console):
-    plugin = SpamcontrolPlugin(console, {"settings": {"max_spamins": 5}})
+async def test_enough_radio_spam_is_answered_with_a_mute(console):
+    """Not a warning: the radio is a menu of buttons, so telling somebody to stop does not stop
+    them, and they are not reading the chat a warning arrives in."""
+    plugin = SpamcontrolPlugin(console, {"radio": {"max_spamins": 5, "mute_seconds": 30}})
     plugin.start()
     bob = Client(guid="B", name="Bob", cid="2", id=7)
+    console.clients.add(bob)
+
+    for _ in range(2):
+        event = _radio()
+        event.client = bob
+        await console.bus.publish(event)
+
+    assert console.muted_until(bob) > console.clock.now()
+    assert console.warned == []
+    assert any("radio is off" in text for _who, text in console.told)
+
+
+@pytest.mark.asyncio
+async def test_a_muted_player_is_not_scored_further(console):
+    """The classic kept a second deadline of its own for this, computed from the mute length rather
+    than read from it, so the two could drift apart."""
+    plugin = SpamcontrolPlugin(console, {"radio": {"max_spamins": 5, "mute_seconds": 30}})
+    plugin.start()
+    bob = Client(guid="B", name="Bob", cid="2", id=7)
+    console.clients.add(bob)
+    for _ in range(2):
+        event = _radio()
+        event.client = bob
+        await console.bus.publish(event)
+    before = plugin.score(bob, falloff=2.0)
 
     for _ in range(3):
         event = _radio()
         event.client = bob
         await console.bus.publish(event)
 
-    assert console.warned  # 1 + 3 + 3 = 7, past the 5-point threshold
+    assert plugin.score(bob, falloff=2.0) == before
+
+
+@pytest.mark.asyncio
+async def test_a_game_with_no_mute_verb_warns_instead(console, caplog):
+    console.player_verbs = set()
+    with caplog.at_level("WARNING"):
+        plugin = SpamcontrolPlugin(console, {"radio": {"max_spamins": 5, "mute_seconds": 30}})
+        plugin.start()
+    assert "no `mute` verb" in caplog.text
+    bob = Client(guid="B", name="Bob", cid="2", id=7)
+    console.clients.add(bob)
+
+    for _ in range(2):
+        event = _radio()
+        event.client = bob
+        await console.bus.publish(event)
+
+    assert console.muted == {}
+    assert console.warned
+
+
+@pytest.mark.asyncio
+async def test_an_admin_may_use_the_radio(console):
+    plugin = SpamcontrolPlugin(console, {"radio": {"max_spamins": 1}})
+    plugin.start()
+    boss = Client(guid="B", name="Boss", cid="2", id=7, group_bits=64)
+    console.clients.add(boss)
+
+    for _ in range(3):
+        event = _radio()
+        event.client = boss
+        await console.bus.publish(event)
+
+    assert console.muted == {}
+    assert console.warned == []

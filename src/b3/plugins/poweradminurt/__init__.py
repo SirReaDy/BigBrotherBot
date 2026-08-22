@@ -56,6 +56,10 @@ vote delay.
   plugins negotiating over one command name at runtime; here `callvote`'s `!veto` simply is the command.
 * `!paversion` — it printed the plugin's own version string. `!plugin info` answers that for every
   plugin.
+* **`radio_spam_protection`** — it is `spamcontrol`'s `radio:` section, for the same reason `censorurt`
+  is `censor`'s `mute:` section: scoring a flooded channel is that plugin's job, and this one had a
+  second scorer of its own only because the two were written by different people. It lived in the
+  Urban Terror 4.2 subclass alone, so a 4.1 server never had it at all.
 
 Changed from the classic, most of them faults:
 
