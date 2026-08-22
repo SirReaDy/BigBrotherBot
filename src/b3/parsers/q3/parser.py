@@ -161,6 +161,8 @@ class Q3Parser(Parser):
             client.guid = guid
         if info.get("ip"):
             client.ip = info["ip"].split(":")[0]
+        if info.get("gear"):
+            client.gear = info["gear"]
         team = info.get("team") or info.get("t")
         moved = False
         if team is not None:

@@ -127,6 +127,23 @@ def as_float(value: object, default: float) -> float:
     return default
 
 
+def as_word(value: object, default: str) -> str:
+    """Read a config value that is one of a fixed set of words. See :func:`as_int`.
+
+    YAML reads a bare ``off``, ``on``, ``no`` and ``yes`` as **booleans**, so a setting whose
+    vocabulary happens to include one of those words arrives as `True` or `False` and matches
+    nothing. That is a trap laid for the operator by the file format rather than by anything they
+    typed, so the two are translated back rather than warned about.
+    """
+    if isinstance(value, bool):
+        return "on" if value else "off"
+    if isinstance(value, str):
+        return value.strip().lower()
+    if value is None:
+        return default
+    return str(value).strip().lower()
+
+
 #: Characters that must never reach a game console. A Quake3-family engine splits its command
 #: buffer on newlines and on `;`, and a `"` opens a quoted token that swallows the rest of the line
 #: — so any of them inside a value can end the command the bot meant to send and begin another one.

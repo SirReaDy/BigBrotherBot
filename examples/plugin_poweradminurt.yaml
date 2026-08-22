@@ -1,4 +1,4 @@
-# poweradminurt — Urban Terror's own admin commands, and the team balancer behind them.
+# poweradminurt — Urban Terror's own admin commands, and the balancers behind them.
 #
 # Point at it from the main config:
 #
@@ -23,7 +23,12 @@
 #   !paswap <player> [player]     two players change places; one name swaps them with you (alias: !swap)
 #   !paswapteams                  swap the two teams around (alias: !swapteams)
 #   !pashuffleteams               shuffle everybody (alias: !shuffleteams)
-#   !pateams                      even the teams up now (alias: !teams) — see the balancer below
+#   !pateams                      even the teams up now, by numbers (alias: !teams)
+#   !pabalance                    even them up by skill, moving as few players as possible (!bal)
+#   !paskuffle                    shuffle everybody into teams matched by skill (alias: !sk)
+#   !paunskuffle                  deliberately make them unfair, to watch the balancer work (!unsk)
+#   !paadvise                     say which side is winning, and how badly (alias: !advise)
+#   !paautoskuffle [mode]         what to do about uneven skill automatically (alias: !ask)
 #
 # The match settings — each one writes a single cvar:
 #
@@ -50,9 +55,8 @@
 #                      config file contains is anything; the name must look like a filename
 #   !papublic on|off   open the server to everybody, or put a password on it (alias: !public)
 #
-# Still to come: the other policies — skill balancer (with `!pabalance`, which is its manual trigger,
-# not the team balancer's), name checker, spectator check, bot support, headshot counter, rotation
-# manager, match mode, vote delay.
+# Still to come: the other policies — name checker, spectator check, bot support, headshot counter,
+# rotation manager, match mode, vote delay.
 #
 # Two commands from the classic are deliberately absent. `!paveto` is `callvote`'s `!veto`, which works
 # on every engine that can cancel a vote rather than only this one. `!paversion` printed the plugin's
@@ -141,6 +145,58 @@ settings:
   # Level for `!pateams`. The classic let a regular ask, and asking only ever evens the teams up.
   teams_command_level: 2
 
+  # -- the skill balancer --------------------------------------------------------------------
+  #
+  # The same idea about a different quantity: two sides of four are even in numbers and not in
+  # anything else. Each player gets a score out of what they have done *since they joined the team
+  # they are on* — kill ratio, net contribution per minute, headshot ratio, and what they did for the
+  # mission — and a shuffle deals everybody out a hundred times and keeps the evenest arrangement.
+  #
+  #   !paskuffle      shuffle everybody into teams matched by skill (alias: !sk)
+  #   !pabalance      the same result, moving as few players as possible (alias: !bal)
+  #   !paunskuffle    deliberately put the best players together, to watch the other two work
+  #                   (alias: !unsk)
+  #   !paadvise       say which side is winning, and whether it is worth acting on (alias: !advise)
+  #   !paautoskuffle  read or set the mode below (alias: !ask)
+  #
+  # What happens automatically when the sides are uneven in skill:
+  #
+  #   off       nothing; the commands above still work
+  #   advise    say so in the chat
+  #   balance   move as few players as possible — the recommended setting, and the classic's too
+  #   shuffle   deal everybody out again
+  #
+  # The classic wrote 0, 1, 2 and 3 for these, and those are still accepted.
+  skillbalance_mode: "off"
+
+  # Minutes between automatic skill checks. 0 leaves the commands working and nothing automatic.
+  skillbalance_interval: 0
+
+  # How lopsided the game has to feel before the mode above acts. This is measured from the kill rate
+  # of each side's best players over the last few minutes, which is what a game feels like from
+  # inside it — an average over everybody hides the two players who are deciding it.
+  #
+  # Note that the same setting in the classic meant roughly double this, because it divided every
+  # score by the weight of measures it had skipped as well as the ones that counted.
+  skillbalance_difference: 0.5
+
+  # Below this many players the figures are noise: nothing is said and nothing is done. `!paadvise`
+  # says it cannot tell rather than reporting a difference of 0.00 on an empty server.
+  skillbalance_min_players: 3
+
+  # Minutes a player below moderator must wait between asking for another shuffle. The classic put
+  # this behind an `and` of three conditions, so the wait it advertised almost never applied.
+  skillbalance_min_interval: 2
+
+  # The most of the server `!pabalance` will move, as a fraction of the players. If it cannot find an
+  # improvement within that, it falls back to a full shuffle — rare in practice.
+  skuffle_max_move_fraction: 0.3
+
+  # Where the score cannot be improved any further, the shuffle distributes the snipers instead: an
+  # SR8 or PSG-1 kills in one shot, and all of them on one side decides the game. A player carrying
+  # one with a worse kill ratio than this is carrying a rifle rather than using one, and is ignored.
+  sniper_kill_ratio: 1.2
+
 # Everything it says can be reworded in the main config's `messages:` block:
 #
 #   pa_slapped / pa_nuked / pa_killed / pa_muted / pa_unmuted     ({name}, {minutes})
@@ -152,3 +208,10 @@ settings:
 #   pa_usage_player / pa_usage_set / pa_usage_get / pa_usage_bigtext
 #   pa_teams_balancing / pa_teams_already / pa_teams_balanced / pa_teams_stuck / pa_teams_pending
 #   pa_teams_moved_you / pa_teams_put_back                        ({team})
+#   pa_skill_shuffling / pa_skill_balancing / pa_skill_unshuffling
+#   pa_skill_was_now ({was}, {now}) / pa_skill_no_improvement / pa_skill_figures ({felt}, {skill})
+#   pa_skill_fair / pa_skill_now / pa_skill_remains / pa_skill_stronger / pa_skill_weaker
+#                                                                 ({team}, {word})
+#   pa_skill_use_bal / pa_skill_no_action / pa_skill_too_soon / pa_skill_too_few
+#   pa_skill_moved / pa_skill_moved_best                          ({team}, {other})
+#   pa_skill_mode / pa_skill_mode_set / pa_skill_mode_usage       ({mode}, {options})

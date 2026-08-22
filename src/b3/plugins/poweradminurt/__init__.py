@@ -14,6 +14,16 @@ whoever joined theirs most recently. `!pateams` is its manual trigger. With it c
 `ignoreSet` — a quiet window after anybody moves players about on purpose, without which the balancer
 spends its next pass undoing a `!pashuffleteams`.
 
+**The skill balancer**, which is the same idea about a different quantity: two sides of four are even
+in numbers and not in anything else. Each player gets a score from what they have done *since they
+joined the team they are on* — kill ratio, net contribution per minute, headshot ratio, and what they
+did for the mission — and a shuffle deals everybody out repeatedly and keeps the evenest arrangement
+found. `!paskuffle` shuffles, `!pabalance` gets the same result by moving as few players as it can,
+`!paunskuffle` deliberately makes the teams unfair so the other two can be watched working,
+`!paadvise` says which side is winning and how badly, and `!paautoskuffle` chooses what happens
+automatically. Where the score cannot be improved any further, the shuffle distributes the *snipers*
+instead: a rifle that kills in one shot decides a game on its own if they all end up on one side.
+
 **The match settings** — twenty-one commands that each write one cvar, so they are a *table*
 (`GAMETYPES`, `TOGGLES`, `NUMBERS` below) rather than twenty-one near-identical methods. The gametype
 switches (`!pactf`, `!pabomb`, `!pajump`, …), the limits (`!pacaplimit`, `!patimelimit`,
@@ -24,9 +34,8 @@ the wave delays), `!pastamina`, `!pamoon`, `!pasetnextmap` and `!pagear`.
 **The server commands.** `!pabigtext`, `!paset`, `!paget`, `!pavote`, `!pamaprestart`, `!pamapreload`,
 `!pacyclemap`, `!paexec` and `!papublic`.
 
-**Still to come:** the other policies — skill balancer (and `!pabalance`, which is its manual trigger:
-it sorts by kill/death ratio and the classic configured it under `[skillbalancer]`), name checker,
-spectator check, bot support, headshot counter, rotation manager, match mode, vote delay.
+**Still to come:** the other policies — name checker, spectator check, bot support, headshot counter,
+rotation manager, match mode, vote delay.
 
 **Not ported, deliberately:**
 
@@ -72,6 +81,30 @@ Changed from the classic, most of them faults:
   every candidate was an admin or locked, it announced a balance it then did not perform, every
   interval, for as long as the teams stayed uneven.
 
+* **The skill score is keyed on the slot, not the database id.** The classic keyed it on `Client.id`,
+  which is None for anybody the bot has not authenticated — and on a Quake3 server without `cl_guid`
+  that is everybody. Every unauthenticated player shared the key `None` and overwrote each other's
+  figures, so the shuffle was built from one player's score wearing everybody's name.
+* **A head hit is counted here rather than by an unrelated feature.** The head-hit figures the skill
+  score reads were written *only* by `headshotcounter`, a separate feature that is off by default. On
+  any server that had not switched it on, `hsratio` was zero for everybody — and a measure that is the
+  same for everybody is dropped from the score, so one of its three weighted components never
+  contributed at all.
+* **The score is divided by the weight that counted.** The classic divided by the total weight of
+  every measure, including the ones it had just skipped and the two it read from `xlrstats` — so on a
+  server without that plugin every score came out at roughly half of what the weights say. That
+  matters because the autobalance threshold on CTF and bomb mode is compared against this figure, so
+  `skillbalance_difference` quietly meant about twice what an operator reading it would think.
+* **A shuffle has to beat the arrangement being played.** The classic's search started from nothing,
+  so the first deal it tried always won: on teams that were already even it moved half the server
+  about and then reported the difference as unchanged. The search starts from the current teams here,
+  and `!paskuffle` on even teams says it cannot improve on them.
+* **The wait between shuffles is the wait it advertises.** "Teams changed recently, please wait a
+  while" was behind an `and` of three conditions, one of which was "a quiet window is open" — so a
+  player who asked twice in a row almost always got two shuffles.
+* **`!paadvise` refuses rather than reporting on an empty server.** It printed "Avg kill ratio diff is
+  0.00, skill diff is 0.00" to nobody in particular.
+
 And one fault that was not in this plugin at all: `!paforce … lock` had never held anybody, because
 **no Quake3 parser published `CLIENT_TEAM_CHANGE`**. The team is a field of the infostring rather than
 a line of its own, so nothing noticed the field changing, and a subscriber to an event nobody raises
@@ -81,17 +114,19 @@ looks exactly like a subscriber to something that never happens. See `Q3Parser._
 from __future__ import annotations
 
 import logging
+import random
 import re
 import secrets
-from collections.abc import Callable
-from dataclasses import dataclass
+from collections.abc import Callable, Sequence
+from dataclasses import dataclass, field
 
 from b3.core.commands import Command, CommandContext, command
 from b3.core.console import Console
 from b3.core.events import Event, EventType
 from b3.core.plugin import Plugin
-from b3.core.util import as_int
+from b3.core.util import as_float, as_int, as_word
 from b3.domain.client import Client
+from b3.plugins.firstkill import is_headshot
 
 log = logging.getLogger(__name__)
 
@@ -238,6 +273,24 @@ DEFAULTS: dict[str, object] = {
     "team_locks_permanent": False,
     # Level for `!pateams`. The classic let a regular ask, and asking only ever evens the teams.
     "teams_command_level": 2,
+    # -- the skill balancer -------------------------------------------------------------------
+    # What to do when the sides are uneven in *skill* rather than in numbers: `off`, `advise` (say
+    # so), `balance` (move as few players as possible) or `shuffle` (deal everybody out again).
+    # The classic wrote 0, 1, 2 and 3, which are still accepted.
+    "skillbalance_mode": "off",
+    # Minutes between skill checks; 0 leaves the commands working and nothing automatic.
+    "skillbalance_interval": 0,
+    # How lopsided the game has to feel before the mode above acts on it.
+    "skillbalance_difference": 0.5,
+    # Below this many players the figures are noise, so nothing is said and nothing is done.
+    "skillbalance_min_players": 3,
+    # Minutes a player below moderator must wait between asking for another shuffle.
+    "skillbalance_min_interval": 2,
+    # The most of the server `!pabalance` will move, as a fraction. Beyond it, a full shuffle.
+    "skuffle_max_move_fraction": 0.3,
+    # A player carrying an SR8 or PSG-1 counts as a sniper worth separating from the other snipers
+    # only above this kill ratio. Below it they are carrying a rifle, not using one.
+    "sniper_kill_ratio": 1.2,
 }
 
 MESSAGES = {
@@ -306,7 +359,150 @@ MESSAGES = {
     "pa_teams_pending": "the teams will be evened up at the end of this round",
     "pa_teams_moved_you": "you have been moved to {team} to even up the teams",
     "pa_teams_put_back": "that would have made the teams uneven, so you are back on {team}",
+    "pa_skill_shuffling": "shuffling the teams by skill",
+    "pa_skill_unshuffling": "putting the best players together — brace yourselves",
+    "pa_skill_balancing": "evening the teams up by skill",
+    "pa_skill_was_now": "team skill difference was {was}, now {now}",
+    "pa_skill_no_improvement": "the teams cannot be made any more even than they are",
+    "pa_skill_figures": "kill-ratio difference is {felt}, skill difference is {skill}",
+    "pa_skill_fair": "the teams look fair",
+    "pa_skill_now": "{team} team is now {word}",
+    "pa_skill_remains": "{team} team remains {word}",
+    "pa_skill_stronger": "{team} team has become {word}",
+    "pa_skill_weaker": "{team} team is just {word}",
+    "pa_skill_use_bal": " — !bal would even them up",
+    "pa_skill_no_action": " — nothing worth doing about it yet",
+    "pa_skill_too_soon": "the teams changed recently; give it a minute",
+    "pa_skill_too_few": "not enough players to tell",
+    "pa_skill_moved": "you are on {team} team now, to even the sides up",
+    "pa_skill_moved_best": "you are on {team} team now — they needed the help",
+    "pa_skill_mode": "skill balancing is {mode}; options are {options}",
+    "pa_skill_mode_set": "skill balancing is now {mode}",
+    "pa_skill_mode_usage": "!paautoskuffle {options}",
 }
+
+
+#: What "skill" is made of, and how much each part counts. The classic's own weights, minus the two
+#: it read from `xlrstats` — a plugin this project does not have, whose absence it filled with the
+#: same constant for every player, which is a measure that says nothing and is dropped below anyway.
+WEIGHTS = {
+    "killratio": 1.0,
+    "teamcontrib": 0.5,
+    "hsratio": 0.3,
+    # The mission counts for more than the scoreboard: a flag carrier who dies a lot is winning.
+    "flagperf": 3.0,
+    "bombperf": 3.0,
+}
+
+#: The measures that are damped for a player who has only just arrived. Two kills in ten seconds is
+#: not evidence of anything, and the classic's readme records this being added after sprees right
+#: after joining were spiking the arithmetic.
+DAMPED = ("killratio", "teamcontrib", "hsratio")
+
+#: Minutes on a team before a player's combat figures count in full.
+DAMPING_MINUTES = 5.0
+
+#: Below this, two floats are the same number. The classic's own `epsilon`.
+EPSILON = 0.0001
+
+#: The sliding window the "how does this game feel" figure is measured over, in minutes: shorter on
+#: a busy server, because the same evidence arrives in less time.
+WINDOW_MIN_MINUTES = 2.0
+WINDOW_MAX_MINUTES = 4.0
+
+#: How many arrangements a shuffle tries, and the score difference below which it stops trying to
+#: improve the balance and starts distributing the snipers instead.
+SHUFFLE_TRIES = 100
+SHUFFLE_SLACK = 0.1
+
+#: The letters Urban Terror's `gear` field uses for the two one-shot rifles: SR8 and PSG-1.
+SNIPER_GEAR = ("Z", "N")
+
+#: A player carrying one of those with a worse kill ratio than this is not a sniper worth spreading
+#: out — the classic's own rule, and the reason it works.
+SNIPER_KILL_RATIO = 1.2
+
+#: `|felt difference|` is multiplied by this before being described in words. The readme that shipped
+#: with the feature says 6 and gives narrower bands; the code said 5 and these bands, and the code is
+#: what ran, so it is what is kept.
+ADVICE_SCALE = 5.0
+
+#: Above this, the game is worth doing something about. "A constant carefully reviewed by an eminent
+#: team of trained Swedish scientistians", says the classic, and it is as good a number as any.
+UNFAIR = 2.31
+
+#: How one side's dominance is described, by upper bound.
+ADVICE_WORDS: tuple[tuple[float, str], ...] = (
+    (1.0, ""),
+    (2.0, "stronger"),
+    (4.0, "dominating"),
+    (6.0, "overpowering"),
+    (8.0, "supreme"),
+    (10.0, "godlike"),
+    (float("inf"), "probably cheating"),
+)
+
+#: What `!paautoskuffle` accepts, including the classic's numbers.
+SKILL_MODES = {
+    "off": "off",
+    "0": "off",
+    "none": "off",
+    "advise": "advise",
+    "1": "advise",
+    "balance": "balance",
+    "2": "balance",
+    "shuffle": "shuffle",
+    "3": "shuffle",
+    "skuffle": "shuffle",
+}
+SKILL_MODE_LIST = "off, advise, balance, shuffle"
+
+
+@dataclass
+class SkillRecord:
+    """What one player has done since they joined the team they are on.
+
+    Reset on a team change rather than compared against a saved baseline, which is what the classic
+    did with nine `prev_` variables it had to remember to re-take in four places.
+    """
+
+    joined: float = 0.0
+    kills: int = 0
+    deaths: int = 0
+    team_kills: int = 0
+    head_hits: int = 0
+    flag_taken: bool = False
+    flag_captured: int = 0
+    flag_returned: int = 0
+    bomb_planted: int = 0
+    bomb_defused: int = 0
+    #: `(when, +1 for a kill / -1 for a death)`, for the sliding window the advice is measured over.
+    history: list[tuple[float, int]] = field(default_factory=list)
+
+
+@dataclass
+class ShuffleResult:
+    """The best pair of sides a search found, and how they compare with the ones being played."""
+
+    old_diff: float
+    scores: dict[str, float]
+    #: The evenest arrangement found above the slack threshold.
+    blue: list[Client] | None = None
+    red: list[Client] | None = None
+    diff: float | None = None
+    #: The best arrangement found *within* the slack threshold, judged by how the snipers fall.
+    sniper_blue: list[Client] | None = None
+    sniper_red: list[Client] | None = None
+    sniper_diff: float | None = None
+
+    def best(self) -> tuple[list[Client] | None, list[Client] | None]:
+        """An arrangement already even enough beats a merely evener one."""
+        if self.sniper_blue is not None:
+            return self.sniper_blue, self.sniper_red
+        return self.blue, self.red
+
+    def chosen_diff(self) -> float | None:
+        return self.sniper_diff if self.sniper_blue is not None else self.diff
 
 
 @dataclass
@@ -345,6 +541,17 @@ class PoweradminurtPlugin(Plugin):
         self._balance_pending = False
         #: Whether the round has ended. A balance asked for after that need not wait for anything.
         self._round_ended = False
+        #: A skill balance held over until the round ends. Separate from `_balance_pending` because
+        #: the two policies can each fall due in the same round and mean different things.
+        self._skill_pending: Callable[[], None] | None = None
+        #: When the teams were last changed by either balancer, for the rate limit and the damping.
+        self._last_balance = 0.0
+        #: The last thing `advise` said, so it can say "remains" and "has become" rather than
+        #: repeating itself: `(team, word, magnitude)`.
+        self._last_advice: tuple[str, str, float] | None = None
+        #: Seeded in tests so a shuffle can be asserted on. The classic used the module-level
+        #: `random`, which is why none of its shuffling had a test.
+        self.random = random.Random()
 
     # -- setup ---------------------------------------------------------------
 
@@ -547,11 +754,25 @@ class PoweradminurtPlugin(Plugin):
         self.subscribe(EventType.GAME_ROUND_START, self._on_round_start)
         self.subscribe(EventType.GAME_ROUND_END, self._on_round_end)
         self.subscribe(EventType.GAME_EXIT, self._on_game_exit)
+        # What the skill balancer measures. Counted here rather than read from `stats`: that plugin
+        # keeps three of the nine figures a skill score needs, has no notion of "since you joined
+        # this team", and is optional — a balancer that silently stops working when an unrelated
+        # plugin is switched off is worse than three integers counted twice.
+        self.subscribe(EventType.CLIENT_KILL, self._on_kill)
+        self.subscribe(EventType.CLIENT_KILL_TEAM, self._on_team_kill)
+        self.subscribe(EventType.CLIENT_ACTION, self._on_action)
         self.on_load_config()
         interval = as_int(self.settings.get("teambalance_interval"), 30)
         if interval > 0:
             self.schedule(
                 self._teamcheck, minute=f"*/{min(interval, 59)}", name="PoweradminurtPlugin.teams"
+            )
+        skill_interval = as_int(self.settings.get("skillbalance_interval"), 0)
+        if skill_interval > 0:
+            self.schedule(
+                self.skillcheck,
+                minute=f"*/{min(skill_interval, 59)}",
+                name="PoweradminurtPlugin.skill",
             )
         # A bot that has just started is about to adopt a server full of players, each of whom looks
         # like somebody who has this moment joined a team. Nothing automatic runs until that settles.
@@ -765,7 +986,11 @@ class PoweradminurtPlugin(Plugin):
             return
         # When they joined this team, which is what the balancer sorts on. Stamped before anything
         # can return, so that a locked player and an admin have one too.
-        client.set_var(self, "team_time", self.console.clock.now())
+        now = self.console.clock.now()
+        client.set_var(self, "team_time", now)
+        # And their skill figures start again: what they did for the other side is not evidence
+        # about this one.
+        client.set_var(self, "skill", SkillRecord(joined=now))
         held = self.locked_to(client)
         if held is not None:
             current = (client.team or "").strip().lower()
@@ -889,7 +1114,7 @@ class PoweradminurtPlugin(Plugin):
         to move, so a server whose bigger team was all admins was told the teams were being balanced
         every interval, forever, while nothing happened.
         """
-        how = str(self.settings.get("teambalance_announce") or "off").strip().lower()
+        how = as_word(self.settings.get("teambalance_announce"), "bigtext")
         if how == "bigtext":
             self.console.say_big(text)
         elif how == "say":
@@ -956,11 +1181,21 @@ class PoweradminurtPlugin(Plugin):
 
     def _on_round_start(self, _event: Event) -> None:
         self._round_ended = False
+        self._last_balance = self.console.clock.now()
+        self._forget_contributions()
         self.hold_off()
 
     def _on_round_end(self, _event: Event) -> None:
-        """A balance that fell due mid-round happens now, which is what waiting for it was for."""
+        """A balance that fell due mid-round happens now, which is what waiting for it was for.
+
+        A skill balance wins over a head-count one when both are owed: it evens the numbers too.
+        """
         self._round_ended = True
+        pending, self._skill_pending = self._skill_pending, None
+        if pending is not None:
+            self._balance_pending = False
+            pending()
+            return
         if self._balance_pending:
             self._balance_pending = False
             self.balance()
@@ -968,11 +1203,584 @@ class PoweradminurtPlugin(Plugin):
     def _on_game_exit(self, _event: Event) -> None:
         """The map is over: locks lapse unless the operator wanted them permanent."""
         self._balance_pending = False
+        self._skill_pending = None
         self.hold_off()
         if self.settings.get("team_locks_permanent"):
             return
         for client in self.console.clients.connected():
             client.del_var(self, "locked_to")
+
+    # -- the skill balancer --------------------------------------------------
+
+    def record(self, client: Client) -> SkillRecord:
+        """This player's figures since they joined the team they are on.
+
+        The classic kept nine separate client variables plus a `prev_` copy of each, and subtracted
+        one from the other on every read — a baseline it had to remember to re-take in four places.
+        The record is simply reset when they change teams, which is the same arithmetic with nothing
+        to keep in step.
+        """
+        held = client.get_var(self, "skill")
+        if not isinstance(held, SkillRecord):
+            held = SkillRecord(joined=self.console.clock.now())
+            client.set_var(self, "skill", held)
+        return held
+
+    def _on_kill(self, event: Event) -> None:
+        killer, victim = event.client, event.target
+        if killer is None or victim is None:
+            return
+        now = self.console.clock.now()
+        mine, theirs = self.record(killer), self.record(victim)
+        mine.kills += 1
+        theirs.deaths += 1
+        mine.history.append((now, 1))
+        theirs.history.append((now, -1))
+        if is_headshot(event.data):
+            # Counted here, not in the headshot counter. In the classic the head-hit figures the
+            # skill score reads were written *only* by `headshotcounter`, which is a separate feature
+            # and off by default — so on any server that had not turned it on, `hsratio` was zero for
+            # everybody, and a key whose values are all equal is dropped from the score entirely.
+            # One of the three weighted components of "skill" therefore never contributed.
+            mine.head_hits += 1
+
+    def _on_team_kill(self, event: Event) -> None:
+        if event.client is not None:
+            self.record(event.client).team_kills += 1
+
+    def _on_action(self, event: Event) -> None:
+        """Flags and the bomb — what a player did for the mission rather than for their score."""
+        client, action = event.client, str(event.data or "")
+        if client is None:
+            return
+        record = self.record(client)
+        if action in ("flag_taken", "team_CTF_redflag", "team_CTF_blueflag"):
+            record.flag_taken = True
+        elif action == "flag_captured":
+            record.flag_captured += 1
+        elif action == "flag_returned":
+            record.flag_returned += 1
+        elif action == "bomb_planted":
+            record.bomb_planted += 1
+        elif action == "bomb_defused":
+            record.bomb_defused += 1
+
+    def _forget_contributions(self) -> None:
+        """Start the measurement again — at a round start, and after any shuffle.
+
+        Skill is measured over the round being played. Carrying a score across a shuffle would have
+        the balancer judging players by how they did on the team it has just taken them off.
+        """
+        self._last_advice = None
+        now = self.console.clock.now()
+        for client in self.console.clients.connected():
+            client.set_var(self, "skill", SkillRecord(joined=now))
+
+    def _figures(self, client: Client) -> dict[str, float]:
+        """The five measures the score is built from, for one player."""
+        record = self.record(client)
+        age = max(0.0, self.console.clock.now() - record.joined) / 60.0
+        kills, deaths = max(0, record.kills), max(0, record.deaths)
+        team_kills = max(0, record.team_kills)
+        return {
+            "age": age,
+            # A head hit can outnumber kills, so this is capped rather than being a true ratio.
+            "hsratio": min(1.0, record.head_hits / (1.0 + kills)),
+            "killratio": kills / (1.0 + deaths + team_kills),
+            "teamcontrib": (kills - deaths - team_kills) / (age + 1.0),
+            "flagperf": 10.0 * int(record.flag_taken)
+            + 20.0 * record.flag_captured
+            + record.flag_returned,
+            "bombperf": float(record.bomb_planted + record.bomb_defused),
+        }
+
+    def scores(self, clients: Sequence[Client]) -> dict[str, float]:
+        """A relative skill score in 0..1 for each player, keyed by slot.
+
+        Keyed by **cid**, not by database id as the classic was: a player the bot has not
+        authenticated has no id, and on a Quake3 server without `cl_guid` that is everybody — so
+        every unauthenticated player shared the key `None` and overwrote each other's figures, and
+        the shuffle was built from one player's score wearing everybody's name.
+
+        Each measure is scaled against the range across the players present, weighted, and summed.
+        A measure that is the same for everybody says nothing about who is better and is left out.
+        The three combat measures are damped for somebody who has only just arrived, since two kills
+        in ten seconds is not evidence of anything.
+        """
+        figures = {c.cid: self._figures(c) for c in clients if c.cid}
+        if not figures:
+            return {}
+        lows = {key: min(f[key] for f in figures.values()) for key in WEIGHTS}
+        highs = {key: max(f[key] for f in figures.values()) for key in WEIGHTS}
+        # Only the measures that actually vary. The classic divided by the total weight of *every*
+        # measure including the ones it had skipped and the two it read from xlrstats — so on a
+        # server without that plugin every score came out roughly half of what the weights say, and
+        # since the autobalance threshold on CTF and bomb mode is compared against this figure, that
+        # setting meant about twice what an operator reading it would think.
+        live = [key for key in WEIGHTS if highs[key] - lows[key] >= EPSILON]
+        total = sum(WEIGHTS[key] for key in live)
+        if total <= 0.0:
+            return {cid: 0.0 for cid in figures}
+        out: dict[str, float] = {}
+        for cid, figure in figures.items():
+            damping = min(1.0, figure["age"] / DAMPING_MINUTES)
+            score = 0.0
+            for key in live:
+                scaled = WEIGHTS[key] * (figure[key] - lows[key]) / (highs[key] - lows[key])
+                score += damping * scaled if key in DAMPED else scaled
+            out[cid] = score / total
+        return out
+
+    def _team_score(self, team: Sequence[Client], scores: dict[str, float]) -> float:
+        return sum(scores.get(c.cid or "", 0.0) for c in team)
+
+    def _score_diff(
+        self, blue: Sequence[Client], red: Sequence[Client], scores: dict[str, float]
+    ) -> float:
+        return self._team_score(blue, scores) - self._team_score(red, scores)
+
+    def _recent_ratios(self, blue: list[Client], red: list[Client]) -> tuple[float, float]:
+        """Each side's best players' kill rate over the last few minutes.
+
+        The readme that came with this feature is the argument for it: players complain when they are
+        killed quickly and repeatedly, and get bored when they are doing the killing, so what a game
+        *feels* like is the top of each side rather than the average of it. The window shortens as
+        the server gets busier, because a busy server produces the same evidence in less time.
+        """
+        if not blue or not red:
+            return 0.0, 0.0
+        now = self.console.clock.now()
+        per_minute = sum(
+            1
+            for client in self.console.clients.connected()
+            for when, _what in self.record(client).history
+            if when > now - 60.0
+        )
+        window = max(WINDOW_MIN_MINUTES, WINDOW_MAX_MINUTES - 0.1 * per_minute)
+        start = now - window * 60.0
+
+        def rate(client: Client) -> float:
+            kills = deaths = 0
+            for when, what in self.record(client).history:
+                if when > start:
+                    if what > 0:
+                        kills += 1
+                    else:
+                        deaths += 1
+            return kills / (1.0 + deaths)
+
+        ranked_blue = sorted(blue, key=rate, reverse=True)
+        ranked_red = sorted(red, key=rate, reverse=True)
+        n = min(len(ranked_blue), len(ranked_red))
+        if n > 3:
+            n = 3 + (n - 3) // 2
+        best_blue = sum(rate(c) for c in ranked_blue[:n]) / n / window
+        best_red = sum(rate(c) for c in ranked_red[:n]) / n / window
+        return best_blue, best_red
+
+    def advice_figures(self, min_players: int = 0) -> tuple[float | None, float | None]:
+        """How lopsided the game is (the felt figure), and how lopsided the skill is (the measured
+        one). Both None when there are too few players for either to mean anything."""
+        clients = list(self.console.clients.connected())
+        blue = [c for c in clients if (c.team or "") == "blue"]
+        red = [c for c in clients if (c.team or "") == "red"]
+        if min_players and len(blue) + len(red) < min_players:
+            return None, None
+        scores = self.scores(clients)
+        diff = self._score_diff(blue, red, scores)
+        if self.gametype() == "tdm":
+            best_blue, best_red = self._recent_ratios(blue, red)
+            return best_blue - best_red, diff
+        # Kill ratios do not describe a game whose point is the flag, so there the felt figure is
+        # the measured one, damped by how recently the teams were last changed.
+        since = self.console.clock.now() - self._last_balance
+        minutes = max(1, as_int(self.settings.get("skillbalance_min_interval"), 2))
+        damping = min(1.0, since / (1.0 + 60.0 * minutes))
+        return 1.21 * diff * damping, diff
+
+    # -- shuffling -----------------------------------------------------------
+
+    def _count_snipers(self, team: Sequence[Client]) -> int:
+        """How many of this side carry a one-shot rifle and can use it.
+
+        A sniper nest on one side decides the game on its own, so a shuffle that cannot improve the
+        score any further distributes these instead. Somebody carrying an SR8 with a poor kill ratio
+        is not a sniper, which is the classic's own rule and a good one.
+        """
+        floor = as_float(self.settings.get("sniper_kill_ratio"), SNIPER_KILL_RATIO)
+        count = 0
+        for client in team:
+            record = self.record(client)
+            if max(0, record.kills) / (1.0 + max(0, record.deaths)) < floor:
+                continue
+            if any(letter in (client.gear or "") for letter in SNIPER_GEAR):
+                count += 1
+        return count
+
+    def _random_teams(self, clients: Sequence[Client]) -> tuple[list[Client], list[Client]]:
+        """Deal the players into two sides at random, leaving locked players where they are."""
+        blue: list[Client] = []
+        red: list[Client] = []
+        free: list[Client] = []
+        for client in clients:
+            side = (client.team or "").strip().lower()
+            if side not in SIDES:
+                continue
+            if self.locked_to(client) is not None:
+                (blue if side == "blue" else red).append(client)
+            else:
+                free.append(client)
+        self.random.shuffle(free)
+        n = (len(free) + len(blue) + len(red)) // 2 - len(blue)
+        n = max(0, min(len(free), n))
+        blue.extend(free[:n])
+        red.extend(free[n:])
+        return blue, red
+
+    @staticmethod
+    def _count_moves(old: Sequence[Client], new: Sequence[Client]) -> int:
+        """How many of `old` are not in `new`. By identity: the classic compared *names*, so two
+        players called `Player` counted as one and a name change mid-shuffle counted as a move."""
+        keep = {id(c) for c in new}
+        return sum(1 for c in old if id(c) not in keep)
+
+    def search_teams(
+        self, tries: int, slack: float, max_move_fraction: float | None = None
+    ) -> ShuffleResult:
+        """Deal the players out `tries` times and keep the most even arrangement found."""
+        clients = list(self.console.clients.connected())
+        scores = self.scores(clients)
+        old_blue = [c for c in clients if (c.team or "") == "blue"]
+        old_red = [c for c in clients if (c.team or "") == "red"]
+        playing = len(old_blue) + len(old_red)
+        old_diff = self._score_diff(old_blue, old_red, scores)
+        result = ShuffleResult(old_diff=old_diff, scores=scores)
+        # Seeded with the arrangement being played, so that an arrangement has to be *better* than
+        # what is there to be chosen. The classic seeded with nothing, so the first deal it tried
+        # always won and `!paskuffle` moved half the server about on already-even teams while
+        # reporting the difference as unchanged.
+        result.diff = old_diff
+        result.sniper_diff = old_diff if abs(old_diff) <= slack else None
+        best_snipers = (
+            abs(self._count_snipers(old_blue) - self._count_snipers(old_red))
+            if abs(old_diff) <= slack
+            else None
+        )
+
+        if max_move_fraction is None and abs(len(old_blue) - len(old_red)) > 1:
+            # Uneven by head count as well: any arrangement at all beats this one.
+            blue, red = self._random_teams(clients)
+            result.blue, result.red = blue, red
+            result.diff = self._score_diff(blue, red, scores)
+            result.sniper_diff = None
+            best_snipers = None
+        for _ in range(tries):
+            blue, red = self._random_teams(clients)
+            if max_move_fraction is not None:
+                moves = self._count_moves(old_blue, blue) + self._count_moves(old_red, red)
+                if moves > max(2, round(max_move_fraction * playing)):
+                    continue
+            diff = self._score_diff(blue, red, scores)
+            if abs(diff) <= slack:
+                # Even enough. Judge these by how the snipers fall instead.
+                snipers = abs(self._count_snipers(blue) - self._count_snipers(red))
+                better = best_snipers is None or snipers < best_snipers
+                same_but_evener = (
+                    best_snipers is not None
+                    and snipers == best_snipers
+                    and result.sniper_diff is not None
+                    and abs(diff) < abs(result.sniper_diff) - EPSILON
+                )
+                if better or same_but_evener:
+                    best_snipers = snipers
+                    result.sniper_blue, result.sniper_red = blue, red
+                    result.sniper_diff = diff
+            elif result.diff is None or abs(diff) < abs(result.diff) - EPSILON:
+                result.blue, result.red = blue, red
+                result.diff = diff
+        return result
+
+    def shuffle_into(
+        self, blue: Sequence[Client], red: Sequence[Client], scores: dict[str, float] | None = None
+    ) -> int:
+        """Move everybody who is not already where they should be. Returns how many moved.
+
+        The order matters and is the classic's: this engine refuses a `forceteam` that would overfill
+        a side, so the moves start from whichever side has more players. When the two are equal there
+        is no such move, and one player is parked in the spectators to make room and brought back at
+        the end.
+        """
+        going_blue = [c for c in blue if (c.team or "") != "blue"]
+        going_red = [c for c in red if (c.team or "") != "red"]
+        if not going_blue and not going_red:
+            return 0
+        sides = self._sides()
+        count = {"blue": len(sides["blue"]), "red": len(sides["red"])}
+        self.hold_off()
+        moves = len(going_blue) + len(going_red)
+        parked: Client | None = None
+        if going_blue and count["blue"] == count["red"]:
+            self.random.shuffle(going_blue)
+            parked = going_blue.pop()
+            self.console.apply_verb("forceteam", parked, team="s")
+            count["red"] -= 1
+            moves -= 1
+        best = (
+            max((scores or {}).get(c.cid or "", 0.0) for c in [*going_blue, *going_red])
+            if (scores and (going_blue or going_red))
+            else None
+        )
+        told: list[tuple[Client, str]] = []
+        for _ in range(moves):
+            if going_blue and (count["blue"] < count["red"] or not going_red):
+                client, side, other = going_blue.pop(), "blue", "red"
+            elif going_red:
+                client, side, other = going_red.pop(), "red", "blue"
+            else:
+                break
+            self.console.apply_verb("forceteam", client, team=side)
+            client.team = side
+            client.set_var(self, "team_time", self.console.clock.now())
+            count[side] += 1
+            count[other] -= 1
+            if scores is not None:
+                key = (
+                    "pa_skill_moved_best"
+                    if best is not None and scores.get(client.cid or "", 0.0) >= best
+                    else "pa_skill_moved"
+                )
+                told.append((client, self.message(key, team=side, other=other)))
+        if parked is not None:
+            self.console.apply_verb("forceteam", parked, team="blue")
+            parked.team = "blue"
+            parked.set_var(self, "team_time", self.console.clock.now())
+        # Told afterwards, as the classic did: a message sent while the player is being moved between
+        # teams is one the client can drop on the floor.
+        for client, text in told:
+            self.console.tell(client, text)
+        return moves
+
+    # -- advice --------------------------------------------------------------
+
+    def advise(self, avgdiff: float, mode: str) -> None:
+        """Say which side is winning, and how badly.
+
+        `mode` is `quiet` (name the stronger side and nothing else), `advise` (add what to do about
+        it) or `unfair` (add it only when it is worth doing something about).
+        """
+        absdiff = ADVICE_SCALE * abs(avgdiff)
+        unfair = absdiff > UNFAIR
+        word = next((w for limit, w in ADVICE_WORDS if absdiff < limit), ADVICE_WORDS[-1][1])
+        if absdiff < ADVICE_WORDS[0][0]:
+            self._last_advice = None
+            self.console.say(self.message("pa_skill_fair"))
+            return
+        team = "red" if avgdiff < 0 else "blue"
+        previous = self._last_advice
+        if previous is not None and previous[0] == team:
+            _team, old_word, old_absdiff = previous
+            if word == old_word:
+                text = self.message("pa_skill_remains", team=team, word=word)
+            elif absdiff > old_absdiff:
+                text = self.message("pa_skill_stronger", team=team, word=word)
+            else:
+                text = self.message("pa_skill_weaker", team=team, word=word)
+                if absdiff < 4:
+                    # Coming back together on its own; nothing to advise.
+                    unfair = False
+        else:
+            text = self.message("pa_skill_now", team=team, word=word)
+        if unfair and mode in ("advise", "unfair"):
+            text += self.message("pa_skill_use_bal")
+        elif not unfair and mode == "advise":
+            text += self.message("pa_skill_no_action")
+        self._last_advice = (team, word, absdiff)
+        self.console.say(text)
+
+    # -- the scheduled check -------------------------------------------------
+
+    def skillcheck(self) -> None:
+        """The skill balancer's own pass, separate from the head-count one."""
+        if not self.is_enabled() or self.holding_off():
+            return
+        mode = self.skill_mode()
+        if mode == "off":
+            return
+        if self.gametype() not in self._gametypes("teambalance_gametypes"):
+            return
+        avgdiff, diff = self.advice_figures(
+            min_players=as_int(self.settings.get("skillbalance_min_players"), 3)
+        )
+        if avgdiff is None or diff is None:
+            return
+        threshold = as_float(self.settings.get("skillbalance_difference"), 0.5)
+        unbalanced = abs(avgdiff) >= threshold
+        if (unbalanced or mode == "advise") and abs(avgdiff) > 0.2:
+            self.console.say(
+                self.message("pa_skill_figures", felt=f"{avgdiff:.2f}", skill=f"{diff:.2f}")
+            )
+            self.advise(avgdiff, "unfair" if mode == "advise" else "quiet")
+        if not unbalanced or mode == "advise":
+            return
+        action = self.balance_by_skill if mode == "balance" else self.skuffle
+        if self._round_based() and not self._round_ended:
+            self._skill_pending = action
+            return
+        action()
+
+    def skill_mode(self) -> str:
+        """What the balancer does when it finds the sides uneven in skill."""
+        raw = as_word(self.settings.get("skillbalance_mode"), "off")
+        mode = SKILL_MODES.get(raw)
+        if mode is None:
+            log.warning(
+                "poweradminurt: skillbalance_mode %r is not one of %s; leaving it off",
+                raw,
+                SKILL_MODE_LIST,
+            )
+            return "off"
+        return mode
+
+    def _too_soon(self, ctx: CommandContext | None) -> bool:
+        """Whether this player has to wait before asking for another shuffle.
+
+        The classic's rule was an `and` of three conditions including "a quiet window is open", so
+        the wait it advertised almost never applied. Here it is what it says: below moderator, not
+        more often than the configured interval.
+        """
+        if ctx is None or ctx.client.max_level() >= 20:
+            return False
+        minutes = max(0, as_int(self.settings.get("skillbalance_min_interval"), 2))
+        if self.console.clock.now() - self._last_balance >= minutes * 60:
+            return False
+        ctx.reply(self.message("pa_skill_too_soon"))
+        return True
+
+    def _defer(self, ctx: CommandContext | None, action: Callable[[], None]) -> bool:
+        """Hold a shuffle over until the round ends, if we are in the middle of one."""
+        if not self._round_based() or self._round_ended:
+            return False
+        self._skill_pending = action
+        if ctx is not None:
+            ctx.reply(self.message("pa_teams_pending"))
+        return True
+
+    def skuffle(self, ctx: CommandContext | None = None) -> None:
+        """Shuffle everybody into the most evenly-matched pair of sides found."""
+        result = self.search_teams(SHUFFLE_TRIES, SHUFFLE_SLACK)
+        blue, red = result.best()
+        if ctx is not None and blue is not None and red is not None:
+            # Whoever asked stays where they are: being thrown across the map for asking is jarring,
+            # and the arrangement is just as even the other way round.
+            side = (ctx.client.team or "").strip().lower()
+            wanted = blue if side == "blue" else red
+            if side in SIDES and ctx.client not in wanted:
+                blue, red = red, blue
+        moves = 0
+        if blue is not None and red is not None:
+            self._announce(self.message("pa_skill_shuffling"))
+            moves = self.shuffle_into(blue, red, result.scores)
+        if moves:
+            self.console.say(
+                self.message(
+                    "pa_skill_was_now",
+                    was=f"{result.old_diff:.2f}",
+                    now=f"{(result.chosen_diff() or 0.0):.2f}",
+                )
+            )
+        else:
+            self.console.say(self.message("pa_skill_no_improvement"))
+        self._finish_balance()
+
+    def balance_by_skill(self, ctx: CommandContext | None = None) -> None:
+        """Even the sides by skill while moving as few players as possible."""
+        fraction = as_float(self.settings.get("skuffle_max_move_fraction"), 0.3)
+        result = self.search_teams(SHUFFLE_TRIES, SHUFFLE_SLACK, max_move_fraction=fraction)
+        blue, red = result.best()
+        if blue is None or red is None:
+            # A few moves could not improve on what is there; a full shuffle is the honest answer.
+            self.skuffle(ctx)
+            return
+        self._announce(self.message("pa_skill_balancing"))
+        self.shuffle_into(blue, red, result.scores)
+        self.console.say(
+            self.message(
+                "pa_skill_was_now",
+                was=f"{result.old_diff:.2f}",
+                now=f"{(result.chosen_diff() or 0.0):.2f}",
+            )
+        )
+        self._finish_balance()
+
+    def _finish_balance(self) -> None:
+        self._forget_contributions()
+        self._last_balance = self.console.clock.now()
+
+    @command("paskuffle", level=20, alias="sk")
+    def cmd_paskuffle(self, ctx: CommandContext) -> None:
+        """paskuffle - shuffle everybody into teams matched by skill"""
+        if not self.console.supports_verb("forceteam"):
+            ctx.reply(self.message("pa_unavailable", verb="forceteam"))
+            return
+        if self._too_soon(ctx) or self._defer(ctx, self.skuffle):
+            return
+        self.skuffle(ctx)
+
+    @command("pabalance", level=2, alias="bal")
+    def cmd_pabalance(self, ctx: CommandContext) -> None:
+        """pabalance - even the teams by skill, moving as few players as possible"""
+        if not self.console.supports_verb("forceteam"):
+            ctx.reply(self.message("pa_unavailable", verb="forceteam"))
+            return
+        if self._too_soon(ctx) or self._defer(ctx, self.balance_by_skill):
+            return
+        self.balance_by_skill(ctx)
+
+    @command("paunskuffle", level=60, alias="unsk")
+    def cmd_paunskuffle(self, ctx: CommandContext) -> None:
+        """paunskuffle - put the best players on one side, to try the balancer out"""
+        if not self.console.supports_verb("forceteam"):
+            ctx.reply(self.message("pa_unavailable", verb="forceteam"))
+            return
+        clients = list(self.console.clients.connected())
+        scores = self.scores(clients)
+        playing = [c for c in clients if (c.team or "") in SIDES]
+        playing.sort(key=lambda c: scores.get(c.cid or "", 0.0))
+        half = len(playing) // 2
+        self._announce(self.message("pa_skill_unshuffling"))
+        self.shuffle_into(playing[:half], playing[half:])
+        self._forget_contributions()
+
+    @command("paadvise", level=2, alias="advise")
+    def cmd_paadvise(self, ctx: CommandContext) -> None:
+        """paadvise - say which side is stronger, and whether to do anything about it"""
+        avgdiff, diff = self.advice_figures(
+            min_players=as_int(self.settings.get("skillbalance_min_players"), 3)
+        )
+        if avgdiff is None or diff is None:
+            ctx.reply(self.message("pa_skill_too_few"))
+            return
+        self.console.say(
+            self.message("pa_skill_figures", felt=f"{avgdiff:.2f}", skill=f"{diff:.2f}")
+        )
+        self.advise(avgdiff, "advise")
+
+    @command("paautoskuffle", level=60, alias="ask")
+    def cmd_paautoskuffle(self, ctx: CommandContext) -> None:
+        """paautoskuffle [off|advise|balance|shuffle] - what to do about uneven skill"""
+        wanted = ctx.args.strip().lower()
+        if not wanted:
+            ctx.reply(
+                self.message("pa_skill_mode", mode=self.skill_mode(), options=SKILL_MODE_LIST)
+            )
+            return
+        mode = SKILL_MODES.get(wanted)
+        if mode is None:
+            ctx.reply(self.message("pa_skill_mode_usage", options=SKILL_MODE_LIST))
+            return
+        self.settings["skillbalance_mode"] = mode
+        ctx.reply(self.message("pa_skill_mode_set", mode=mode))
+        self.skillcheck()
 
     @command("paswap", level=40, alias="swap")
     def cmd_paswap(self, ctx: CommandContext) -> None:
@@ -1162,11 +1970,24 @@ class PoweradminurtPlugin(Plugin):
 __all__ = [
     "CONFIG_FILE_RE",
     "DEFAULTS",
+    "ADVICE_SCALE",
+    "ADVICE_WORDS",
+    "DAMPED",
+    "DAMPING_MINUTES",
     "GAMETYPES",
     "GAMETYPE_ALIASES",
     "GAMETYPE_NAMES",
+    "SHUFFLE_SLACK",
+    "SHUFFLE_TRIES",
     "SIDES",
+    "SKILL_MODES",
+    "SNIPER_GEAR",
+    "SNIPER_KILL_RATIO",
     "TEAMS",
+    "UNFAIR",
+    "WEIGHTS",
+    "ShuffleResult",
+    "SkillRecord",
     "GEAR_ALL",
     "GEAR_BITS",
     "GEAR_NONE",

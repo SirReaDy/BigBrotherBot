@@ -35,7 +35,7 @@ list, each with an optional config of its own (see `examples/`):
 | `geolocation` | resolves where a player is connecting from, for the plugins that need it | — |
 | `location` | announces where arrivals are from, and answers for it | `!locate` `!distance` `!isp` |
 | `countryfilter` | refuses players from the countries a server does not accept | — |
-| `poweradminurt` | Urban Terror's admin commands, and the team balancer | `!paslap` `!panuke` `!pakill` `!pamute` `!pateams` `!paforce` `!pabigtext` `!paset` `!paget` `!pavote` `!pactf` `!pabomb` `!pagear` … |
+| `poweradminurt` | Urban Terror's admin commands, and the two balancers | `!paslap` `!panuke` `!pakill` `!pamute` `!pateams` `!pabalance` `!paskuffle` `!paforce` `!pabigtext` `!paset` `!paget` `!pavote` `!pactf` `!pabomb` `!pagear` … |
 
 ### censor — bad language, and the escalating mute
 
@@ -383,6 +383,19 @@ deliberate move of players (a shuffle, a swap, a `!paforce`, a round start, the 
 full of players) opens a quiet window the automatic checks stand down for; that is the classic's
 `ignoreSet`, and without it the balancer's next pass undoes the shuffle an admin just asked for.
 
+**The skill balancer**, which is the same idea about a different quantity: two sides of four are even
+in numbers and not in anything else. Each player is scored on what they have done *since they joined
+the team they are on* — kill ratio, net contribution per minute, headshot ratio, and what they did for
+the mission, which counts for more than the scoreboard — and a shuffle deals everybody out repeatedly
+and keeps the evenest arrangement it finds. `!paskuffle` shuffles, `!pabalance` reaches the same place
+by moving as few players as it can, `!paunskuffle` deliberately makes the sides unfair so the other two
+can be watched working, `!paadvise` says which side is winning and how badly, and `!paautoskuffle`
+chooses what happens automatically (`off`, `advise`, `balance`, `shuffle`). Where the arrangement
+cannot be made any more even, the shuffle spreads the *snipers* instead — a rifle that kills in one
+shot decides a game if they all end up on one side. A shuffle has to beat the teams being played: the
+classic's search started from nothing, so the first deal always won and `!paskuffle` on even teams
+moved half the server about and then reported the difference unchanged.
+
 **The match settings**, which are a *table* rather than twenty-one near-identical methods: the gametype
 switches (`!pactf`, `!pabomb`, `!pajump`, …), the on/off toggles (`!painstagib`, `!pahardcore`, …), the
 bounded numbers (`!pasetgravity`, `!patimelimit`, the wave delays, …), `!pastamina`, `!pamoon`,
@@ -394,9 +407,8 @@ config file contains is anything, and the name has to look like a filename rathe
 into one — and `!papublic on|off`, whose private password is built from a configured word plus fresh
 digits, sent to the admin privately and never written to the log.
 
-Still to come: the other policies — skill balancer (and `!pabalance`, which is its manual trigger, not
-the team balancer's), name checker, spectator check, bot support, headshot counter, rotation manager,
-match mode, vote delay.
+Still to come: the other policies — name checker, spectator check, bot support, headshot counter,
+rotation manager, match mode, vote delay.
 
 One immunity rule covers all four player commands — you cannot use them on somebody at or above your own
 level. The classic had `slap_safe_level` on `!paslap`, a different comparison on `!pamute`, and *nothing*

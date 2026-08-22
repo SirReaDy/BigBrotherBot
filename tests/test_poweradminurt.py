@@ -15,6 +15,7 @@ import pytest
 from b3.core.commands import CommandProcessor
 from b3.core.events import Event, EventType
 from b3.domain.client import Client
+from b3.parsers.cod.parser import KillData
 from b3.plugins.admin import AdminPlugin
 from b3.plugins.poweradminurt import MAX_REPEATS, PoweradminurtPlugin
 
@@ -1428,6 +1429,567 @@ async def test_a_player_locked_to_the_spectators_is_left_alone_there(console):
     await console.bus.publish(Event(EventType.CLIENT_TEAM_CHANGE, client=bob, data="spec"))
 
     assert console.verbs_applied == []
+
+
+# -- the skill balancer -------------------------------------------------------------------------
+
+
+def _skiller(console, **settings):  # noqa: ANN001, ANN202
+    """A plugin past its quiet window, on team deathmatch, with a shuffle that repeats."""
+    plugin = _balancer(console, **settings)
+    plugin.random.seed(1)
+    return plugin
+
+
+def _played(plugin, client, kills=0, deaths=0, team_kills=0, heads=0, minutes=5.0):  # noqa: ANN001, ANN202
+    """Give a player a session, as though they had been on this team for `minutes`."""
+    record = plugin.record(client)
+    record.joined = plugin.console.clock.now() - minutes * 60
+    record.kills, record.deaths = kills, deaths
+    record.team_kills, record.head_hits = team_kills, heads
+    now = plugin.console.clock.now()
+    record.history = [(now, 1)] * kills + [(now, -1)] * deaths
+    return record
+
+
+@pytest.mark.asyncio
+async def test_a_better_player_scores_higher(console):
+    plugin = _skiller(console)
+    good = _teamed(console, "Good", "red", bits=0)
+    bad = _teamed(console, "Bad", "blue", bits=0)
+    _played(plugin, good, kills=20, deaths=2)
+    _played(plugin, bad, kills=2, deaths=20)
+
+    scores = plugin.scores([good, bad])
+
+    assert scores[good.cid] > scores[bad.cid]
+
+
+@pytest.mark.asyncio
+async def test_two_unauthenticated_players_are_scored_separately(console):
+    """The classic keyed its scores on the *database id*, which is None for anybody the bot has not
+    authenticated — and on a Quake3 server without `cl_guid` that is everybody, so every one of them
+    shared the key `None` and overwrote each other's figures."""
+    plugin = _skiller(console)
+    good = _teamed(console, "Good", "red", bits=0)
+    bad = _teamed(console, "Bad", "blue", bits=0)
+    good.id = bad.id = None
+    _played(plugin, good, kills=20, deaths=2)
+    _played(plugin, bad, kills=2, deaths=20)
+
+    scores = plugin.scores([good, bad])
+
+    assert len(scores) == 2
+    assert scores[good.cid] > scores[bad.cid]
+
+
+@pytest.mark.asyncio
+async def test_a_player_who_just_arrived_is_not_judged_on_two_kills(console):
+    """Two kills in ten seconds is not evidence. The classic's readme records this being added after
+    sprees right after joining spiked the arithmetic."""
+    plugin = _skiller(console)
+    veteran = _teamed(console, "Veteran", "red", bits=0)
+    average = _teamed(console, "Average", "red", bits=0)
+    fresh = _teamed(console, "Fresh", "blue", bits=0)
+    _played(plugin, veteran, kills=20, deaths=2, minutes=10)
+    _played(plugin, average, kills=10, deaths=10, minutes=10)
+    _played(plugin, fresh, kills=30, deaths=0, minutes=0.1)
+
+    scores = plugin.scores([veteran, average, fresh])
+
+    # Best on every measure and still ranked below somebody with a real session behind them.
+    assert scores[fresh.cid] < scores[veteran.cid]
+
+
+@pytest.mark.asyncio
+async def test_a_measure_everybody_shares_says_nothing(console):
+    """Two players with identical figures score the same, and no key survives to separate them."""
+    plugin = _skiller(console)
+    one = _teamed(console, "One", "red", bits=0)
+    two = _teamed(console, "Two", "blue", bits=0)
+    _played(plugin, one, kills=5, deaths=5)
+    _played(plugin, two, kills=5, deaths=5)
+
+    scores = plugin.scores([one, two])
+
+    assert scores[one.cid] == scores[two.cid] == 0.0
+
+
+@pytest.mark.asyncio
+async def test_the_mission_counts_for_more_than_the_scoreboard(console):
+    """A flag carrier who dies a lot is winning the game, which is the whole point of CTF."""
+    plugin = _skiller(console)
+    carrier = _teamed(console, "Carrier", "red", bits=0)
+    fragger = _teamed(console, "Fragger", "blue", bits=0)
+    _played(plugin, carrier, kills=1, deaths=10)
+    plugin.record(carrier).flag_captured = 3
+    _played(plugin, fragger, kills=10, deaths=1)
+
+    scores = plugin.scores([carrier, fragger])
+
+    assert scores[carrier.cid] > scores[fragger.cid]
+
+
+@pytest.mark.asyncio
+async def test_the_score_is_divided_by_the_weight_that_actually_counted(console):
+    """The classic divided by the weight of *every* measure, including the ones it had skipped and
+    the two it read from xlrstats — so every score came out a fraction of what the weights say, and
+    the autobalance threshold on CTF and bomb mode meant about twice what it appears to."""
+    plugin = _skiller(console)
+    best = _teamed(console, "Best", "red", bits=0)
+    worst = _teamed(console, "Worst", "blue", bits=0)
+    _played(plugin, best, kills=20, deaths=0)
+    _played(plugin, worst, kills=0, deaths=20)
+
+    scores = plugin.scores([best, worst])
+
+    # Best on every surviving measure means the top of the range, not a fifth of it.
+    assert scores[best.cid] == pytest.approx(1.0)
+    assert scores[worst.cid] == pytest.approx(0.0)
+
+
+@pytest.mark.asyncio
+async def test_a_headshot_is_counted_without_turning_on_the_headshot_counter(console):
+    """In the classic the head-hit figures this score reads were written only by `headshotcounter`,
+    which is a separate feature and off by default — so `hsratio` was zero for everybody and dropped
+    out of the score entirely, on any server that had not switched that on."""
+    plugin = _skiller(console)
+    sniper = _teamed(console, "Sniper", "red", bits=0)
+    other = _teamed(console, "Other", "blue", bits=0)
+
+    await console.bus.publish(
+        Event(
+            EventType.CLIENT_KILL,
+            client=sniper,
+            target=other,
+            data=KillData(weapon="UT_MOD_SR8", damage=100, hit_location="head", means_of_death=""),
+        )
+    )
+
+    assert plugin.record(sniper).head_hits == 1
+    assert plugin.record(sniper).kills == 1
+    assert plugin.record(other).deaths == 1
+
+
+@pytest.mark.asyncio
+async def test_a_team_change_starts_the_measurement_again(console):
+    """What they did for the other side is not evidence about this one."""
+    plugin = _skiller(console)
+    bob = _teamed(console, "Bob", "red", bits=0)
+    _played(plugin, bob, kills=10, deaths=1)
+
+    await console.bus.publish(Event(EventType.CLIENT_TEAM_CHANGE, client=bob, data="red"))
+
+    assert plugin.record(bob).kills == 0
+
+
+# -- shuffling ------------------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_a_shuffle_evens_the_skill_out(console):
+    """Four good players on one side and four poor ones on the other, dealt out again."""
+    plugin = _skiller(console)
+    good = [_teamed(console, f"Good{i}", "red", bits=0) for i in range(4)]
+    poor = [_teamed(console, f"Poor{i}", "blue", bits=0) for i in range(4)]
+    for i, client in enumerate(good):
+        _played(plugin, client, kills=20 - i, deaths=2)
+    for i, client in enumerate(poor):
+        _played(plugin, client, kills=2, deaths=20 - i)
+    before = abs(plugin._score_diff(poor, good, plugin.scores(good + poor)))
+
+    plugin.skuffle()
+
+    clients = list(console.clients.connected())
+    blue = [c for c in clients if c.team == "blue"]
+    red = [c for c in clients if c.team == "red"]
+    assert len(blue) == len(red) == 4
+    # The measurement restarts after a shuffle, so compare the arrangement, not the new scores.
+    assert before > 0
+    assert sum(1 for c in good if c.team == "blue") in (1, 2, 3)
+
+
+@pytest.mark.asyncio
+async def test_a_shuffle_leaves_a_locked_player_where_they_are(console):
+    plugin = _skiller(console)
+    reds = [_teamed(console, f"Red{i}", "red", bits=0) for i in range(4)]
+    blues = [_teamed(console, f"Blue{i}", "blue", bits=0) for i in range(4)]
+    for i, client in enumerate([*reds, *blues]):
+        _played(plugin, client, kills=i, deaths=8 - i)
+    reds[0].set_var(plugin, "locked_to", "red")
+
+    plugin.skuffle()
+
+    assert reds[0].team == "red"
+
+
+@pytest.mark.asyncio
+async def test_whoever_asked_for_the_shuffle_stays_put(console):
+    """Being thrown across the map for asking is jarring, and the other arrangement is just as
+    even."""
+    plugin = _skiller(console)
+    reds = [_teamed(console, f"Red{i}", "red", bits=0) for i in range(4)]
+    blues = [_teamed(console, f"Blue{i}", "blue", bits=0) for i in range(4)]
+    for i, client in enumerate([*reds, *blues]):
+        _played(plugin, client, kills=i * 2, deaths=8 - i)
+    asker = reds[0]
+
+    await _run(console, asker, "!paskuffle")
+
+    assert asker.team == "red"
+
+
+@pytest.mark.asyncio
+async def test_a_shuffle_that_cannot_improve_anything_says_so(console):
+    plugin = _skiller(console)
+    for i in range(2):
+        _teamed(console, f"Red{i}", "red", bits=0)
+        _teamed(console, f"Blue{i}", "blue", bits=0)
+
+    plugin.skuffle()
+
+    assert console.said == ["the teams cannot be made any more even than they are"]
+
+
+@pytest.mark.asyncio
+async def test_nobody_is_moved_into_a_full_team(console):
+    """This engine refuses a `forceteam` that would overfill a side, so with the two sides equal one
+    player is parked in the spectators to make room and brought back at the end."""
+    plugin = _skiller(console)
+    red = _teamed(console, "Red", "red", bits=0)
+    blue = _teamed(console, "Blue", "blue", bits=0)
+    _played(plugin, red, kills=10, deaths=1)
+    _played(plugin, blue, kills=1, deaths=10)
+
+    plugin.shuffle_into([red], [blue])
+
+    verbs = [(name, who.name, values["team"]) for name, who, values in console.verbs_applied]
+    assert verbs[0][2] == "s"  # parked
+    assert verbs[-1][2] == "blue"  # and brought back
+    assert {red.team, blue.team} == {"red", "blue"}
+
+
+@pytest.mark.asyncio
+async def test_unskuffle_puts_the_best_players_together(console):
+    """The classic shipped this to test the balancer with, and it is worth keeping for that."""
+    plugin = _skiller(console)
+    admin = _join(console, "Admin", bits=64)
+    players = [_teamed(console, f"P{i}", "red" if i % 2 else "blue", bits=0) for i in range(6)]
+    for i, client in enumerate(players):
+        _played(plugin, client, kills=i * 3, deaths=18 - i * 3)
+
+    await _run(console, admin, "!paunskuffle")
+
+    sides = {c.name: c.team for c in players}
+    # The two halves by score end up on one side each; which side is not the point.
+    assert sides["P0"] == sides["P1"] == sides["P2"]
+    assert sides["P3"] == sides["P4"] == sides["P5"]
+    assert sides["P0"] != sides["P5"]
+
+
+@pytest.mark.asyncio
+async def test_the_shuffle_is_announced_the_way_the_operator_asked(console):
+    plugin = _skiller(console, teambalance_announce="say")
+    good = [_teamed(console, f"Good{i}", "red", bits=0) for i in range(3)]
+    poor = [_teamed(console, f"Poor{i}", "blue", bits=0) for i in range(3)]
+    for client in good:
+        _played(plugin, client, kills=20, deaths=1)
+    for client in poor:
+        _played(plugin, client, kills=1, deaths=20)
+
+    plugin.skuffle()
+
+    assert "shuffling the teams by skill" in console.said
+    assert console.said_big == []
+
+
+# -- !pabalance -----------------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_pabalance_moves_only_a_few(console):
+    plugin = _skiller(console, skuffle_max_move_fraction=0.3)
+    everybody = [_teamed(console, f"P{i}", "red" if i < 5 else "blue", bits=0) for i in range(10)]
+    for i, client in enumerate(everybody):
+        _played(plugin, client, kills=i * 2, deaths=20 - i * 2)
+
+    plugin.balance_by_skill()
+
+    moved = [name for name, _who, _values in console.verbs_applied]
+    assert 0 < len(moved) <= 3
+
+
+@pytest.mark.asyncio
+async def test_pabalance_is_a_regulars_command(console):
+    """It is the classic's replacement for `!teams`, and a regular could ask for that too."""
+    _skiller(console)
+
+    registered = console.command_registry.get("pabalance")
+    assert registered is not None
+    assert registered.min_level == 2
+
+
+@pytest.mark.asyncio
+async def test_a_regular_may_not_ask_twice_in_a_row(console):
+    plugin = _skiller(console, skillbalance_min_interval=2)
+    bob = _teamed(console, "Bob", "red", bits=2)
+    _teamed(console, "Ann", "blue", bits=0)
+    plugin._last_balance = console.clock.now()
+
+    await _run(console, bob, "!pabalance")
+
+    assert console.verbs_applied == []
+    assert _told(console, bob) == ["the teams changed recently; give it a minute"]
+
+
+@pytest.mark.asyncio
+async def test_a_moderator_may(console):
+    """The classic's rule was an `and` of three conditions, one being "a quiet window is open", so
+    the wait it advertised almost never applied to anybody."""
+    plugin = _skiller(console, skillbalance_min_interval=2)
+    boss = _teamed(console, "Boss", "red", bits=8)
+    _teamed(console, "Ann", "blue", bits=0)
+    plugin._last_balance = console.clock.now()
+
+    await _run(console, boss, "!pabalance")
+
+    assert _told(console, boss) != ["the teams changed recently; give it a minute"]
+
+
+# -- advice ---------------------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_even_teams_are_reported_as_fair(console):
+    plugin = _skiller(console)
+
+    plugin.advise(0.0, "advise")
+
+    assert console.said == ["the teams look fair"]
+
+
+@pytest.mark.asyncio
+async def test_a_dominant_side_is_named(console):
+    plugin = _skiller(console)
+
+    plugin.advise(0.6, "advise")  # 5 * 0.6 = 3.0 -> "dominating", and unfair
+
+    assert console.said == ["blue team is now dominating — !bal would even them up"]
+
+
+@pytest.mark.asyncio
+async def test_the_weaker_side_is_named_when_the_difference_is_negative(console):
+    plugin = _skiller(console)
+
+    plugin.advise(-0.6, "advise")
+
+    assert console.said[0].startswith("red team is now")
+
+
+@pytest.mark.asyncio
+async def test_advice_says_what_changed_since_last_time(console):
+    plugin = _skiller(console)
+
+    plugin.advise(0.6, "quiet")
+    plugin.advise(1.0, "quiet")
+
+    assert console.said[-1] == "blue team has become overpowering"
+
+
+@pytest.mark.asyncio
+async def test_advice_notices_a_side_coming_back(console):
+    plugin = _skiller(console)
+
+    plugin.advise(1.2, "quiet")
+    plugin.advise(0.5, "quiet")
+
+    assert console.said[-1] == "blue team is just dominating"
+
+
+@pytest.mark.asyncio
+async def test_a_mild_difference_needs_no_action(console):
+    plugin = _skiller(console)
+
+    plugin.advise(0.3, "advise")  # 1.5 -> "stronger", below the unfair threshold
+
+    assert console.said == ["blue team is now stronger — nothing worth doing about it yet"]
+
+
+@pytest.mark.asyncio
+async def test_paadvise_with_nobody_playing_says_so(console):
+    """The figures are meaningless with nobody in the game, and the classic printed them anyway."""
+    _skiller(console, skillbalance_min_players=3)
+    admin = _join(console, "Admin", bits=64)
+
+    await _run(console, admin, "!paadvise")
+
+    assert console.said == []
+    assert _told(console, admin) == ["not enough players to tell"]
+
+
+# -- the automatic mode ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_the_mode_can_be_read_and_set(console):
+    plugin = _skiller(console)
+    admin = _join(console, "Admin", bits=64)
+
+    await _run(console, admin, "!paautoskuffle")
+    await _run(console, admin, "!paautoskuffle balance")
+
+    assert plugin.skill_mode() == "balance"
+    assert _told(console, admin)[-1] == "skill balancing is now balance"
+
+
+@pytest.mark.asyncio
+async def test_yaml_reading_off_as_a_boolean_still_means_off(console):
+    """`skillbalance_mode: off` in a YAML file arrives as `False`, not as the word. That is a trap
+    the file format lays for the operator rather than anything they typed."""
+    plugin = _skiller(console, skillbalance_mode=False)
+
+    assert plugin.skill_mode() == "off"
+
+
+@pytest.mark.asyncio
+async def test_a_mode_in_the_config_that_is_not_a_mode_is_reported(console, caplog):
+    plugin = _skiller(console, skillbalance_mode="sideways")
+
+    with caplog.at_level("WARNING"):
+        assert plugin.skill_mode() == "off"
+
+    assert "sideways" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_the_classics_numbers_still_work(console):
+    plugin = _skiller(console)
+    admin = _join(console, "Admin", bits=64)
+
+    await _run(console, admin, "!paautoskuffle 3")
+
+    assert plugin.skill_mode() == "shuffle"
+
+
+@pytest.mark.asyncio
+async def test_a_mode_nobody_has_heard_of(console):
+    plugin = _skiller(console)
+    admin = _join(console, "Admin", bits=64)
+
+    await _run(console, admin, "!paautoskuffle sideways")
+
+    assert plugin.skill_mode() == "off"
+    assert "off, advise, balance, shuffle" in _told(console, admin)[-1]
+
+
+@pytest.mark.asyncio
+async def test_the_skill_check_does_nothing_when_it_is_off(console):
+    plugin = _skiller(console, skillbalance_mode="off")
+    good = [_teamed(console, f"Good{i}", "red", bits=0) for i in range(3)]
+    poor = [_teamed(console, f"Poor{i}", "blue", bits=0) for i in range(3)]
+    for client in [*good, *poor]:
+        _played(plugin, client, kills=20 if client in good else 0, deaths=1)
+
+    plugin.skillcheck()
+
+    assert console.verbs_applied == []
+    assert console.said == []
+
+
+@pytest.mark.asyncio
+async def test_advise_mode_talks_and_does_not_move_anybody(console):
+    plugin = _skiller(console, skillbalance_mode="advise")
+    good = [_teamed(console, f"Good{i}", "red", bits=0) for i in range(3)]
+    poor = [_teamed(console, f"Poor{i}", "blue", bits=0) for i in range(3)]
+    for client in good:
+        _played(plugin, client, kills=30, deaths=0)
+    for client in poor:
+        _played(plugin, client, kills=0, deaths=30)
+
+    plugin.skillcheck()
+
+    assert console.verbs_applied == []
+    assert console.said != []
+
+
+@pytest.mark.asyncio
+async def test_a_skill_balance_owed_mid_round_waits_for_the_end(console):
+    plugin = _skiller(
+        console,
+        skillbalance_mode="shuffle",
+        teambalance_gametypes="tdm, ts",
+        skillbalance_min_players=2,
+    )
+    console.game.gametype = TS
+    good = [_teamed(console, f"Good{i}", "red", bits=0) for i in range(3)]
+    poor = [_teamed(console, f"Poor{i}", "blue", bits=0) for i in range(3)]
+    for client in good:
+        _played(plugin, client, kills=30, deaths=0)
+    for client in poor:
+        _played(plugin, client, kills=0, deaths=30)
+
+    plugin.skillcheck()
+    assert console.verbs_applied == []
+    assert plugin._skill_pending is not None
+
+    await console.bus.publish(Event(EventType.GAME_ROUND_END))
+
+    assert plugin._skill_pending is None
+
+
+@pytest.mark.asyncio
+async def test_a_skill_balance_wins_over_a_head_count_one(console):
+    """Both can fall due in the same round, and evening the skill evens the numbers as well."""
+    plugin = _skiller(console, teambalance_gametypes="tdm, ts")
+    console.game.gametype = TS
+    plugin._balance_pending = True
+    called: list[str] = []
+    plugin._skill_pending = lambda: called.append("skill")
+
+    await console.bus.publish(Event(EventType.GAME_ROUND_END))
+
+    assert called == ["skill"]
+    assert not plugin._balance_pending
+
+
+@pytest.mark.asyncio
+async def test_too_few_players_is_not_an_imbalance(console):
+    plugin = _skiller(console, skillbalance_mode="shuffle", skillbalance_min_players=8)
+    for i in range(3):
+        _played(plugin, _teamed(console, f"P{i}", "red", bits=0), kills=30, deaths=0)
+    _played(plugin, _teamed(console, "Lonely", "blue", bits=0), kills=0, deaths=30)
+
+    plugin.skillcheck()
+
+    assert console.verbs_applied == []
+
+
+# -- snipers ---------------------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_a_sniper_who_cannot_shoot_is_not_a_sniper(console):
+    """Somebody carrying an SR8 with a poor kill ratio is carrying a rifle, not using one."""
+    plugin = _skiller(console)
+    good = _teamed(console, "Good", "red", bits=0)
+    poor = _teamed(console, "Poor", "red", bits=0)
+    good.gear = poor.gear = "GZAORWA"
+    _played(plugin, good, kills=10, deaths=1)
+    _played(plugin, poor, kills=1, deaths=10)
+
+    assert plugin._count_snipers([good, poor]) == 1
+
+
+@pytest.mark.asyncio
+async def test_gear_arrives_from_the_infostring(console):
+    """It is the only place this engine says what anybody is carrying, and nothing read it before."""
+    from b3.parsers.q3.profiles import IOURT42
+    from b3.parsers.q3.urt import UrtParser
+
+    p = UrtParser(IOURT42)
+    p.parse_line(r"ClientUserinfoChanged: 3 n\Bob\t\1\gear\GZAORWA")
+
+    assert p.clients.get_by_cid("3").gear == "GZAORWA"
 
 
 # -- through a real bot ----------------------------------------------------------------------------

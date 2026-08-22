@@ -122,6 +122,11 @@ class Client:
     # rather than the parser decides whether to kick for it.
     name_overflow: bool = False
     team: str | None = None
+    #: What this player is carrying, where the engine says. Only Urban Terror does: its userinfo has
+    #: a `gear` field whose letters name the weapons in each slot, and a skill balancer needs it to
+    #: tell a sniper from everybody else — a sniper nest on one side decides the game on its own.
+    #: Empty everywhere else, which reads as "nothing known", not "unarmed".
+    gear: str = ""
     #: Whether this player is currently in play, as opposed to waiting to respawn. The classic
     #: bot's ``STATE_ALIVE``/``STATE_DEAD``, kept for one reason: some engines show a dead player
     #: only what other dead players are saying, so a bot that answers a `!command` with a plain
