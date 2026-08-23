@@ -12,7 +12,7 @@ import pytest
 
 from b3.config.schema import BotConfig, Config, PluginEntry, ServerConfig
 from b3.core.clock import FakeClock
-from b3.core.util import MAX_RCON_VALUE, sanitize_rcon_value
+from b3.core.util import MAX_RCON_CVAR, MAX_RCON_VALUE, sanitize_rcon_value
 from b3.domain.client import Client
 from b3.plugins.admin import AdminPlugin
 from b3.runtime.bot import Bot
@@ -113,6 +113,30 @@ def test_set_cvar_value_cannot_close_its_own_quoting(tmp_path):
     bot.set_cvar("sv_hostname", 'mine" ; quit')
 
     assert rcon.commands == ['set sv_hostname "mine quit"']
+
+
+def test_a_long_cvar_value_is_not_cut_off_at_a_ban_reasons_length(tmp_path):
+    """A real rotation is several hundred characters. Capping every substituted value at 128 sent
+    Black Ops half of its map exclusion list and a Quake 3 server a rotation ending mid-word — and
+    an engine that rejects a malformed value says nothing to anybody."""
+    bot, rcon = _bot(tmp_path, game="cod4")
+    rotation = " ".join(f"mp_map{n:03d}" for n in range(30))  # ~300 characters
+
+    bot.set_cvar("sv_mapRotation", rotation)
+
+    assert rcon.commands == [f'set sv_mapRotation "{rotation}"']
+
+
+def test_a_cvar_value_too_long_for_a_datagram_says_so(tmp_path, caplog):
+    """It still has to be bounded — the command shares one datagram with the verb and the password.
+    The difference is that this one is announced rather than silently applied."""
+    bot, rcon = _bot(tmp_path, game="cod4")
+
+    with caplog.at_level("WARNING"):
+        bot.set_cvar("sv_mapRotation", "x" * (MAX_RCON_CVAR + 50))
+
+    assert len(rcon.commands[0]) < MAX_RCON_CVAR + 50
+    assert "will not fit in one rcon datagram" in caplog.text
 
 
 def test_a_reason_that_sanitises_to_nothing_still_reads_sensibly(tmp_path):

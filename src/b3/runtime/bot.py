@@ -31,7 +31,7 @@ from b3.core.game import Game, PlayerInfo
 from b3.core.messages import Messages
 from b3.core.plugin import Plugin
 from b3.core.scheduler import Scheduler
-from b3.core.util import as_int, format_time, sanitize_rcon_value
+from b3.core.util import MAX_RCON_CVAR, as_int, format_time, sanitize_rcon_value
 from b3.domain.client import Alias, Client, IpAlias, NEVER_EXPIRES, Penalty, PenaltyType
 from b3.parsers import games, punkbuster
 from b3.parsers.cod import status as status_parser
@@ -1114,9 +1114,24 @@ class Bot:
         # The template quotes the value, so a quote inside it would close the quoting early — hence
         # the sanitising, which strips them. The verb comes from the profile because Black Ops does
         # not accept a plain `set` over rcon (see GameProfile.set_template).
+        #
+        # A cvar value gets its own, much larger cap. The 128-character one that suits a ban reason
+        # cut a real value off mid-word: a Quake 3 `sv_mapRotation` and Black Ops's
+        # `playlist_excludeMap` both run to several hundred characters, and a rotation truncated at
+        # `mp_russia` is one the engine rejects with nothing said anywhere. And when even this cap
+        # has to bite, it says so — that is the whole difference from what was here before.
+        cleaned = sanitize_rcon_value(value, None)
+        if len(cleaned) > MAX_RCON_CVAR:
+            log.warning(
+                "set_cvar: %s is %d characters, which will not fit in one rcon datagram; "
+                "sending the first %d",
+                name,
+                len(cleaned),
+                MAX_RCON_CVAR,
+            )
+            cleaned = cleaned[:MAX_RCON_CVAR].rstrip()
         self._send(
-            self.profile.set_template
-            % {"name": sanitize_rcon_value(name), "value": sanitize_rcon_value(value)}
+            self.profile.set_template % {"name": sanitize_rcon_value(name), "value": cleaned}
         )
         self.game.update_cvars({name: value})
 

@@ -166,6 +166,13 @@ _RCON_UNSAFE_RE = re.compile(r'[\x00-\x1f\x7f;"]+')
 #: still fits in one datagram alongside the verb and the password.
 MAX_RCON_VALUE = 128
 
+#: Cap for a cvar *value*, which is legitimately far longer than a ban reason: a Quake 3
+#: `sv_mapRotation` and Black Ops's `playlist_excludeMap` both run to several hundred characters, and
+#: the 128 above cut them off mid-word. Still bounded, because the command has to fit in one
+#: datagram alongside the verb and the password — but bounded where a real value stops rather than
+#: where a sentence does, and `Console.set_cvar` says so when it has to cut one.
+MAX_RCON_CVAR = 1000
+
 
 def sanitize_rcon_value(value: object, max_length: int | None = MAX_RCON_VALUE) -> str:
     """Make a value safe to substitute into an RCON command.
