@@ -1,0 +1,45 @@
+# poweradmincod7 — Call of Duty: Black Ops's own admin commands.
+#
+# Point at it from the main config (this plugin only loads on `server.game: cod7`):
+#
+#   plugins:
+#     - name: poweradmincod7
+#       config: "@conf/plugin_poweradmincod7.yaml"
+#
+# Black Ops is the one engine here an admin cannot simply tell to load a map. A **ranked** server
+# takes its map and its gametype from a *playlist*, and the only lever over which map comes up is
+# `playlist_excludeMap` — the list of maps the playlist may not pick. So `!pasetmap nuketown`
+# excludes the other twenty-five maps, and puts your own exclusion list back when the round ends.
+#
+# That leaves a window: between the command and the next round the server has twenty-five maps
+# excluded. The list also goes back if you `!plugin disable poweradmincod7`, but if the bot is killed
+# in that window nothing can put it back for you.
+#
+# What works where:
+#
+#   ranked only     !pasetmap
+#   unranked only   !pafastrestart  !pamaprestart  !pagametype
+#   either          !paplaylist  !pagetplaylists  !pasetplaylist  !paexcludemaps
+#                   !paset  !paget  !pasetdlc  !palistcfg  !paload
+#
+# Each of those tells you when the server will not obey it, rather than doing nothing. `sv_ranked` is
+# read when a command needs it, so changing it on the server does not need a bot restart.
+#
+# Command levels are the classic plugin's and are set in code; `!cmdlevel <command> <level>` changes
+# one at runtime, and `!cmdalias` changes the short form. Every command has the classic's alias too,
+# so `!setmap`, `!playlist`, `!maprestart`, `!gametype`, `!load` and the rest all work.
+#
+# `!pasetdlc` takes the map-pack number you would say out loud: `!pasetdlc 1 off` switches off First
+# Strike. Treyarch numbers the dvars from 2, and the command does that arithmetic for you.
+
+settings:
+  # Where this server's `.cfg` files are, for `!palistcfg` and `!paload`. **No default**: the classic
+  # plugin used the bot's own config folder, which this plugin has no way to know and should not
+  # guess at — and naming it here means server configs can live wherever you keep them.
+  #
+  # `!paload` sends the file to the server one line a second, because a Black Ops rcon socket drops a
+  # flood. A long file therefore takes a while: the bot tells you roughly how long when it starts,
+  # and tells you again when it has finished. Comments (`//`) and blank lines are not sent.
+  #
+  # Only a file *in* this directory can be loaded — a name, never a path.
+  config_dir: ""

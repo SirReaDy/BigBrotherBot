@@ -35,6 +35,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 
+from b3.parsers.cod import maps
 from b3.parsers.cod.profile import GameProfile
 from b3.parsers.profile import VersionQuirk
 from b3.parsers.cod.status import (
@@ -226,6 +227,13 @@ COD7 = GameProfile(
         "setadmindvar g_logTimeStampInSeconds 0",
     ),
     set_template='setadmindvar %(name)s "%(value)s"',
+    # The only Call of Duty title whose map ids and map names diverge: `mp_nuked` is Nuketown and
+    # `mp_duga` is Grid, so without this `!maps` prints a list nobody recognises.
+    map_names=maps.COD7_MAPS,
+    # Restarting a round. Declared here and not on the other ten titles because these two are what
+    # `poweradmincod7` was read for and what a Black Ops server is known to answer; nothing here is
+    # invented for a title that has not been checked.
+    server_verbs={"map_restart": "map_restart", "fast_restart": "fast_restart"},
     status_patterns=(COD7_PLAYER_LINE_RE,),
     rcon_dialect="cod7",  # Black Ops frames its RCON packets differently; see b3.net.rcon
 )

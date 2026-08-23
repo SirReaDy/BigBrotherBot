@@ -37,6 +37,7 @@ list, each with an optional config of its own (see `examples/`):
 | `countryfilter` | refuses players from the countries a server does not accept | — |
 | `poweradminurt` | Urban Terror's admin commands, and the two balancers | `!paslap` `!panuke` `!pakill` `!pamute` `!pateams` `!pabalance` `!paskuffle` `!paforce` `!pabigtext` `!paset` `!paget` `!pavote` `!pactf` `!pabomb` `!pagear` … |
 | `codam` | a Call of Duty admin mod's own verbs, from a list you write | `!codam` plus `c` + every verb you list |
+| `poweradmincod7` | Black Ops's playlists, map exclusions, DLC packs and config files | `!pasetmap` `!paplaylist` `!pagetplaylists` `!pasetplaylist` `!paexcludemaps` `!paset` `!paget` `!pasetdlc` `!palistcfg` `!paload` `!pamaprestart` `!pafastrestart` `!pagametype` |
 
 ### censor — bad language, and the escalating mute
 
@@ -477,6 +478,40 @@ One immunity rule covers all four player commands — you cannot use them on som
 level. The classic had `slap_safe_level` on `!paslap`, a different comparison on `!pamute`, and *nothing*
 on `!panuke`. `!paveto` is not here: `callvote`'s `!veto` is that command, and it works on any engine
 that can cancel a vote. Config: `examples/plugin_poweradminurt.yaml`.
+
+### poweradmincod7 — Black Ops, where you cannot just load a map
+
+Call of Duty: Black Ops is the one engine here with no map verb worth the name. A **ranked** server
+takes its map and its gametype from a *playlist*, and the only lever over which map comes up next is
+`playlist_excludeMap` — the list of maps the playlist may not pick. So `!pasetmap nuketown` excludes
+the other twenty-five maps and puts the operator's own exclusion list back when the round ends. The
+window in between is real: if the bot is killed inside it the server keeps them excluded, which is why
+the reply says so. `!paexcludemaps` sets that list directly, `!paplaylist` / `!pagetplaylists` /
+`!pasetplaylist` work the playlists, `!pasetdlc 1 off` switches a map pack off (the command does
+Treyarch's off-by-one for you), and on an **unranked** server `!pamaprestart`, `!pafastrestart` and
+`!pagametype` do what they say. Each command says when the server will not obey it rather than
+quietly doing nothing.
+
+`!palistcfg` and `!paload` send a server `.cfg` file over rcon a line at a time, which needs a
+`config_dir` naming where those files are — the classic used the bot's own config folder, which a
+plugin cannot know.
+
+**`!pagametype` never worked.** It sent `g_gametype tdm` as a bare assignment, and Black Ops takes a
+dvar only through `setadmindvar` — the same fault this bot already records against that title's
+`g_logsync` — so the gametype was unchanged and the map restarted anyway. Four other faults were in
+the same shape as the rest of this exercise: `time.sleep` inside four command handlers (twenty-five
+seconds of frozen bot to list the playlists, one chat line per second while it did);
+`threading.Thread(target=self._configloader(data))`, which *calls* the loader and hands the thread its
+return value, so a config file was sent from the command handler with a sleep per line and the admin
+was told "successfully loaded" before anything had gone out; a restored exclusion list that could be
+the literal word `None`; and two crashes on ordinary typing (`!paset g_gametype` with no value,
+`!pasetplaylist 2.7`). Fixing the first of those also turned up a core bug: `Console.set_cvar` capped
+every value at 128 characters, the length that suits a ban reason, so a twenty-five-map exclusion list
+— or any real `sv_mapRotation` — was cut off mid-word and rejected by the engine in silence.
+
+`!paversion` is not here (`!plugin info` answers it) and neither is `!paident`, which showed a
+player's IP and guid at level 40 and would broadcast them with `@paident`; `!clientinfo` is that
+command, at level 80 and private. Config: `examples/plugin_poweradmincod7.yaml`.
 
 ### codam — a Call of Duty admin mod's commands
 
