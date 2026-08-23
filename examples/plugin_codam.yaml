@@ -1,0 +1,49 @@
+# codam — a Call of Duty admin mod's own commands, reachable from in-game chat.
+#
+# Point at it from the main config:
+#
+#   plugins:
+#     - name: codam
+#       config: "@conf/plugin_codam.yaml"
+#
+# The mod takes its instructions through one rcon verb, `command "<line>"`. This plugin turns the
+# verbs you list below into ordinary bot commands, so an admin types `!ckick bob` in game instead of
+# somebody opening an rcon console.
+#
+# **The verb list below is an example, not the mod's.** The bot cannot ask an admin mod what it
+# understands, so what you write here is the whole of what it knows — take the verbs from your mod's
+# own documentation and delete anything it does not have. A verb the mod does not recognise is not an
+# error: the mod says so, and the bot passes that answer back to whoever typed the command.
+#
+# Every command is named `c` + the verb, so the mod's `kick` is `!ckick` and cannot be confused with
+# the bot's own `!kick`. A name that already belongs to another plugin is refused at startup, with
+# that plugin named, rather than one command quietly shadowing the other.
+#
+# Levels are a group keyword (guest user reg mod admin fulladmin senioradmin superadmin) or a number
+# 0-100, and everything an admin types is escaped before it reaches the rcon line — a `"` in a kick
+# reason cannot end the argument and a `;` cannot start a second command.
+
+# Verbs that name no player. Whatever the admin typed after the command goes to the mod unchanged.
+commands:
+  admin:
+    - restart
+    - fastrestart
+  fulladmin:
+    - reloadscripts
+
+# Verbs that act on a player. The player is resolved the way every other command resolves one — two
+# candidates is a question rather than a coin toss — and the mod is sent their slot number **first**,
+# then whatever else was typed: `!ckick bob spamming` becomes `kick 7 spamming`.
+#
+# The bot's ordinary rule applies to these: you may not use them on yourself, or on anybody at or
+# above your own level.
+player_commands:
+  mod:
+    - kick
+    - warn
+  admin:
+    - tempban
+
+# `!codam <line>` is here whatever you configure: it hands the mod a line exactly as it was typed,
+# which is every power the mod has, so it is superadmin-only. `!cmdlevel codam <level>` moves it if
+# your server is run differently.

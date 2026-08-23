@@ -36,6 +36,7 @@ list, each with an optional config of its own (see `examples/`):
 | `location` | announces where arrivals are from, and answers for it | `!locate` `!distance` `!isp` |
 | `countryfilter` | refuses players from the countries a server does not accept | — |
 | `poweradminurt` | Urban Terror's admin commands, and the two balancers | `!paslap` `!panuke` `!pakill` `!pamute` `!pateams` `!pabalance` `!paskuffle` `!paforce` `!pabigtext` `!paset` `!paget` `!pavote` `!pactf` `!pabomb` `!pagear` … |
+| `codam` | a Call of Duty admin mod's own verbs, from a list you write | `!codam` plus `c` + every verb you list |
 
 ### censor — bad language, and the escalating mute
 
@@ -476,6 +477,25 @@ One immunity rule covers all four player commands — you cannot use them on som
 level. The classic had `slap_safe_level` on `!paslap`, a different comparison on `!pamute`, and *nothing*
 on `!panuke`. `!paveto` is not here: `callvote`'s `!veto` is that command, and it works on any engine
 that can cancel a vote. Config: `examples/plugin_poweradminurt.yaml`.
+
+### codam — a Call of Duty admin mod's commands
+
+CoDAM and the admin mods like it take their instructions through a single rcon verb, and this plugin
+turns those verbs into bot commands: `!ckick bob spamming` reaches the mod as `command "kick 7
+spamming"`. The bot cannot ask a mod what it understands, so an operator lists the verbs — the ones
+that name a player and the ones that do not — and that list is the whole command surface. `!codam
+<line>` sends a line exactly as typed, at superadmin, because that is every power the mod has.
+
+Reading the classic version found that **the half of it that took no player never worked at all**:
+those verbs were registered as `c` + the verb and then sent to the mod with the `c` still attached, so
+CoDAM was asked for `crestart`. The other half stripped it, which is what shows the intent. Nothing
+raised — a mod that does not recognise a command says so to the rcon caller, and the classic threw that
+reply away, so an admin saw the same silence whether the command ran, was not recognised, or the mod
+was not installed. It also put the player *after* the free text (`kick spamming 3`, which the mod reads
+as a player called "spamming"), pasted an admin's typing into a quoted rcon argument unescaped, and let
+`!ckick` reach a level the bot's own `!kick` refuses to touch. It shipped no config file and is named
+nowhere in the classic's own distribution config, which is how all of that went unnoticed.
+Config: `examples/plugin_codam.yaml`.
 
 Anything else is a git install — see [Plugins](cli.md#plugins) and
 [Writing an installable plugin](#writing-an-installable-plugin).

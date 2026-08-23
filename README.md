@@ -38,7 +38,7 @@ straight answers when something is misconfigured.
 **Where it stands today.** All 59 classic admin commands at the classic levels, 38 game titles across
 ten engine families — 34 of the classic bot's 37, plus four it never had — and every core service the
 old bot offered, plus remote log tailing, PunkBuster, per-server deployment and pre-flight checks it
-never had. 1,983 tests, `mypy --strict` clean.
+never had. 2,525 tests, `mypy --strict` clean.
 
 ## What was deleted, and what was rebuilt
 
@@ -79,8 +79,8 @@ story behind it — CoD4 omitting the attacker's team on kill lines, `briefcase_
 team kill, Urban Terror numbering weapons differently on hit lines than on kill lines. Those are ported
 faithfully, with a regression test each, because they *are* the fifteen years of bug reports.
 
-**In active development**, in this order: the remaining game titles, then more of the classic plugins
-ported, then a web API and a dashboard over several servers at once.
+**In active development**, in this order: the last of the classic plugins ported, then a web API and a
+dashboard over several servers at once.
 
 ## Try it
 
