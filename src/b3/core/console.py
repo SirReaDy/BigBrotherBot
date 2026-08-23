@@ -148,6 +148,16 @@ class Console(Protocol):
         """
         ...
 
+    def team_id(self, team: str) -> str:
+        """What this engine calls the team the bot calls ``red``/``blue`` — ``""`` if it has no such
+        team.
+
+        Here for the same reason `map_display` is: a plugin that moves a player has to name the team
+        in the engine's own spelling (`admin.movePlayer <name> 2 0 true`) while everything else in the
+        bot reads `Client.team`, and the table that maps one to the other belongs to the title.
+        """
+        ...
+
     def map_display(self, map_id: str) -> str:
         """The name a player would call this map, or the raw id when the title has no table."""
         ...

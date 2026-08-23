@@ -1135,6 +1135,10 @@ class Bot:
         )
         self.game.update_cvars({name: value})
 
+    def team_id(self, team: str) -> str:
+        """See `Console.team_id`."""
+        return self.profile.team_id(team)
+
     def rcon_words(self, command: str) -> list[str]:
         """See `Console.rcon_words`. Falls back to the flattened reply on the eight text families."""
         words = getattr(self._rcon, "command_words", None)

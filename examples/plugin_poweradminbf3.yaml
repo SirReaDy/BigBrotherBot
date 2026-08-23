@@ -1,0 +1,93 @@
+# poweradminbf3 — Battlefield 3's admin commands, teams and server-side lists.
+#
+# Point at it from the main config (this plugin only loads on `server.game: bf3`):
+#
+#   plugins:
+#     - name: poweradminbf3
+#       config: "@conf/plugin_poweradminbf3.yaml"
+#
+# What it adds, in groups:
+#
+#   round control   !roundnext (rnext)  !roundrestart (rrestart)  !endround (eol)  !serverreboot
+#   players         !kill  !nuke  !changeteam  !swap
+#   even teams      !autoassign  !autobalance  !scramble  !scramblemode  !autoscramble
+#   settings        !unlockmode  !vehicles  !idle  !gunmaster (gm)
+#   the next map    !setnextmap (snmap)
+#   yelling         !yell (y)  !yellteam (yt)  !yellsquad (ys)  !yellplayer (yp)
+#   VIPs            !vips  !viplist  !vipadd (vip)  !vipremove (viprm)  !vipclear  !vipload  !vipsave
+#   server configs  !listconfig  !loadconfig
+#   punkbuster      !punkbuster (punk)
+#
+# Levels and aliases are the classic plugin's and are set in code; `!cmdlevel <command> <level>`
+# changes one at runtime and `!cmdalias` changes the short form.
+#
+# `!swap` is the command that needs squads. A Battlefield squad is four players who spawn on each
+# other, so swapping two players between teams puts each into the *other's* squad — three moves, not
+# two, because the first player has to leave their squad before the second can be put into it.
+#
+# `!serverreboot` restarts the game server, so it asks first: `!serverreboot yes`.
+
+settings:
+  # An admin at or above this level is not level-checked when acting on another player — the classic's
+  # own escape hatch, at its own default. Below it, you may not act on your equals or your betters,
+  # and that one rule covers !kill, !nuke, !changeteam and !swap. (The classic had three different
+  # comparisons and no check at all on !nuke, so an admin who could not kill one senior admin could
+  # kill all of them at once.)
+  no_level_check_level: fulladmin
+
+  # Players at or above this level are never moved by the autoassigner or the autobalancer. Somebody
+  # who runs the server should not be shuffled about by it.
+  no_autoassign_level: mod
+
+  # Put an arriving player on the smaller team, if they landed on the bigger one.
+  autoassign: false
+
+  # Move the most recent joiners across when the sides drift apart. Turning this on turns
+  # `autoassign` on with it: balancing without assigning evens the teams and then lets the next
+  # arrival undo it.
+  autobalance: false
+
+  # Seconds between autobalance passes. Floored at 30 — below that the bot spends the round
+  # announcing moves.
+  autobalance_timer: 120
+
+  # How many players one side may be ahead by before anybody is moved. Floored at 2, because 1 means
+  # every arrival is moved straight back again.
+  team_swap_threshold: 3
+
+  # Allow one more of an imbalance at 20 players and another at 40. On a busy server this is what
+  # stops people being moved back and forth all round.
+  team_swap_threshold_prop: false
+
+  # How long a `!yell` stays on players' screens, in seconds.
+  yell_duration: 10
+
+  # Where your preset `.cfg` files are, for `!listconfig` and `!loadconfig`. **No default**: the
+  # classic looked inside its own installed source tree, which a pip-installed bot has no business
+  # writing to.
+  #
+  # A config holds settings (`vars.friendlyFire true`) and, optionally, rotation entries
+  # (`MP_001 ConquestLarge0 2`) — the rotation is cleared, rebuilt and written to the server's own
+  # config so a restart keeps it. Comments (`//`, `#`) and blank lines are skipped, and any other
+  # line is reported in the log rather than dropped in silence. The file goes out a few lines a
+  # second from the bot's scheduled pass, so nothing blocks while it is sent.
+  config_dir: ""
+
+# The team scrambler, which deals everybody out again at a round or a map boundary.
+scrambler:
+  # off | round | map — when it runs by itself. `!autoscramble` changes this at runtime, and
+  # `!scramble` asks for one at the end of the current round whatever this says.
+  #
+  # Write it in quotes if you like; a bare `off` in YAML is the boolean false, which the bot
+  # translates back to the word for you.
+  mode: "off"
+
+  # random | score — how the teams are dealt. `score` uses the previous round's final scoreboard, so
+  # it does nothing useful until one round has finished; it falls back to random until then.
+  strategy: random
+
+  # Gamemodes it never runs on. Scrambling a game whose whole point is the squad you are in is not a
+  # favour to anybody, which is why these two are the shipped defaults.
+  gamemodes_blacklist:
+    - SquadRush0
+    - SquadDeathMatch0

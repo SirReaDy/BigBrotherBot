@@ -152,6 +152,9 @@ class FakeConsole:
         self.players: list[PlayerInfo] = []
         self.cvars: dict[str, str] = {}
         self.maps: list[str] = []
+        #: Engine team id -> the bot's name for it, as a profile carries. Frostbite's, since it is
+        #: the only family whose verbs take the id.
+        self.teams: dict[str, str] = {"0": "", "1": "red", "2": "blue", "3": "green", "4": "yellow"}
         self.map_names: dict[str, str] = {}  # lowercased id -> display name, as a profile carries
         self.next_map: str | None = None
         #: The cvar this title holds the next map in — `g_nextmap` on Urban Terror, nothing on most.
@@ -264,6 +267,11 @@ class FakeConsole:
     def change_map(self, name: str, extras=None) -> None:  # noqa: ANN001
         self.map_changes.append(name)
         self.map_extras.append(dict(extras or {}))
+
+    def team_id(self, team: str) -> str:
+        """As a profile answers it — `teams` read backwards. Set `console.teams` to a title's."""
+        wanted = (team or "").strip().lower()
+        return next((k for k, v in self.teams.items() if v.lower() == wanted), "") if wanted else ""
 
     def map_display(self, map_id: str) -> str:
         return self.map_names.get(map_id.lower(), map_id)

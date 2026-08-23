@@ -38,6 +38,7 @@ list, each with an optional config of its own (see `examples/`):
 | `poweradminurt` | Urban Terror's admin commands, and the two balancers | `!paslap` `!panuke` `!pakill` `!pamute` `!pateams` `!pabalance` `!paskuffle` `!paforce` `!pabigtext` `!paset` `!paget` `!pavote` `!pactf` `!pabomb` `!pagear` … |
 | `codam` | a Call of Duty admin mod's own verbs, from a list you write | `!codam` plus `c` + every verb you list |
 | `poweradmincod7` | Black Ops's playlists, map exclusions, DLC packs and config files | `!pasetmap` `!paplaylist` `!pagetplaylists` `!pasetplaylist` `!paexcludemaps` `!paset` `!paget` `!pasetdlc` `!palistcfg` `!paload` `!pamaprestart` `!pafastrestart` `!pagametype` |
+| `poweradminbf3` | Battlefield 3's teams, scrambler, VIP list and preset server configs | `!roundnext` `!endround` `!kill` `!nuke` `!changeteam` `!swap` `!autoassign` `!autobalance` `!scramble` `!setnextmap` `!yell` `!vips` `!loadconfig` … |
 
 ### censor — bad language, and the escalating mute
 
@@ -478,6 +479,45 @@ One immunity rule covers all four player commands — you cannot use them on som
 level. The classic had `slap_safe_level` on `!paslap`, a different comparison on `!pamute`, and *nothing*
 on `!panuke`. `!paveto` is not here: `callvote`'s `!veto` is that command, and it works on any engine
 that can cancel a vote. Config: `examples/plugin_poweradminurt.yaml`.
+
+### poweradminbf3 — Battlefield 3's teams, and the two lists its server keeps
+
+The largest of the classic's four Frostbite `poweradmin*` plugins and the one the other three are
+near-copies of. Round control (`!roundnext`, `!roundrestart`, `!endround`, `!serverreboot` — which
+asks first, since it restarts the game server). Players: `!kill` and `!nuke` kill without touching
+the scoreboard, `!changeteam` moves one, and `!swap` exchanges two — the command that needs **squads**,
+because a Battlefield squad is four players who spawn on each other, so a swap has to put each player
+into the *other's* squad, which is three moves and not two. Keeping the sides even: `!autoassign` puts
+an arriving player on the smaller team, `!autobalance` moves the most recent joiners when the teams
+drift apart, and the **scrambler** deals everybody out again at a round or a map boundary — by the
+previous round's score where the server reported one. Then the settings (`!unlockmode`, `!vehicles`,
+`!idle`, `!gunmaster`), the four `!yell` commands, `!setnextmap`, and the two lists a Battlefield
+server keeps: the reserved slots (`!vips`, `!vipadd`, …) and the preset server configs
+(`!listconfig`, `!loadconfig`).
+
+**Two of its features were dead.** The auto-scrambler's gamemode blacklist announced the skip with a
+log line that raised `TypeError` — `r"…%s…" + " …" % blacklist` binds the `%` to the second literal,
+which has no placeholder — and everything after it in the round-start handler was skipped, which is
+the flag that lets autoassign run and the deadline the autobalancer waits on. So on any server whose
+gamemode was on that list, **autoassign and autobalance were both dead for the whole map**. The
+captured test covering it asserted that no scramble happened, which was true, and looked like the
+feature working.
+
+The rest is the same shape: `time.sleep` in four command handlers, 2.5 seconds in `!nuke` and up to
+twenty inside the autobalancer, all on the bot's one thread; a config loader on
+`thread.start_new_thread`; a score-based scramble that sorted the scores as *text*, so `"9"` outranked
+`"100"` and the strategy meant to even out skill dealt almost at random; three different level checks
+across four commands and **none at all on `!nuke`**; a swap that went ahead with one player at the
+deploy screen and moved the other to team 0; a join-order list kept by name, so a rename left an entry
+that never came out; and `!endround` calling `max()` on an empty dict. Its `serverconfigs` directory
+lived inside the plugin's own installed source tree, so it is a setting here.
+
+Writing it needed the squad and scoreboard plumbing deliberately left out of the Frostbite parser,
+which turned up two more: this engine's centre-screen message (`admin.yell`) was never wired up, so
+every `say_big` on all six Frostbite titles was an ordinary chat line, and `Console.set_cvar` sent
+`set <name> "<value>"` where Frostbite takes the setting's name as the command — so every setting
+written on this family was answered `UnknownCommand` in silence.
+Config: `examples/plugin_poweradminbf3.yaml`.
 
 ### poweradmincod7 — Black Ops, where you cannot just load a map
 
