@@ -7,6 +7,7 @@ from b3.domain.permissions import (
     bits_from_groups,
     group_by_keyword,
     groups_from_bits,
+    level_for,
     max_level,
 )
 
@@ -39,3 +40,28 @@ def test_zero_bits_is_guest():
     assert len(groups) == 1
     assert groups[0].keyword == "guest"
     assert max_level(0) == 0
+
+
+# -- what an operator wrote, as a level ----------------------------------------------------------
+
+
+def test_a_level_comes_from_a_keyword_or_a_number():
+    assert level_for("mod") == 20
+    assert level_for("SeniorAdmin") == 80
+    assert level_for(" admin ") == 40
+    assert level_for("40") == 40
+    assert level_for(40) == 40
+
+
+def test_anything_else_is_none_so_the_caller_can_name_it():
+    """Four plugins read a level out of config and each has to say which word it did not know."""
+    assert level_for("moderator") is None
+    assert level_for("101") is None
+    assert level_for(101) is None
+    assert level_for("") is None
+
+
+def test_a_bool_is_refused_rather_than_counted_as_a_level():
+    """YAML reads a bare `yes`/`no` as one, and neither was ever meant as "superadmin" or "guest"."""
+    assert level_for(True) is None
+    assert level_for(False) is None

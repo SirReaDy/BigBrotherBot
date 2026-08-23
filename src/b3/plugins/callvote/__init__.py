@@ -60,7 +60,7 @@ from b3.core.events import Event, EventType
 from b3.core.plugin import Plugin
 from b3.core.util import as_int
 from b3.domain.client import Client
-from b3.domain.permissions import DEFAULT_GROUPS, find_group
+from b3.domain.permissions import DEFAULT_GROUPS, level_for
 
 if TYPE_CHECKING:
     from sqlalchemy.engine import Engine
@@ -219,7 +219,7 @@ class CallvotePlugin(Plugin):
             return {}
         table: dict[str, int] = {}
         for key, value in section.items():
-            level = self._level_of(value)
+            level = level_for(value)
             if level is None:
                 log.error(
                     "callvote: %s.%s is %r, which is neither a group keyword nor a level 0-100; "
@@ -231,20 +231,6 @@ class CallvotePlugin(Plugin):
                 continue
             table[str(key).strip().lower()] = level
         return table
-
-    @staticmethod
-    def _level_of(value: object) -> int | None:
-        if isinstance(value, bool):
-            return None
-        if isinstance(value, int):
-            return value if 0 <= value <= 100 else None
-        text = str(value).strip()
-        group = find_group(text, DEFAULT_GROUPS)
-        if group is not None:
-            return group.level
-        if text.isdigit() and 0 <= int(text) <= 100:
-            return int(text)
-        return None
 
     def on_startup(self) -> None:
         self.register_messages(MESSAGES)

@@ -58,6 +58,29 @@ def find_group(keyword: str, groups: tuple[Group, ...] = DEFAULT_GROUPS) -> Grou
     return next((g for g in groups if g.keyword.lower() == needle), None)
 
 
+def level_for(value: object, groups: tuple[Group, ...] = DEFAULT_GROUPS) -> int | None:
+    """A permission level from whatever an operator wrote: a group keyword, or a number 0-100.
+
+    ``None`` when it is neither, rather than a raise, because every caller has to tell somebody
+    *which* word was not understood — "invalid level" on its own sends them to the documentation to
+    find out that they typed `moderator` where this bot says `mod`.
+
+    A bool is refused rather than counted as 0 or 1. YAML reads a bare ``yes``/``no`` as one, and
+    a level of "guest" written as ``no`` is not something anybody meant.
+    """
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value if 0 <= value <= 100 else None
+    text = str(value).strip()
+    group = find_group(text, groups)
+    if group is not None:
+        return group.level
+    if text.isdigit() and 0 <= int(text) <= 100:
+        return int(text)
+    return None
+
+
 def groups_from_bits(group_bits: int, groups: tuple[Group, ...] = DEFAULT_GROUPS) -> list[Group]:
     """Return the groups whose membership bit is set in ``group_bits``.
 

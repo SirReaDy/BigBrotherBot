@@ -39,7 +39,7 @@ from b3.core.console import Console
 from b3.core.events import Event, EventType
 from b3.core.plugin import Plugin
 from b3.domain.client import Client
-from b3.domain.permissions import DEFAULT_GROUPS, find_group, group_by_level
+from b3.domain.permissions import group_by_level, level_for
 
 if TYPE_CHECKING:
     from sqlalchemy.engine import Engine
@@ -120,22 +120,14 @@ def parse_level(text: str) -> tuple[int, int] | str:
     if match is None:
         return text.strip()
 
-    def one(word: str) -> int | None:
-        group = find_group(word, DEFAULT_GROUPS)
-        if group is not None:
-            return group.level
-        if word.isdigit() and 0 <= int(word) <= 100:
-            return int(word)
-        return None
-
-    low = one(match["low"])
+    low = level_for(match["low"])
     if low is None:
         return match["low"]
     if match["high"] is None:
         # No ceiling asked for: superadmins can use everything, which is the classic's default and
         # the only sane one — the alternative is a command its own author cannot run.
         return low, 100
-    high = one(match["high"])
+    high = level_for(match["high"])
     if high is None:
         return match["high"]
     return low, high

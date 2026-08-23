@@ -48,7 +48,7 @@ from b3.core.events import Event, EventType
 from b3.core.plugin import Plugin
 from b3.core.util import match_names, sanitize_rcon_value
 from b3.domain.client import Client
-from b3.domain.permissions import DEFAULT_GROUPS, find_group, max_group
+from b3.domain.permissions import level_for, max_group
 
 log = logging.getLogger(__name__)
 
@@ -114,7 +114,7 @@ class CustomcommandsPlugin(Plugin):
             log.warning("customcommands: no commands defined, so this plugin will do nothing")
             return
         for group_name, commands in groups.items():
-            level = self._level_for(str(group_name))
+            level = level_for(group_name)
             if level is None:
                 log.error(
                     "customcommands: %r is not a group keyword or a level; its commands are ignored",
@@ -128,15 +128,6 @@ class CustomcommandsPlugin(Plugin):
                 continue
             for name, template in commands.items():
                 self._register(str(name), str(template), level, helps)
-
-    def _level_for(self, group_name: str) -> int | None:
-        group = find_group(group_name, DEFAULT_GROUPS)
-        if group is not None:
-            return group.level
-        text = group_name.strip()
-        if text.isdigit() and 0 <= int(text) <= 100:
-            return int(text)
-        return None
 
     def _register(self, name: str, template: str, level: int, helps: dict[str, str]) -> None:
         wanted = name.strip().lower()
