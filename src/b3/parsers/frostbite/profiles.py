@@ -95,6 +95,13 @@ _BASE = GameProfile(
     # This engine has no cvars, so the server's own name, its player limit and its gametype only
     # exist in this reply. Every other family here gets them from a cvar dump.
     server_info_command="serverInfo",
+    # **A Frostbite setting is set by naming it, with no verb in front.** The default template here
+    # is `set <name> "<value>"`, which on this engine is the unknown command `set` followed by two
+    # arguments — so every `Console.set_cvar` on all six titles was answered with `UnknownCommand`
+    # and nothing changed, in silence. Reading was already right (`get_cvar_template` is the bare
+    # name), which is what made the asymmetry invisible. Callers pass the full `vars.` name, as they
+    # already do to read one.
+    set_template='%(name)s "%(value)s"',
     # Battlefield ran PunkBuster, and the classic Frostbite parser built the service unconditionally.
     # It matters less here than on Quake 3, since an EA GUID is already a persistent identity — what
     # it buys is the second id, the screenshot request and PunkBuster's own ban list.

@@ -480,6 +480,16 @@ def test_the_round_and_yell_verbs_are_asked_for_rather_than_assumed():
     assert "squad %(team)s %(squad)s" in BF3.server_verbs["yell_squad"]
 
 
+def test_a_setting_is_set_by_naming_it_with_no_verb_in_front():
+    """The default template is `set <name> "<value>"`, which on this engine is the unknown command
+    `set` with two arguments — so every `set_cvar` was answered `UnknownCommand` and nothing changed.
+    *Reading* was already right, which is what made the asymmetry invisible."""
+    assert BF3.set_template == '%(name)s "%(value)s"'
+    assert BF3.get_cvar_template == "%(name)s"
+    for profile in (BFBC2, MOH, BF4, BFH, MOHW):
+        assert profile.set_template == BF3.set_template
+
+
 def test_a_team_name_maps_back_to_the_engines_own_id():
     """`Client.team` says `red`; `admin.movePlayer` takes `1`. One table, read both ways."""
     assert BF3.team_id("red") == "1"
