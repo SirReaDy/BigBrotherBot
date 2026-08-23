@@ -197,6 +197,22 @@ class GameProfile:
             return guid
         return steamid.canonical(guid)
 
+    def team_id(self, team: str) -> str:
+        """The engine's own id for a team this bot calls ``red``/``blue``, or ``""`` if it has none.
+
+        The reverse of :attr:`teams`, and it exists because the verbs that *move* a player take the
+        engine's spelling — `admin.movePlayer <name> 2 0 true` — while everything else in the bot
+        reads `Client.team`. Doing the lookup here keeps one table rather than a second one written
+        backwards, which is how the two would drift apart.
+
+        The first id mapping to that name wins. No table maps two ids to one name, and if one ever
+        did, the lower id is the answer an admin would expect.
+        """
+        wanted = (team or "").strip().lower()
+        if not wanted:
+            return ""
+        return next((key for key, name in self.teams.items() if name.lower() == wanted), "")
+
     def map_display(self, map_id: str) -> str:
         """The name to show a player for a map id, or the id itself if the title has no table.
 

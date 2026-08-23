@@ -122,6 +122,11 @@ class Client:
     # rather than the parser decides whether to kick for it.
     name_overflow: bool = False
     team: str | None = None
+    #: Which squad inside their team, where the engine has squads. Only the Frostbite family does:
+    #: Battlefield puts four to a squad and a player's squad decides who they spawn on, so swapping
+    #: two players between teams has to put each into the *other's* squad or the swap is only half
+    #: done. Empty everywhere else, which reads as "this engine has no squads".
+    squad: str = ""
     #: What this player is carrying, where the engine says. Only Urban Terror does: its userinfo has
     #: a `gear` field whose letters name the weapons in each slot, and a skill balancer needs it to
     #: tell a sniper from everybody else — a sniper nest on one side decides the game on its own.

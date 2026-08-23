@@ -21,9 +21,14 @@ not a slot, so the name *is* the handle, and it goes in ``cid``. The EA GUID arr
 ``player.onAuthenticated``, and that is the join the rest of the bot acts on — before it there is no
 identity to match a ban against.
 
+**Squads and the end-of-round scoreboard are here**, and they are what the `poweradmin` plugins
+needed: a player's squad on `player.onSquadChange` and in the roster block, and
+`server.onRoundOverPlayers` / `server.onRoundOverTeamScores` as events. They arrive in the window
+between a round ending and the next map loading, which is the only moment a team scrambler can be
+fair rather than random.
+
 Not implemented: the PunkBuster message grammar (a dozen regexes over ``punkBuster.onMessage`` text,
-which belongs with PunkBuster support rather than here), and the per-title scoreboard and squad
-plumbing that exists to serve the `poweradmin` plugins.
+which belongs with PunkBuster support rather than here).
 """
 
 from __future__ import annotations
@@ -37,6 +42,7 @@ from b3.core.events import Event, EventType
 from b3.domain.client import Client
 from b3.net.frostbite import split_command
 from b3.parsers.base import Parser
+from b3.parsers.frostbite.status import parse_player_block
 from b3.parsers.profile import GameProfile
 
 log = logging.getLogger(__name__)
@@ -68,6 +74,8 @@ class FbParser(Parser):
             "player.onKicked": self._on_kicked,
             "server.onLevelLoaded": self._on_level_loaded,
             "server.onRoundOver": self._on_round_over,
+            "server.onRoundOverPlayers": self._on_round_over_players,
+            "server.onRoundOverTeamScores": self._on_round_over_team_scores,
             "punkBuster.onMessage": self._on_punkbuster,
         }
 
@@ -242,11 +250,19 @@ class FbParser(Parser):
         return Event(EventType.CLIENT_SPAWN, client=client)
 
     def _on_team_change(self, words: Sequence[str]) -> Event | None:
-        """``player.onTeamChange <name> <team> <squad>``."""
+        """``player.onTeamChange <name> <team> <squad>``.
+
+        The squad is recorded as well as the team. It was dropped before, and it is not decoration on
+        this engine: a Battlefield squad is four players who spawn on each other, so swapping two
+        players between teams means putting each into the *other's* squad — with the squad unknown
+        they both land in "no squad" and the swap is half done.
+        """
         client = self._client(words[0] if words else "")
         if client is None or len(words) < 2:
             return None
         client.team = self.profile.teams.get(words[1], words[1])
+        if len(words) > 2:
+            client.squad = words[2]
         return Event(EventType.CLIENT_TEAM_CHANGE, data=client.team, client=client)
 
     def _on_squad_change(self, words: Sequence[str]) -> Event | None:
@@ -274,6 +290,35 @@ class FbParser(Parser):
     def _on_round_over(self, words: Sequence[str]) -> Event | None:
         """``server.onRoundOver <winning team>``."""
         return Event(EventType.GAME_ROUND_END, data=words[0] if words else "")
+
+    def _on_round_over_players(self, words: Sequence[str]) -> Event | None:
+        """``server.onRoundOverPlayers <player info block>`` — the final scoreboard.
+
+        The same block shape the roster arrives in, so it is read by the same code. This is the one
+        moment the bot is told what each player actually *did*, and it arrives after the round is
+        over and before the next map loads — which is exactly the window a team scrambler has to work
+        in. Without it a scrambler can only shuffle at random.
+        """
+        players = list(parse_player_block(list(words)))
+        if not players:
+            return None
+        return Event(EventType.GAME_ROUND_PLAYER_SCORES, data=players)
+
+    def _on_round_over_team_scores(self, words: Sequence[str]) -> Event | None:
+        """``server.onRoundOverTeamScores <count> <score> ... <target score>``.
+
+        A counted list, like everything else this protocol sends, with the target score tacked on
+        the end. Published as the scores alone: which team won is `server.onRoundOver`'s business and
+        is already an event of its own.
+        """
+        if not words or not words[0].isdigit():
+            return None
+        count = int(words[0])
+        scores = list(words[1 : 1 + count])
+        if len(scores) < count:
+            log.warning("frostbite: team score list ended after %d of %d", len(scores), count)
+            return None
+        return Event(EventType.GAME_ROUND_TEAM_SCORES, data=scores)
 
     def read_server_info(self, reply: str) -> dict[str, str]:
         """Read a ``serverInfo`` reply — the classic ``getServerInfo``/``getServerVars``.

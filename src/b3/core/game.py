@@ -33,6 +33,12 @@ class PlayerInfo:
     port: int = 0
     ping: int = 0
     score: int = 0
+    #: The team and squad the server puts this player in, in the **engine's own spelling** — a
+    #: Frostbite team is the digit `1`, not `red`. Kept raw because the verbs that move a player take
+    #: the digit, and translating here would mean translating back at every call site. Empty on the
+    #: engines whose status table does not report them, which is all of them but Frostbite.
+    team: str = ""
+    squad: str = ""
 
 
 @dataclass(slots=True)

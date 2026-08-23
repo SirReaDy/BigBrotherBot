@@ -186,6 +186,8 @@ class FakeConsole:
         #: Operator-defined rcon lines sent through `send_rcon`, and canned replies for them.
         self.rcon_sent: list[str] = []
         self.rcon_replies: dict[str, str] = {}
+        #: Replies for `rcon_words`, where a word may itself contain a space (Frostbite).
+        self.rcon_words_replies: dict[str, list[str]] = {}
         self.kicked: list[tuple[Client, str, Client | None]] = []
         self.banned: list[tuple[Client, str, Client | None]] = []
         self.tempbanned: list[tuple[Client, int, str, Client | None]] = []
@@ -273,6 +275,14 @@ class FakeConsole:
     def send_rcon(self, command: str) -> str:
         self.rcon_sent.append(command)
         return self.rcon_replies.get(command, "")
+
+    def rcon_words(self, command: str) -> list[str]:
+        """The word-list reply — `rcon_words_replies` when a test set one, else the flat reply."""
+        self.rcon_sent.append(command)
+        if command in self.rcon_words_replies:
+            return list(self.rcon_words_replies[command])
+        reply = self.rcon_replies.get(command, "")
+        return [reply] if reply else []
 
     def rotate_map(self) -> None:
         self.rotations += 1

@@ -98,6 +98,14 @@ class EventType(Enum):
     # --- game / round -----------------------------------------------------
     GAME_ROUND_START = auto()
     GAME_ROUND_END = auto()
+    #: The scoreboard as a round ends. Only the Frostbite family reports one: a Battlefield server
+    #: pushes `server.onRoundOverPlayers` (every player's row, the same block the roster arrives in)
+    #: and `server.onRoundOverTeamScores` (each team's total) after the round is over but before the
+    #: next map loads. That is the one moment a team scrambler can be fair — it is the only time the
+    #: bot knows what each player actually did — which is why these are events rather than a poll.
+    #: `data` is a list of `PlayerInfo` for the first and a list of score strings for the second.
+    GAME_ROUND_PLAYER_SCORES = auto()
+    GAME_ROUND_TEAM_SCORES = auto()
     GAME_MAP_CHANGE = auto()
     #: The server stated its own name and player limit. The classic bot set `game.sv_hostname` and
     #: `sv_maxclients` from inside half a dozen parsers, so the concept is shared even though only

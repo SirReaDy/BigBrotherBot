@@ -119,6 +119,19 @@ class Console(Protocol):
         """
         ...
 
+    def rcon_words(self, command: str) -> list[str]:
+        """The reply to a command as the engine's own word list, where the engine has one.
+
+        Every other family answers in text, and for those this is the reply as a single element. The
+        Frostbite protocol is the exception: its replies really are lists of words, and a word may
+        contain a space — a Battlefield player can be called ``Sgt Pepper`` — so flattening the
+        reserved-slots list into one string makes two players indistinguishable from one.
+
+        Same terms as `send_rcon`: it is for a plugin that already knows which engine it is talking
+        to, and the caller owns what it puts in the string.
+        """
+        ...
+
     def say_dead(self, text: str) -> None:
         """Say something only the players waiting to respawn will see.
 

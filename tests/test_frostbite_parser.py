@@ -202,6 +202,84 @@ def test_a_squad_change_also_states_the_team():
     assert p.clients.get_by_cid("Bob").team == "blue"
 
 
+def test_the_squad_is_kept_and_not_only_the_team():
+    """It was dropped before, and on this engine it is not decoration: a squad is four players who
+    spawn on each other, so swapping two players between teams has to put each into the *other's*
+    squad or they both land in "no squad" and the swap is half done."""
+    p = _with_players()
+
+    one(p, ["player.onSquadChange", "Bob", "2", "3"])
+
+    assert p.clients.get_by_cid("Bob").squad == "3"
+
+
+def test_a_team_change_with_no_squad_leaves_the_squad_alone():
+    p = _with_players()
+    one(p, ["player.onSquadChange", "Bob", "2", "3"])
+
+    one(p, ["player.onTeamChange", "Bob", "1"])
+
+    assert p.clients.get_by_cid("Bob").team == "red"
+    assert p.clients.get_by_cid("Bob").squad == "3"
+
+
+# -- the end-of-round scoreboard -------------------------------------------
+
+
+def test_the_final_scoreboard_arrives_as_an_event():
+    """`server.onRoundOverPlayers` carries the same block the roster does, in the window between a
+    round ending and the next map loading. It is the only moment the bot is told what each player
+    did, which is the only thing that lets a team scrambler be fair rather than random."""
+    p = _with_players()
+
+    ev = one(
+        p,
+        [
+            "server.onRoundOverPlayers",
+            "4",
+            "name",
+            "teamId",
+            "squadId",
+            "score",
+            "2",
+            "Bravo17",
+            "1",
+            "0",
+            "1500",
+            "Bob",
+            "2",
+            "3",
+            "220",
+        ],
+    )
+
+    assert ev.type is EventType.GAME_ROUND_PLAYER_SCORES
+    assert [(row.name, row.team, row.squad, row.score) for row in ev.data] == [
+        ("Bravo17", "1", "0", 1500),
+        ("Bob", "2", "3", 220),
+    ]
+
+
+def test_the_team_totals_arrive_too():
+    p = _with_players()
+
+    ev = one(p, ["server.onRoundOverTeamScores", "2", "300", "271", "300"])
+
+    assert ev.type is EventType.GAME_ROUND_TEAM_SCORES
+    assert ev.data == ["300", "271"]  # the target score on the end is not a team
+
+
+def test_a_truncated_team_score_list_is_reported_rather_than_half_read():
+    p = _with_players()
+    assert feed(p, ["server.onRoundOverTeamScores", "4", "300"]) == []
+    assert feed(p, ["server.onRoundOverTeamScores"]) == []
+
+
+def test_an_empty_scoreboard_publishes_nothing():
+    p = _with_players()
+    assert feed(p, ["server.onRoundOverPlayers", "0", "0"]) == []
+
+
 def test_spawning_sets_the_team_on_frostbite_2():
     p = _with_players()
     ev = one(p, ["player.onSpawn", "Bob", "1"])
@@ -359,18 +437,54 @@ def test_the_titles_differ_in_nothing_but_the_map_list():
         assert replace(profile, **same_as_bf3) == BF3
 
     for profile in (BFBC2, MOH):
-        # Everything but the map list, which this generation genuinely does differently.
+        # Everything but the map list and the round control, which this generation genuinely does
+        # differently — and which are named here one by one rather than papered over, since the
+        # docstring above is about what asserting sameness cost the last time.
         assert (
             replace(
                 profile,
                 **same_as_bf3,
                 rotate_command=BF3.rotate_command,
                 map_arguments=BF3.map_arguments,
+                saybig_template=BF3.saybig_template,
+                server_verbs=BF3.server_verbs,
+                player_verbs=BF3.player_verbs,
             )
             == BF3
         )
         assert profile.rotate_command == "admin.runNextRound"
         assert profile.map_arguments == ()
+        # Frostbite 1 has the centre-screen message and names the `all` subset, as the classic
+        # `bfbc2.py` did; it has no round or yell verbs here because the classic parser for it never
+        # sent any, so there is nothing to copy and nothing is invented. `poweradminbfbc2` and
+        # `poweradminmoh` are where those get read.
+        assert profile.saybig_template == 'admin.yell "%s" 10 all'
+        assert profile.server_verbs == {}
+        assert set(profile.player_verbs) == {"kill", "move"}
+
+
+def test_the_centre_screen_message_is_the_engines_own_verb():
+    """With no `saybig_template` every `say_big` fell back to `say_template`, so `firstkill`'s
+    announcement and everything else meant to be unmissable was an ordinary chat line on all six
+    titles. `admin.yell` is what the classic bot used, and it takes a duration."""
+    assert BF3.saybig_template == 'admin.yell "%s" 10'
+    assert BFBC2.saybig_template == 'admin.yell "%s" 10 all'
+
+
+def test_the_round_and_yell_verbs_are_asked_for_rather_than_assumed():
+    """Every one of them is a `server_verbs`/`player_verbs` entry, so `poweradminbf3` can ask whether
+    this title has it before offering an admin a command that would do nothing."""
+    assert BF3.server_verbs["round_end"] == "mapList.endRound %(team)s"
+    assert BF3.server_verbs["server_shutdown"] == "admin.shutDown"
+    assert BF3.player_verbs["move"] == 'admin.movePlayer "%(cid)s" %(team)s %(squad)s true'
+    assert "squad %(team)s %(squad)s" in BF3.server_verbs["yell_squad"]
+
+
+def test_a_team_name_maps_back_to_the_engines_own_id():
+    """`Client.team` says `red`; `admin.movePlayer` takes `1`. One table, read both ways."""
+    assert BF3.team_id("red") == "1"
+    assert BF3.team_id("blue") == "2"
+    assert BF3.team_id("spec") == ""  # this engine has no such team
 
 
 def test_bans_are_native_and_by_guid():
@@ -389,3 +503,41 @@ def test_the_templates_quote_every_value():
     """This engine takes word lists, so an unquoted reason with a space would become two words."""
     for template in (BF3.tell_template, BF3.kick_template, BF3.ban_template, BF3.tempban_template):
         assert template.count('"') >= 2
+
+
+# -- the roster is the other place a team comes from ------------------------
+
+
+@pytest.mark.asyncio
+async def test_the_roster_gives_a_team_and_a_squad_to_a_player_who_never_changed_either(tmp_path):
+    """A player who has not switched sides since the bot started produced no `onTeamChange`, so
+    before this the bot had no idea which team they were on — and a plugin asked to swap two of them
+    had nothing to go on. The status block is the only other source, and it is authoritative."""
+    from b3.config.schema import BotConfig, Config, PluginEntry, ServerConfig
+    from b3.core.clock import FakeClock
+    from b3.core.game import PlayerInfo
+    from b3.runtime.bot import Bot
+
+    config = Config(
+        bot=BotConfig(database=f"sqlite:///{tmp_path / 'b3.sqlite'}"),
+        server=ServerConfig(game="bf3"),
+        plugins=[PluginEntry(name="admin")],
+    )
+    bot = Bot(config, clock=FakeClock())
+    bot.start()
+
+    bot._reconcile([PlayerInfo(cid="Bob", name="Bob", guid=GUID2, team="2", squad="3")])
+    bot._reconcile([PlayerInfo(cid="Bob", name="Bob", guid=GUID2, team="2", squad="3")])
+    bob = bot.clients.get_by_cid("Bob")
+    await bot.bus.drain()
+
+    assert (bob.team, bob.squad) == ("blue", "3")
+
+    seen: list[str] = []
+    bot.bus.subscribe(EventType.CLIENT_TEAM_CHANGE, lambda ev: seen.append(str(ev.data)))
+    bot._reconcile([PlayerInfo(cid="Bob", name="Bob", guid=GUID2, team="1", squad="3")])
+    await bot.bus.drain()
+
+    assert bob.team == "red"
+    assert seen == ["red"]  # published once, and only because it actually changed
+    bot.storage.close()

@@ -1135,6 +1135,14 @@ class Bot:
         )
         self.game.update_cvars({name: value})
 
+    def rcon_words(self, command: str) -> list[str]:
+        """See `Console.rcon_words`. Falls back to the flattened reply on the eight text families."""
+        words = getattr(self._rcon, "command_words", None)
+        if words is not None:
+            return list(words(command))
+        reply = self.send_rcon(command)
+        return [reply] if reply else []
+
     def get_map(self) -> str | None:
         if self._rcon is None or not self.profile.status_commands:
             # Nothing to ask (see `get_players`), so the answer is what the log last said — which on
@@ -1473,6 +1481,7 @@ class Bot:
                 log.info("sync: adopting player %s in slot %s", info.name, info.cid)
                 self._authenticate(client)
                 continue
+            self._apply_team(client, info)
             if info.ip and client.ip != info.ip:
                 client.ip = info.ip
                 if client.id is not None:
@@ -1490,6 +1499,24 @@ class Bot:
                 log.info("sync: %s is no longer on the server", client.name)
                 self._drop_client(client)
         return self.clients.connected()
+
+    def _apply_team(self, client: Client, info: PlayerInfo) -> None:
+        """Take the team and squad off a roster row, where the engine states them.
+
+        Only Frostbite does, and it is the only source for a player who has not changed team since
+        the bot started — a plugin that swaps two players had nothing to go on for them. The change
+        is published, because a team change read from the roster is the same fact as one read from a
+        log line, and `afk` and `poweradminurt`'s team lock both listen for it.
+        """
+        if info.squad and client.squad != info.squad:
+            client.squad = info.squad
+        if not info.team:
+            return
+        team = self.profile.teams.get(info.team, info.team)
+        if team == client.team:
+            return
+        client.team = team
+        self.bus.publish_soon(Event(EventType.CLIENT_TEAM_CHANGE, data=team, client=client))
 
     # -- Console: bot lifecycle --------------------------------------------
 

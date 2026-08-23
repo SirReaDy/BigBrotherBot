@@ -392,6 +392,17 @@ class FrostbiteClient:
         self._outbox.append(cmd)
         self._flush_outbox()
 
+    def command_words(self, cmd: str) -> list[str]:
+        """Send a command and return its reply as the engine's own **word list**.
+
+        The counterpart of :meth:`command`, which joins those words with spaces. Joining is right for
+        a `vars.*` answer and lossy for a list of *names*: a Battlefield player may be called
+        ``Sgt Pepper``, and once the reply is one string nothing can tell that from two players. The
+        reserved-slots (VIP) list is the case that needs this.
+        """
+        self._flush_outbox(paced=False)
+        return self._command_words(split_command(cmd))
+
     def get_players(self) -> list[object]:
         """The live player table, from ``admin.listPlayers all``.
 

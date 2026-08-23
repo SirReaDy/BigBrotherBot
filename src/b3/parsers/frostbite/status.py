@@ -43,6 +43,9 @@ def parse_player_block(words: list[str]) -> Iterator[PlayerInfo]:
     A malformed or truncated block yields the players it *can* read and logs the rest: a reply cut
     short mid-row should cost one player, not the whole list.
 
+    Team and squad come through as the engine's own digits (see `PlayerInfo.team`), because the
+    verbs that move a player take those and not the bot's colour names.
+
     Note there is no IP address here. Frostbite does not tell an admin tool where a player is
     connecting from — PunkBuster does, on a separate message stream — so IP history stays empty on
     these games unless PunkBuster is in play.
@@ -81,6 +84,12 @@ def parse_player_block(words: list[str]) -> Iterator[PlayerInfo]:
             port=0,
             ping=_as_int(fields.get("ping")),
             score=_as_int(fields.get("score")),
+            # Read rather than dropped, and kept in the engine's own spelling. This is the *only*
+            # place a player's squad is stated for somebody who has not changed it since the bot
+            # started, and the verbs that move a player take these digits: `admin.movePlayer <name>
+            # <team> <squad> true`. See `PlayerInfo.team`.
+            team=fields.get("team", ""),
+            squad=fields.get("squad", ""),
         )
 
 

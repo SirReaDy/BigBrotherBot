@@ -260,6 +260,32 @@ def test_the_player_block_is_read_by_field_name(server):  # noqa: ANN001
         client.close()
 
 
+def test_the_block_also_carries_the_team_and_the_squad(server):  # noqa: ANN001
+    """Both were read out of the block and thrown away. They are the only source for a player who
+    has not changed team since the bot started, and they arrive in the engine's own digits because
+    that is what `admin.movePlayer` takes."""
+    client = _client(server)
+    try:
+        players = client.get_players()
+        assert (players[0].team, players[0].squad) == ("1", "0")
+        assert (players[1].team, players[1].squad) == ("2", "1")
+    finally:
+        client.close()
+
+
+def test_a_reply_can_come_back_as_words_rather_than_flattened(server):  # noqa: ANN001
+    """`command` joins the words with spaces, which is right for a `vars.*` answer and lossy for a
+    list of *names*: a Battlefield player may be called `Sgt Pepper`, and once it is one string
+    nothing can tell that from two players."""
+    server.replies["reservedSlotsList.list"] = ["Sgt Pepper", "Bob"]
+    client = _client(server)
+    try:
+        assert client.command_words("reservedSlotsList.list 0") == ["Sgt Pepper", "Bob"]
+        assert client.command("reservedSlotsList.list 0") == "Sgt Pepper Bob"
+    finally:
+        client.close()
+
+
 def test_a_server_that_adds_a_column_does_not_break_it(server):  # noqa: ANN001
     """The block carries its own schema precisely so this is safe. Read names, not positions."""
     server.replies["admin.listPlayers"] = [

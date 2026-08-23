@@ -33,6 +33,12 @@ FROSTBITE_TEAMS = {"0": "", "1": "red", "2": "blue", "3": "green", "4": "yellow"
 #: The server rejects a longer reason, so this is a hard limit rather than good manners.
 MAX_REASON = 80
 
+#: How long a centre-screen message stays up, in seconds. `admin.yell` takes a duration and this
+#: engine's big message is the only one here that does, so the figure has to live somewhere; it is
+#: the classic bot's own default. `poweradminbf3` lets an operator choose a different one for the
+#: `!yell` commands, which is why those pass it rather than reading this.
+BIG_MESSAGE_SECONDS = 10
+
 #: The lowest build of each title these grammars were written against, lifted verbatim from the
 #: classic parsers' own constants (`BF3_REQUIRED_VERSION` and its siblings). They are floors, not
 #: targets: every server anybody is still running is far above them, and they exist to refuse one so
@@ -57,6 +63,21 @@ _BASE = GameProfile(
     # are quoted because this engine takes *word lists* — see b3.net.frostbite.split_command.
     say_template='admin.say "%s" all',
     tell_template='admin.say "%(text)s" player "%(cid)s"',
+    # **This engine has a centre-screen message and the bot was not using it.** With no
+    # `saybig_template` every `say_big` fell back to `say_template`, so `firstkill`'s announcement,
+    # `spree`'s and anything else meant to be unmissable arrived as an ordinary chat line on all six
+    # titles — the failure that leaves no trace anywhere. `admin.yell` is what the classic bot used
+    # here, and Frostbite 1 names the `all` subset explicitly (`bfbc2.py` did) where Frostbite 2
+    # leaves it off; both spellings are the ones that shipped and worked.
+    saybig_template=f'admin.yell "%s" {BIG_MESSAGE_SECONDS} all',
+    # Two things this engine can do to one player that no template above covers. `admin.killPlayer`
+    # kills without touching the scoreboard, which is what makes it an admin verb rather than a
+    # penalty, and `admin.movePlayer` is the only way to change somebody's team — the trailing
+    # `true` forces the kill that a mid-life team change needs.
+    player_verbs={
+        "kill": 'admin.killPlayer "%(cid)s"',
+        "move": 'admin.movePlayer "%(cid)s" %(team)s %(squad)s true',
+    },
     kick_template='admin.kickPlayer "%(cid)s" "%(reason)s"',
     # By GUID, so it holds when they come back under another name — and it lives in the server's own
     # ban list, so it holds when the bot is not running.
@@ -122,7 +143,36 @@ MOH = replace(
 )
 
 #: Frostbite 2 — BF3, BF4, Hardline and MoH Warfighter.
-_FROSTBITE2 = replace(_BASE, rotate_command="mapList.runNextRound")
+#:
+#: The round and yell verbs are declared for this generation only. Frostbite 1 spells its round
+#: control differently and the classic parser for it never used any of them, so there is nothing here
+#: to copy from and nothing is invented: `poweradminbfbc2` and `poweradminmoh` are where those get
+#: read and declared.
+_FROSTBITE2 = replace(
+    _BASE,
+    rotate_command="mapList.runNextRound",
+    saybig_template=f'admin.yell "%s" {BIG_MESSAGE_SECONDS}',
+    server_verbs={
+        # Round control. `round_next` advances without ending the current round properly;
+        # `round_end` needs the winning team, which the server will not decide for itself.
+        "round_next": "mapList.runNextRound",
+        "round_restart": "mapList.restartRound",
+        "round_end": "mapList.endRound %(team)s",
+        # Restarts the game server itself. Named here rather than sent as raw rcon so that a plugin
+        # can *ask* whether the title has it before offering an admin a command that does nothing.
+        "server_shutdown": "admin.shutDown",
+        # The centre-screen message, with the duration the caller chose rather than the profile
+        # default — an operator sets it in `poweradminbf3`. A yell can be aimed at everybody, at a
+        # team, at one squad or at one player, and the subset grammar is the engine's own.
+        "yell": 'admin.yell "%(text)s" %(seconds)s',
+        "yell_team": 'admin.yell "%(text)s" %(seconds)s team %(team)s',
+        "yell_squad": 'admin.yell "%(text)s" %(seconds)s squad %(team)s %(squad)s',
+    },
+    player_verbs={
+        **_BASE.player_verbs,
+        "yell_player": 'admin.yell "%(text)s" %(seconds)s player "%(cid)s"',
+    },
+)
 BF3 = replace(
     _FROSTBITE2,
     name="bf3",
