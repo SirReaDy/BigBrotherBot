@@ -11,7 +11,8 @@ Installed as `b3`; equivalently `python -m b3.cli`.
 | Command | What it does |
 |---|---|
 | `b3 init <dir>` | Create a bot instance for one game server — config, plugin config, `plugins/`, optional systemd unit. See [Running B3](deployment.md) |
-| `b3 -c b3.yaml doctor` | Check this install before starting it: RCON, game log, database, plugins |
+| `b3 -c b3.yaml doctor` | Check this install before starting it: RCON, game log, database, schema, plugins, updates |
+| `b3 update --check` | Is there a newer version? (exits 1 if so) |
 | `b3 -c b3.yaml probe` | Show what this server actually says — the raw `status` reply, which row pattern matched it, the parsed players, and **which log lines this bot does not understand**. Read-only; `--redact` masks addresses and ids for pasting somewhere public |
 | `b3 -c b3.yaml run` | Connect to the server, tail the game log (locally or [over the network](deployment.md#tailing-a-hosted-servers-log)), and run until stopped |
 | `b3 -c b3.yaml replay <logfile>` | Replay a recorded log offline — no server, no RCON. The test/demo harness |
@@ -82,6 +83,37 @@ when you know better.
 Legacy import preserves client ids, group bitmasks, epoch timestamps, and penalty semantics;
 dangling `admin_id` references are nulled and orphaned penalties/aliases are skipped (the old
 MyISAM schema had no foreign keys), with a summary report of exactly what was imported or skipped.
+
+## Updates
+
+| Command | What it does |
+|---|---|
+| `b3 update --check` | Ask now, print the answer, change nothing. Exits **1** when an update exists, 0 when current, 2 when the check failed — so a cron job can mail you and a script can tell those apart |
+| `b3 update` | Show current → latest and install it, after asking |
+| `b3 update -y` | The same without the question, for a script |
+| `b3 update --to v2.0.4` | Install a specific tag. This is also how you roll **back** |
+
+The bot also asks by itself, at most once per `bot.update_check_interval` (a day by default), and says
+something **only when there is an update**. `b3 doctor` shows the same answer as an `update` row, and
+`!b3` mentions it in game — neither of them waits on the network, because both read the answer the
+scheduled check already has.
+
+This replaces the classic bot's update machinery, which was deleted deliberately, and the differences
+are the point: it reads **a repository you name** (`bot.update_remote`, empty to switch the feature
+off) rather than a domain the project stopped controlling; it asks once a day rather than on every
+startup; a *check* never installs anything; and it sends nothing about your server — `git ls-remote`
+reads public tags and does not report who is asking. A private repository takes a token from
+`B3_UPDATE_TOKEN` in the environment, never from the config file, and it is redacted from anything
+printed.
+
+Two things `b3 update` says before it acts, because both surprise people:
+
+- **One code install serves every instance on the machine**, so this updates all of them at once.
+- **Nothing is updated in place.** Files change; the change takes effect when you restart each bot —
+  and then `b3 -c <config> db upgrade`, since a new version may add a migration the bot will refuse to
+  start without.
+
+Inside a container it does not try: the image *is* the version, so it says to pull a new one.
 
 ## Plugins
 

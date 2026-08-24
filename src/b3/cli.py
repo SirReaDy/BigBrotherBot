@@ -439,6 +439,18 @@ def main(argv: list[str] | None = None) -> int:
     db.add_argument("action", choices=["upgrade", "current", "stamp", "head"])
     db.add_argument("--revision", default="head")
 
+    update = sub.add_parser("update", help="check for a newer b3 and install it")
+    update.add_argument(
+        "--check",
+        action="store_true",
+        help="ask and print the answer; change nothing. Exits 1 when an update exists, so a cron "
+        "job can mail you",
+    )
+    update.add_argument(
+        "--to", default="", metavar="TAG", help="install this tag — also how to roll back"
+    )
+    update.add_argument("-y", "--yes", action="store_true", help="do not ask before installing")
+
     imp = sub.add_parser("import-db", help="import a legacy B3 database into this one")
     imp.add_argument("source_url", help="SQLAlchemy URL of the legacy DB (e.g. sqlite:///old.db)")
 
@@ -524,6 +536,8 @@ def main(argv: list[str] | None = None) -> int:
             return _run_plugins(config, conf_dir)
         elif args.cmd == "db":
             _run_db(config, args.action, args.revision)
+        elif args.cmd == "update":
+            return _run_update(config, args.check, args.to, args.yes)
         elif args.cmd == "import-db":
             _run_import(config, args.source_url)
         elif args.cmd == "plugin":
@@ -672,7 +686,7 @@ def _run_doctor(config: Config, conf_dir: Path | None) -> int:
         logging.getLogger(noisy).setLevel(logging.WARNING)
 
     marks = {Status.OK: "  ok  ", Status.WARN: " warn ", Status.FAIL: " FAIL "}
-    checks = run_checks(config, conf_dir)
+    checks = run_checks(config, conf_dir, check_update=True)
     width = max(len(c.name) for c in checks)
     for check in checks:
         print(f"[{marks[check.status]}] {check.name:<{width}}  {check.detail}")
@@ -739,6 +753,57 @@ def _run_db(config: Config, action: str, revision: str) -> None:
         logging.info("current revision: %s", migrate.current_revision(url))
     elif action == "head":
         logging.info("head revision: %s", migrate.head_revision(url))
+
+
+def _run_update(config: Config, check_only: bool, to: str, yes: bool) -> int:
+    """`b3 update` — see b3.core.selfupdate for why this exists at all after deleting the classic's.
+
+    Exit codes are chosen for scripting: `--check` answers 1 when an update exists, so a cron job can
+    mail its output; anything that went wrong is 2, so "there is an update" and "the check failed"
+    cannot be confused by a script.
+    """
+    import subprocess
+
+    from b3.core import selfupdate
+
+    remote = config.bot.update_remote.strip()
+    if not remote:
+        print("no update remote is configured (bot.update_remote is empty)")
+        return 2
+    info = selfupdate.check(remote)
+    print(info.describe())
+    if info.error:
+        return 2
+    if check_only:
+        return 1 if info.available else 0
+    tag = to.strip() or info.latest
+    if not tag:
+        return 2
+    if not to and not info.available:
+        print("nothing to install; name a tag with --to to install one anyway")
+        return 0
+    if selfupdate.in_container():
+        # pip in the running environment is the wrong operation here: the image *is* the version.
+        print("this is a container — pull a new image rather than updating in place")
+        return 2
+    command = selfupdate.install_command(remote, tag)
+    print(f"installing {tag}: {' '.join(command)}")
+    # Said before anything happens, because it is the surprising part: one code install serves every
+    # instance on the machine, so this updates all of them at once.
+    print("this updates every bot instance using this Python environment")
+    if not yes:
+        answer = input("go ahead? [y/N] ").strip().lower()
+        if answer not in ("y", "yes"):
+            print("nothing installed")
+            return 0
+    result = subprocess.run(command, check=False)
+    if result.returncode != 0:
+        print(f"pip exited {result.returncode}; nothing has changed in the running bot")
+        return 2
+    # Never in place: files have changed, and the change takes effect on the next start. And a new
+    # version may add a migration, which §4.8's check will refuse to start without.
+    print(f"installed {tag}. Restart each bot, then run `b3 -c <config> db upgrade` for each one.")
+    return 0
 
 
 def _run_plugin(

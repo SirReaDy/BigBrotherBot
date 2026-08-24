@@ -57,8 +57,15 @@ def run_checks(
     conf_dir: Path | None = None,
     *,
     rcon_factory: "Callable[[], RconClient] | None" = None,
+    check_update: bool = False,
 ) -> list[Check]:
-    """Run every pre-flight check and return the results, in the order they matter."""
+    """Run every pre-flight check and return the results, in the order they matter.
+
+    `check_update` is a parameter, and **off by default**, because that one check talks to a network
+    host *outside this deployment* — which every other check here deliberately does not. `b3 doctor`
+    asks for it; a test suite, an air-gapped install and anything embedding these checks do not, and
+    should not have to know to switch it off.
+    """
     return [
         _check_server(config),
         _check_timezone(config),
@@ -67,6 +74,7 @@ def run_checks(
         _check_game_log(config),
         _check_rcon(config, rcon_factory),
         *_check_plugins(config, conf_dir),
+        *([_check_update(config)] if check_update else []),
     ]
 
 
@@ -167,6 +175,24 @@ def _check_schema(config: Config) -> Check:
             "run: b3 -c <this config> db stamp  if this schema really is up to date",
         )
     return Check("schema", Status.OK, state.describe())
+
+
+def _check_update(config: Config) -> Check:
+    """Whether a newer release exists. The natural home for it: this is the "what is wrong" command.
+
+    Never a failure. Being a version behind is not a broken install, and an unreachable repository is
+    even less of one — reporting either as FAIL would teach an operator to ignore the red rows.
+    """
+    from b3.core import selfupdate
+
+    if not config.bot.update_check or not config.bot.update_remote.strip():
+        return Check("update", Status.OK, "not checked (bot.update_check is off)")
+    info = selfupdate.check(config.bot.update_remote)
+    if info.error:
+        return Check("update", Status.WARN, info.describe())
+    if info.available:
+        return Check("update", Status.WARN, info.describe(), "run: b3 update")
+    return Check("update", Status.OK, info.describe())
 
 
 def _check_game_log(config: Config) -> Check:

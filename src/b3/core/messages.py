@@ -122,6 +122,7 @@ DEFAULT_MESSAGES: dict[str, str] = {
     "player_line": "[{cid}] {name} @{id} level {level} ping {ping}",
     "time": "server time: {time}",
     "b3_version": "{name} {version} — {plugins} plugin(s), {commands} commands",
+    "b3_update": "version {version} is available; the operator can install it with `b3 update`",
     "poked": "{message} {name}!",
     "noticed": "notice added to {name}: {notice}",
     "rules_none": "no rules are configured",

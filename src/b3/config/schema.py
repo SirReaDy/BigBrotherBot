@@ -49,6 +49,21 @@ class BotConfig(BaseModel):
     # NOTE it is attribution, not scoping: a shared database still enforces every ban on every
     # server, which is the reason for sharing one in the first place.
     server_id: str = ""
+    # -- knowing there is a newer version ----------------------------------------------------
+    #
+    # The classic bot polled a domain the project no longer controlled, on every startup, and could
+    # rewrite the installation from what it found. This is deliberately narrower on all three counts:
+    # a repository **you** name, at most once per `update_check_interval`, and a check never installs
+    # anything — `b3 update` is a command somebody types. Nothing about this server is sent: it reads
+    # public tags with `git ls-remote`.
+    #
+    # Empty `update_remote` switches the whole feature off, which is also the default for anyone who
+    # has not asked for it.
+    update_remote: str = "https://github.com/SirReaDy/BigBrotherBot.git"
+    update_check: bool = True
+    # How long an answer is kept before asking again. A day: releases are not hourly, and the answer
+    # is what `!b3` and `b3 doctor` read, so nothing should ever wait on the network to print it.
+    update_check_interval: str = "24h"
     # Minimum level to broadcast a reply with the @ / & prefixes (classic default: 9).
     loud_level: int = 9
     # Minimum level for the silent `/` prefix — the classic `hidecmd_level`.

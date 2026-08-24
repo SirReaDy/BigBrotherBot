@@ -36,6 +36,7 @@ from b3.domain.client import Alias, Client, IpAlias, NEVER_EXPIRES, Penalty, Pen
 from b3.parsers import games, punkbuster
 from b3.parsers.cod import status as status_parser
 from b3.parsers.cod.auth import AuthInfo, AuthManager
+from b3.core.selfupdate import UpdateChecker
 from b3.parsers.profile import GameProfile, MapRequest, VersionQuirk
 from b3.storage.store import SqlAlchemyStorage
 
@@ -152,6 +153,10 @@ class Bot:
         #: The PunkBuster service, once the server has confirmed it is running one. None on every
         #: engine that cannot run it, and on every server that does not.
         self.punkbuster: punkbuster.PunkBuster | None = None
+        #: Whether a newer release exists, asked at most once per `bot.update_check_interval` and
+        #: read by `!b3`. None until `setup_update_check` builds one, and on a bot with the check
+        #: switched off it stays None — which is what makes `update_available()` answer "".
+        self._update_checker: UpdateChecker | None = None
         #: What is known to be odd about this server's build, once it has been asked. None until
         #: `check_version` runs, and on every title that has no build-specific faults.
         self.version_quirk: VersionQuirk | None = None
@@ -253,6 +258,58 @@ class Bot:
                 # Only where there is something to lift. See `Bot.mute` for why the deadline is here
                 # and not in whichever plugin happened to set it.
                 self.scheduler.add(self._lift_expired_mutes, second="*/5", name="Bot.mutes")
+        self.setup_update_check()
+
+    def setup_update_check(self) -> None:
+        """Ask, at most once a day, whether a newer release exists — and only say so if one does.
+
+        The classic checked on every startup and said something every time. This is a scheduled task
+        so it never blocks the run loop, `asyncio.to_thread`'d because `git ls-remote` is a process,
+        and silent when there is nothing to report: a bot that nags an operator who is already
+        up to date teaches them to ignore it.
+        """
+        from b3.core.util import parse_duration
+
+        if not self.config.bot.update_check or not self.config.bot.update_remote.strip():
+            return
+        try:
+            minutes = parse_duration(self.config.bot.update_check_interval)
+        except ValueError:
+            log.warning(
+                "bot.update_check_interval is %r, which is not a duration; using a day",
+                self.config.bot.update_check_interval,
+            )
+            minutes = 24 * 60
+        self._update_checker = UpdateChecker(
+            self.config.bot.update_remote, interval=max(60.0, minutes * 60.0)
+        )
+        self.scheduler.add(self._check_for_update, hour="*", name="Bot.update_check")
+
+    async def _check_for_update(self) -> None:
+        """One pass of the update check, off the run loop's thread."""
+        import asyncio
+
+        checker = self._update_checker
+        if checker is None or not checker.due(self.clock.now()):
+            return
+        info = await asyncio.to_thread(checker.check, self.clock.now())
+        if info.available:
+            log.warning(
+                "b3 %s is available (running %s) — install it with `b3 update`",
+                info.latest,
+                info.current,
+            )
+        elif info.error:
+            # A warning, never a failure: an unreachable repository must not stop a bot from
+            # moderating a game server.
+            log.info("update check: %s", info.error)
+
+    def update_available(self) -> str:
+        """The newer version this bot knows about, or "". Never asks: `!b3` must not wait on git."""
+        checker = self._update_checker
+        if checker is None or checker.last is None or not checker.last.available:
+            return ""
+        return str(checker.last.latest)
 
     def check_version(self) -> None:
         """Read which build this server is, and say so when the build is one with a known fault.

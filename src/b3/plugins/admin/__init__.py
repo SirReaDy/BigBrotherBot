@@ -994,6 +994,13 @@ class AdminPlugin(Plugin):
                 commands=len(self.console.command_registry.all()),
             )
         )
+        # Read, never asked for: the runtime holds the answer from its own scheduled check, so this
+        # command cannot wait on the network to print a version number.
+        update = getattr(self.console, "update_available", None)
+        if callable(update):
+            latest = update()
+            if latest:
+                ctx.reply(self.message("b3_update", version=latest))
 
     # -- bot lifecycle --------------------------------------------------------
 
