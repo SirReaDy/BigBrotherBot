@@ -125,6 +125,14 @@ PLAYLISTS = {
     "pasqrush": "SQRUSH",
 }
 
+#: The one gamemode on this title where teams 3 and 4 are **sides people are playing on**: Squad
+#: Deathmatch puts four squads against each other. Everywhere else this title has two teams, so a
+#: player the server reports on 3 is not on a playing side — which matters because the classic
+#: `bfbc2.py` parser called team 3 the *spectators* while its own gametype table described a
+#: four-squad mode, and only somebody with a live server can say which is right. Nothing here needs
+#: the answer: outside this mode, 3 and 4 are not counted as teams either way.
+FOUR_TEAM_GAMETYPES = ("SQDM",)
+
 #: A setting's name, as the engine spells one. Checked rather than trusted: the value goes out inside
 #: a quoted word, but the *name* is the command itself, so a space in it is a second command.
 CVAR_NAME_RE = re.compile(r"^[A-Za-z][A-Za-z0-9]*(\.[A-Za-z][A-Za-z0-9]*)*$")
@@ -332,17 +340,31 @@ class Poweradminbfbc2Plugin(Plugin):
 
     # -- the teams -----------------------------------------------------------
 
+    def playing_teams(self) -> tuple[str, ...]:
+        """The engine team ids that are *sides* in the mode being played.
+
+        Two, except in Squad Deathmatch, which is four squads fighting each other. See
+        FOUR_TEAM_GAMETYPES for why this is asked rather than assumed.
+        """
+        gametype = (self.console.game.gametype or "").strip().upper()
+        return ("1", "2", "3", "4") if gametype in FOUR_TEAM_GAMETYPES else ("1", "2")
+
     def team_counts(self) -> dict[str, int]:
-        """How many players are on each team, keyed by the engine's team id.
+        """How many players are on each playing team, keyed by the engine's team id.
 
         Counted from the bot's own client list rather than asked of the server. The classic asked —
         and then dropped team 2 into team 1's list, so the answer it got back was wrong in a way no
         amount of asking would have fixed.
+
+        Only the sides this mode has are counted. A player the server puts on team 3 outside Squad
+        Deathmatch is at the deploy screen or watching, and counting them as a team gives the
+        balancer a gap it can never close.
         """
+        playing = self.playing_teams()
         counts: dict[str, int] = {}
         for client in self.console.clients.connected():
             engine_team = self.console.team_id(client.team or "")
-            if engine_team:
+            if engine_team in playing:
                 counts[engine_team] = counts.get(engine_team, 0) + 1
         return counts
 
@@ -405,11 +427,16 @@ class Poweradminbfbc2Plugin(Plugin):
         return engine_team
 
     def other_team(self, client: Client) -> str:
-        """The team a `!pachangeteam` would put this player on, in the engine's spelling."""
+        """The team a `!pachangeteam` would put this player on, in the engine's spelling.
+
+        A rotation rather than a swap of 1 and 2, for the same reason `poweradminbf3` uses one: in
+        Squad Deathmatch there are four sides, and "the other team" has to mean the next one.
+        """
         current = self.console.team_id(client.team or "")
-        if not current or not current.isdigit() or current == "0":
+        playing = self.playing_teams()
+        if current not in playing:
             return ""
-        return "2" if current == "1" else "1"
+        return str((int(current) % len(playing)) + 1)
 
     @command("pateams", level=20, alias="teams")
     def cmd_pateams(self, ctx: CommandContext) -> None:

@@ -230,6 +230,50 @@ async def test_the_balancer_can_be_switched_on_and_off_in_game(console):
     assert plugin.settings["teambalance"] is False
 
 
+# -- which teams this mode has -------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_only_the_sides_this_mode_has_are_counted(console):
+    """The classic `bfbc2.py` parser called team 3 the *spectators*, while its own gametype table
+    described Squad Deathmatch as four squads fighting each other. Only somebody with a live server
+    can say which is right — and nothing here needs the answer, because outside that one mode 3 is
+    not a side either way."""
+    plugin = _plugin(console, teambalance=True)
+    console.game.gametype = "RUSH"
+    _client(console, "A", team="red")
+    _client(console, "B", team="blue")
+    for name in ("W1", "W2", "W3"):
+        _client(console, name, team="green")  # engine team 3
+
+    assert plugin.team_counts() == {"1": 1, "2": 1}
+    assert plugin.balance() is False  # not a gap it could ever close
+
+
+@pytest.mark.asyncio
+async def test_squad_deathmatch_really_does_have_four_sides(console):
+    plugin = _plugin(console, teambalance=True)
+    console.game.gametype = "SQDM"
+    _client(console, "A", team="red")
+    _client(console, "B", team="blue")
+    _client(console, "C", team="green")
+    _client(console, "D", team="yellow")
+
+    assert plugin.team_counts() == {"1": 1, "2": 1, "3": 1, "4": 1}
+
+
+@pytest.mark.asyncio
+async def test_the_other_team_rotates_where_there_are_four_of_them(console):
+    plugin = _plugin(console)
+    console.game.gametype = "SQDM"
+    third = _client(console, "Third", team="green")
+
+    assert plugin.other_team(third) == "4"
+
+    console.game.gametype = "CONQUEST"
+    assert plugin.other_team(third) == ""  # not a side in this mode, so there is no other one
+
+
 # -- moving one player -----------------------------------------------------------------------------
 
 
