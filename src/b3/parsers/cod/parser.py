@@ -52,7 +52,23 @@ class CodParser(Parser):
     ) -> None:
         self.auth = auth
         self._warned_about_guids = False
+        #: Renames noticed while handling the current line, drained by `parse_line`. This engine has
+        #: no line that *announces* a name change — see `_note_rename` — so it is spotted wherever a
+        #: name arrives, which is inside a handler that is already producing its own event.
+        self._renames: list[Event] = []
         super().__init__(profile, clients)
+
+    def parse_line(self, line: str) -> list[Event]:
+        """The line's own events, with any rename it revealed in front of them.
+
+        In front, because that is the order things happened: the player was already called something
+        else when they typed this, and a plugin reacting to the chat should see the current name.
+        """
+        events = super().parse_line(line)
+        if not self._renames:
+            return events
+        renames, self._renames = self._renames, []
+        return [*renames, *events]
 
     # -- helpers -----------------------------------------------------------
 
@@ -74,12 +90,44 @@ class CodParser(Parser):
             self.clients.add(client)
         else:
             if name:
-                client.name = name
+                self._note_rename(client, name)
             if validated and not client.guid:
                 client.guid = validated
             if raw and self.profile.is_bot_guid(raw):
                 client.is_bot = True
         return client
+
+    def _note_rename(self, client: Client, name: str) -> None:
+        """Take a name off a log line, and publish a rename when it really is one.
+
+        **This engine has no line that announces a name change.** Quake 3 has one — the userinfo
+        string — and Source has one; a Call of Duty server simply starts writing the new name on the
+        next line about that player. So the only place to notice is here, where every one of the
+        seven handlers ends up, which is also why this needs to be careful rather than eager: without
+        it, `censor` cannot catch somebody who connects cleanly and then changes their name,
+        `nickreg` cannot catch somebody putting on an admin's name mid-session, and `afk` does not
+        count renaming as a sign of life. All three had a dead subscriber on this whole family.
+
+        Two things are deliberately **not** renames:
+
+        * **The first name a slot reports.** That is the player arriving, which `CLIENT_JOIN` and
+          `CLIENT_AUTH` already say.
+        * **A name that is a prefix of the one we hold, or the other way round.** Kill and damage
+          lines carry a name the server has truncated to fit its own buffer, so `Longnickname`
+          becomes `Longnick` and back again on the next full line. Firing a rename on that would
+          report two renames per kill, for ever, to three plugins that act on them.
+        """
+        previous = client.name
+        client.name = name
+        if not previous or previous == name:
+            return
+        if previous.startswith(name) or name.startswith(previous):
+            # A truncation, not a rename. Keep the longer form: it is the one a `!ban` has to match.
+            if len(name) < len(previous):
+                client.name = previous
+            return
+        log.debug("cod: slot %s is now called %r (was %r)", client.cid, name, previous)
+        self._renames.append(Event(EventType.CLIENT_NAME_CHANGE, data=name, client=client))
 
     def _canonical_team(self, raw: str) -> str | None:
         if not raw:

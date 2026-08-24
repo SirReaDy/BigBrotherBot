@@ -10,6 +10,10 @@ GUID = "0123456789abcdef0123456789abcdef"  # 32 hex chars (valid cod4 guid)
 GUID2 = "fedcba9876543210fedcba9876543210"
 
 
+def _parser() -> CodParser:
+    return CodParser(COD4)
+
+
 def parser() -> CodParser:
     return CodParser(COD4)
 
@@ -268,3 +272,83 @@ def test_a_team_change_line_is_not_swallowed_by_the_action_pattern():
 
 def test_an_unmapped_two_letter_line_is_ignored_not_guessed():
     assert cod5_parser().parse_line(f"zz;{GUID};3;allies;Nobody") == []
+
+
+# -- renaming, which this engine never announces -------------------------------------------------
+
+
+def test_a_rename_is_published_even_though_no_line_says_so():
+    """Quake 3 has a userinfo line and Source has one; a Call of Duty server simply starts writing
+    the new name. Until this, `censor` could not catch somebody who connected cleanly and then
+    changed their name, `nickreg` could not catch somebody putting on an admin's name mid-session,
+    and `afk` did not count a rename as a sign of life — three dead subscribers on this family."""
+    parser = _parser()
+    parser.parse_line("J;110000100000000;3;Joe")
+
+    events = parser.parse_line("say;110000100000000;3;Villain;hello")
+
+    assert [event.type for event in events] == [
+        EventType.CLIENT_NAME_CHANGE,
+        EventType.CLIENT_SAY,
+    ]
+    rename = events[0]
+    assert rename.data == "Villain"
+    assert rename.client is not None and rename.client.name == "Villain"
+
+
+def test_the_first_name_a_slot_reports_is_not_a_rename():
+    """That is the player arriving, which the join already says."""
+    parser = _parser()
+    events = parser.parse_line("J;110000100000000;3;Joe")
+
+    assert [event.type for event in events] == [EventType.CLIENT_JOIN]
+
+
+def test_a_truncated_name_on_a_kill_line_is_not_a_rename():
+    """Kill and damage lines carry a name the server has cut to fit its own buffer, so a long
+    nickname arrives short and then long again. Reporting that would be two renames per kill, for
+    ever, to three plugins that act on them."""
+    parser = _parser()
+    parser.parse_line("J;110000100000000;3;Longnickname")
+    parser.parse_line("J;110000100000001;4;Bob")
+
+    events = parser.parse_line(
+        "K;110000100000001;4;axis;Bob;110000100000000;3;allies;Longnick;ak47;100;MOD_RIFLE_BULLET;head"
+    )
+
+    assert EventType.CLIENT_NAME_CHANGE not in [event.type for event in events]
+    # ...and the *longer* form is kept, because that is the one a `!ban` has to match.
+    assert parser.clients.get_by_cid("3").name == "Longnickname"
+
+
+def test_the_full_name_arriving_after_a_truncated_one_is_not_a_rename_either():
+    parser = _parser()
+    parser.parse_line("J;110000100000000;3;Longnick")
+    parser.clients.get_by_cid("3").name = "Longnick"
+
+    events = parser.parse_line("say;110000100000000;3;Longnickname;hi")
+
+    assert EventType.CLIENT_NAME_CHANGE not in [event.type for event in events]
+    assert parser.clients.get_by_cid("3").name == "Longnickname"
+
+
+def test_a_rename_comes_before_what_the_line_was_about():
+    """A plugin reacting to the chat should see the name they are called *now*."""
+    parser = _parser()
+    parser.parse_line("J;110000100000000;3;Joe")
+
+    events = parser.parse_line("say;110000100000000;3;Villain;!help")
+
+    assert events[0].type is EventType.CLIENT_NAME_CHANGE
+    assert events[1].client is events[0].client
+
+
+def test_two_lines_from_the_same_player_report_one_rename():
+    """The queue is drained per line, so a name that stays changed is not re-announced."""
+    parser = _parser()
+    parser.parse_line("J;110000100000000;3;Joe")
+    parser.parse_line("say;110000100000000;3;Villain;first")
+
+    events = parser.parse_line("say;110000100000000;3;Villain;second")
+
+    assert [event.type for event in events] == [EventType.CLIENT_SAY]
