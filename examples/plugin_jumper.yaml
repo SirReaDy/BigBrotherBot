@@ -1,0 +1,61 @@
+# jumper — Urban Terror jump servers: timed runs, records per way, and a demo of each one.
+#
+# Point at it from the main config (Urban Terror **4.2 or later**, which is where the jump-run lines
+# and server-side demos exist):
+#
+#   plugins:
+#     - name: urtserversidedemo          # optional, but see demo_record below
+#       config: "@conf/plugin_urtserversidedemo.yaml"
+#     - name: jumper
+#       config: "@conf/plugin_jumper.yaml"
+#
+# What it adds:
+#
+#   !record [<player>] [<map>]      your own — or somebody's — best times on a map
+#   !maprecord [<map>]              the best run on each way
+#   !topruns [<map>]                the top three on each way
+#   !delrecord [<player>] [<map>]   remove records
+#   !setway <way> <name>            give a way a name instead of a number
+#   !mapinfo [<map>]                who built the map, when, how hard it is
+#
+# Levels are the classic plugin's and are set in code (`!setway` at senioradmin, the rest open to
+# everybody); `!cmdlevel <command> <level>` changes one at runtime.
+#
+# A jump map is an obstacle course: the server times a player from the first pad to the last and
+# reports it, and a map usually has several *ways* through it. Every run that beats the runner's own
+# best is kept, a run that beats everybody's is announced to the whole server, and the times are
+# stored in this plugin's own two tables — shared across servers pointed at one database, because a
+# community with two jump servers wants one leaderboard.
+#
+# **`!map`, `!maps` and `!setnextmap` are the admin plugin's.** The classic replaced all three with
+# its own versions so they would skip the stock maps; two plugins owning one command is what the
+# command registry exists to prevent, and `skip_standard_maps` below already keeps a stock map off
+# the server within seconds of it loading.
+
+settings:
+  # Record a server-side demo of every attempt, keeping it only where the run set a record. Needs the
+  # `urtserversidedemo` plugin loaded; without it this is switched off with a line in the log rather
+  # than failing quietly, and the runs are still timed.
+  #
+  # Deleting a demo needs this bot to be on the **same machine** as the game server, because the
+  # server is what writes the file — it is found through `fs_basepath`/`fs_homepath`/`fs_game`. Where
+  # the bot is elsewhere the demos are kept and that is said once, not once per run.
+  demo_record: true
+
+  # Cycle off a map Urban Terror ships, which on a jump server is a map nobody wanted — usually the
+  # result of a vote. At most five in a row: a server whose whole rotation is stock maps would
+  # otherwise cycle for ever, so after five one gets played and the count starts again.
+  skip_standard_maps: true
+
+  # Level needed to delete somebody *else's* records. Anybody may delete their own, and nobody may
+  # delete the records of somebody above them.
+  min_level_delete: senioradmin
+
+  # Where `!mapinfo` and the map greeting get their information: who built a map, when it came out,
+  # how many ways and jumps it has, how hard it is. The classic hardcoded this URL — the Urt Jumpers
+  # community's public catalogue, which is what makes the feature possible at all.
+  #
+  # **Empty it to have the bot talk to nobody.** `!mapinfo` then says it has nothing to answer with,
+  # and everything else works as before. Nothing about your players is sent either way: this is a
+  # download of a public map list, fetched every six hours off the bot's own thread.
+  catalogue_url: "http://api.urtjumpers.com/?key=B3urtjumpersplugin&liste=maps&format=json"

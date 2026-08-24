@@ -322,6 +322,8 @@ async def test_a_grant_is_never_matched_against_an_alias(console):
 
 def test_a_storage_that_keeps_nothing_is_said_out_loud(console, caplog):
     """ "I set that level yesterday" and "the bot restarted" are otherwise the same sentence."""
+    # A backend that offers no SQLAlchemy engine, which is a real case and the one this is about.
+    console.storage.gives_engine = False
     with caplog.at_level("WARNING"):
         plugin = _cmdmanager(console)
 

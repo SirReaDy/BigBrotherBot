@@ -34,6 +34,34 @@ class FakeStorage:
         #: What "now" is for penalty expiry. Tests that care set it; the default keeps every
         #: unexpired penalty active.
         self.now_epoch = 0
+        self._engine: object | None = None
+        #: Whether this storage offers an engine at all. A backend that does not is a real case —
+        #: a plugin that owns tables has to degrade loudly rather than break — so a test can say so
+        #: by setting this False before it starts the plugin.
+        self.gives_engine = True
+
+    @property
+    def engine(self) -> object | None:
+        """A real, in-memory SQLAlchemy engine, created on first use.
+
+        `Plugin.storage_engine()` is how a plugin owns its own tables (`callvote`'s vote history,
+        `jumper`'s records), and a fake with no engine forced those plugins to be tested against a
+        whole `Bot` — so the half of them that is *not* about persistence was tested through three
+        more layers than it needed. In memory, so each test gets its own empty database and nothing
+        reaches a disk.
+        """
+        if not self.gives_engine:
+            return None
+        if self._engine is None:
+            from sqlalchemy import create_engine
+            from sqlalchemy.pool import StaticPool
+
+            # One connection, shared: `:memory:` is per-connection, so a pool would hand out
+            # databases that cannot see each other's tables.
+            self._engine = create_engine(
+                "sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool
+            )
+        return self._engine
 
     def has_superadmin(self) -> bool:
         return self._superadmin

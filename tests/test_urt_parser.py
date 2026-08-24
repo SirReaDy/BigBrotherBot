@@ -347,3 +347,53 @@ def test_a_departing_player_takes_their_wound_with_them(parser):  # noqa: ANN001
     kill = one(parser, "Kill: 7 12 19: ercan killed Somebody by UT_MOD_M4")
 
     assert kill.data.hit_location == ""
+
+
+# -- jump runs -------------------------------------------------------------
+#
+# Held back from the parser until `jumper` was ported, on the rule that an event nothing reads is a
+# claim nobody checks. Every line here is one the classic `iourt42.py` carries in its comments, and
+# the two-map sequence in the middle of `tests/plugins/jumper/test_commands.py` drives exactly these.
+
+
+def test_a_jump_run_starting(parser):  # noqa: ANN001
+    ev = one(parser, "ClientJumpRunStarted: 7 - way: 1")
+
+    assert ev.type is EventType.CLIENT_JUMP_RUN_START
+    assert ev.client is not None and ev.client.cid == "7"
+    assert ev.data == {"way_id": 1}
+
+
+def test_a_jump_run_stopping_carries_the_time_in_milliseconds(parser):  # noqa: ANN001
+    ev = one(parser, "ClientJumpRunStopped: 7 - way: 1 - time: 537000")
+
+    assert ev.type is EventType.CLIENT_JUMP_RUN_STOP
+    assert ev.data == {"way_id": 1, "way_time": 537000}
+
+
+def test_a_jump_run_cancelled(parser):  # noqa: ANN001
+    ev = one(parser, "ClientJumpRunCanceled: 12 - way: 3")
+
+    assert ev.type is EventType.CLIENT_JUMP_RUN_CANCEL
+    assert ev.data == {"way_id": 3}
+
+
+def test_an_attempt_count_is_read_where_the_server_states_one(parser):  # noqa: ANN001
+    """`attempt: 1 of 5` appears only on a server that limits attempts, so it is absent from the
+    payload rather than invented for the ones that do not."""
+    started = one(parser, "ClientJumpRunStarted: 7 - way: 2 - attempt: 1 of 5")
+    stopped = one(parser, "ClientJumpRunStopped: 7 - way: 2 - time: 84000 - attempt: 2 of 5")
+
+    assert started.data == {"way_id": 2, "attempt": 1, "attempts": 5}
+    assert stopped.data == {"way_id": 2, "way_time": 84000, "attempt": 2, "attempts": 5}
+
+
+def test_a_jump_run_by_a_slot_nobody_is_in_is_dropped(parser):  # noqa: ANN001
+    assert parser.parse_line("ClientJumpRunStarted: 9 - way: 1") == []
+
+
+def test_the_freeze_tag_lines_are_still_not_parsed(parser):  # noqa: ANN001
+    """And deliberately: nothing in the classic tree reads them — there is no freeze-tag plugin among
+    its 49 — so they would be patterns and event types with no reader."""
+    assert parser.parse_line("Freeze: 12 7 16: BSTHanzo[FR] froze ercan by UT_MOD_SPAS") == []
+    assert parser.parse_line("ClientSavePosition: 7 - 335.384887 - 67.469154 - -23.875000") == []

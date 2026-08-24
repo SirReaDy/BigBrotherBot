@@ -123,6 +123,19 @@ class EventType(Enum):
     #: A statistic rather than an outcome: the capture itself is already a CLIENT_ACTION.
     CLIENT_FLAG_CAPTURE_TIME = auto()
 
+    # --- timed runs -------------------------------------------------------
+    #
+    # A *jump run* is a timed course through a map, and Urban Terror is the one family here that
+    # reports one. These three were deliberately left out of the parser until a plugin wanted them —
+    # `jumper` is that plugin — because an event nothing reads is a claim nobody checks.
+    #: A player set off on a course. `data` carries `way_id` and, where the server states them, the
+    #: attempt number and how many attempts are allowed.
+    CLIENT_JUMP_RUN_START = auto()
+    #: They finished it. `data` adds `way_time`, in **milliseconds**, which is what a record is.
+    CLIENT_JUMP_RUN_STOP = auto()
+    #: They gave up, fell, or were interrupted. Same payload as the start.
+    CLIENT_JUMP_RUN_CANCEL = auto()
+
     # --- admin / plugin lifecycle ----------------------------------------
     ADMIN_COMMAND = auto()
     PLUGIN_ENABLED = auto()

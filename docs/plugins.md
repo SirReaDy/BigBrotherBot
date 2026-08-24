@@ -43,6 +43,7 @@ list, each with an optional config of its own (see `examples/`):
 | `poweradminmoh` | the 2010 Medal of Honor's teams, scrambler, match mode and reserved slots | `!teams` `!teambalance` `!changeteam` `!spect` `!swap` `!kill` `!scramble` `!scramblemode` `!autoscramble` `!match` `!ready` `!runnextround` `!setnextmap` `!reserveslot` … |
 | `poweradminhf` | Homefront's teams, match mode and its three player verbs | `!pateams` `!pateambalance` `!paautobalance` `!pachangeteam` `!paspectate` `!pakill` `!pamatch` `!ready` `!payell` `!paident` `!panextmap` |
 | `urtserversidedemo` | records a player from an Urban Terror 4.2 server, and tells you the filename | `!startserverdemo` `!stopserverdemo` |
+| `jumper` | timed runs on Urban Terror jump maps: records per way, and a demo of each run | `!record` `!maprecord` `!topruns` `!delrecord` `!setway` `!mapinfo` |
 
 ### censor — bad language, and the escalating mute
 
@@ -677,6 +678,44 @@ The verbs belong to the title: `record_demo`/`record_stop` and `record_all`/`rec
 declared on 4.2 and 4.3 and **not on 4.1**, so the plugin asks the profile rather than the server and
 switches itself off with a reason on the older build. Config:
 `examples/plugin_urtserversidedemo.yaml`.
+
+### jumper — a leaderboard for an obstacle course
+
+A jump map is a course rather than a fight: the server times a player from the first pad to the last
+and reports it, and a map usually has several *ways* through it. So a jump server's players are there
+for the leaderboard, which is what this plugin keeps. Every run that beats the runner's own best is
+stored, a run that beats everybody's is announced to the whole server, `!record` / `!maprecord` /
+`!topruns` read them back, `!setway 3 the roof route` gives a way a name instead of a number, and
+`!mapinfo` says who built the map. With `urtserversidedemo` loaded it records a demo of every attempt
+and deletes it again unless the run was worth keeping.
+
+This is the last of the classic tree's plugins, and the three log lines it needs
+(`ClientJumpRunStarted/Stopped/Canceled`) were deliberately left out of the parser until it was
+written — an event nothing reads is a claim nobody checks. The freeze-tag and save-position lines
+stay out for the same reason: nothing in the classic tree reads those either.
+
+**A player's typing reached SQL.** All twelve of its queries were `%`-formatted strings, and two take
+text a player chose: `!setway 1 <name>` went into `INSERT INTO jumpways VALUES (NULL, '%s', '%d',
+'%s')`. This owns its two tables through the ORM and contains no SQL. **`!topruns` raised on the case
+it was written to handle**: its warning for a record whose player has been deleted read
+`r1['client_id']` off a row selected as `SELECT DISTINCT way_id`, so the branch meant to survive that
+gave a `KeyError` instead. Records are keyed on a player's database id, which the classic wrote as
+`None` for anybody not yet authenticated — rows nothing could read back.
+
+The rest is the usual shape. The map greeting ran on a `threading.Timer(30)` and the map catalogue was
+fetched over **HTTP on the bot's own thread** at every map change and inside `!mapinfo`, so a slow
+endpoint stopped the bot answering; here the greeting is a deadline on one scheduled pass and the
+fetch is a scheduled coroutine handing the blocking call to a worker thread, with the URL as a setting
+an operator can empty. Release dates went through `strftime('%s')`, which is a glibc extension — every
+Windows operator lost the date and the greeting that quotes it. And `!setway`'s usage line named
+`!help jmpsetway`, a command from an older release.
+
+**`!map`, `!maps` and `!setnextmap` are not overridden.** The classic replaced the admin plugin's
+versions of all three, by reading their level and alias out of the command table, unregistering them
+and registering its own, so they would skip the stock maps. Two plugins owning one command name is
+what the registry exists to prevent, and `skip_standard_maps` already cycles a stock map off the
+server within seconds — at most five in a row, since a rotation full of them would otherwise cycle for
+ever. Config: `examples/plugin_jumper.yaml`.
 
 ### poweradmincod7 — Black Ops, where you cannot just load a map
 

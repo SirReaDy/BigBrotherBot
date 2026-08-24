@@ -11,6 +11,9 @@ On top of the lines every Quake3 server writes, Urban Terror reports:
 * ``Bomb ...`` / ``Bombholder is`` / ``Pop!`` — bomb mode.
 * ``Callvote:`` / ``Vote:`` / ``VotePassed:`` / ``VoteFailed:`` — the voting system.
 * ``ClientSpawn:``, ``Assist:`` (4.3 only) and ``SurvivorWinner:``.
+* ``ClientJumpRunStarted/Stopped/Canceled:`` — a timed run through a jump course, which is what a
+  whole genre of Urban Terror server exists for. Held back until `jumper` was ported, on the rule
+  that an event nothing reads is a claim nobody checks.
 
 The two lookup tables below come from the classic ``iourt41.py``/``iourt42.py``: hit lines number
 weapons differently from kill lines (``19`` is the LR300 on one scale and another weapon on the
@@ -18,8 +21,9 @@ other), and a hit's damage is a weapon×hit-location lookup because the line car
 figure.
 
 Not implemented: UrT's ``auth`` identity service (a separate socket to Frozen Sand's account
-servers, which needs a live server to confirm it still answers), and the freeze-tag and jump-run
-lines, which exist to serve plugins that have not been ported.
+servers, which needs a live server to confirm it still answers), and the freeze-tag and
+save/load-position lines — **nothing in the classic tree reads those**, there being no freeze-tag
+plugin among its 49, so they would be five patterns and five event types with no reader.
 """
 
 from __future__ import annotations
@@ -253,6 +257,50 @@ class UrtParser(Q3Parser):
         if client is None:
             return None
         return Event(EventType.CLIENT_SPAWN, client=client)
+
+    # -- jump runs -----------------------------------------------------------
+    #
+    # A jump run is a timed course, and the three lines are one shape with `time:` added to the
+    # middle one. `attempt: 1 of 5` is present only on a server that limits attempts, so it is
+    # optional in the pattern and absent from the payload rather than guessed at.
+
+    @handles(
+        r"^ClientJumpRunStarted:\s*(?P<cid>\d+)\s+-\s+way:\s*(?P<way_id>\d+)"
+        r"(?:\s+-\s+attempt:\s*(?P<num>\d+)\s+of\s+(?P<max>\d+))?\s*$"
+    )
+    def on_jump_run_started(self, m: "re.Match[str]") -> Event | None:
+        """``ClientJumpRunStarted: 0 - way: 1`` (or ``… - attempt: 1 of 5``)."""
+        return self._jump_run(EventType.CLIENT_JUMP_RUN_START, m)
+
+    @handles(
+        r"^ClientJumpRunStopped:\s*(?P<cid>\d+)\s+-\s+way:\s*(?P<way_id>\d+)"
+        r"\s+-\s+time:\s*(?P<way_time>\d+)"
+        r"(?:\s+-\s+attempt:\s*(?P<num>\d+)\s+of\s+(?P<max>\d+))?\s*$"
+    )
+    def on_jump_run_stopped(self, m: "re.Match[str]") -> Event | None:
+        """``ClientJumpRunStopped: 0 - way: 1 - time: 12345`` — the time is in milliseconds."""
+        return self._jump_run(EventType.CLIENT_JUMP_RUN_STOP, m)
+
+    @handles(
+        r"^ClientJumpRunCanceled:\s*(?P<cid>\d+)\s+-\s+way:\s*(?P<way_id>\d+)"
+        r"(?:\s+-\s+attempt:\s*(?P<num>\d+)\s+of\s+(?P<max>\d+))?\s*$"
+    )
+    def on_jump_run_canceled(self, m: "re.Match[str]") -> Event | None:
+        """``ClientJumpRunCanceled: 0 - way: 1`` — they fell, gave up, or were interrupted."""
+        return self._jump_run(EventType.CLIENT_JUMP_RUN_CANCEL, m)
+
+    def _jump_run(self, etype: EventType, m: "re.Match[str]") -> Event | None:
+        """The three lines share everything but their name and the one extra field."""
+        client = self.clients.get_by_cid(m["cid"])
+        if client is None:
+            return None
+        data: dict[str, int] = {"way_id": int(m["way_id"])}
+        if "way_time" in m.groupdict() and m["way_time"] is not None:
+            data["way_time"] = int(m["way_time"])
+        if m["num"] is not None and m["max"] is not None:
+            data["attempt"] = int(m["num"])
+            data["attempts"] = int(m["max"])
+        return Event(etype, data=data, client=client)
 
     # -- objectives ----------------------------------------------------------
 

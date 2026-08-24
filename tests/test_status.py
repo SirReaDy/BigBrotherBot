@@ -278,6 +278,8 @@ async def test_the_tables_are_written_when_asked_for(tmp_path):
 
 
 def test_without_an_engine_the_tables_are_skipped_and_said_so(console, tmp_path, caplog):
+    # A backend that offers no SQLAlchemy engine, which is a real case and the one this is about.
+    console.storage.gives_engine = False
     with caplog.at_level("WARNING"):
         plugin = _status(console, tmp_path, save_to_database=True)
 
