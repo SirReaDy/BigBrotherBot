@@ -77,6 +77,21 @@ somebody to stop does not stop them, and they are not reading the chat a warning
 the engine's `mute` verb; where there is none the section is refused at startup with a reason and radio
 spam is warned about like chat. Config: `examples/plugin_spamcontrol.yaml`.
 
+### pingwatch — the connection that is ruining it for everybody
+
+A player whose ping sits at 800 is unhittable and unkillable, and `!ci <player>` is the command an
+admin reaches for. The rule that makes the automatic half usable is **hysteresis**: nobody is removed
+until they have stayed over `max_ping` for `max_ping_duration` seconds, because every connection
+spikes. A ping of 999 means the engine has lost them altogether — "connection interrupted" — which is
+announced differently, since it is not something the player did. Nothing is checked for a couple of
+minutes after startup or a map change: every ping spikes while a map loads, and a bot that kicks half
+the server after each rotation is worse than one that misses a lagger. Players at or above
+`kick_level` are left alone.
+
+The poll is a scheduled coroutine rather than the classic's thread, and it reads the player list the
+bot already keeps warm, so a short interval does not hammer the server.
+Config: `examples/plugin_pingwatch.yaml`.
+
 ### tk — team damage
 
 Hurting a teammate earns points **against that teammate**, scaled by the attacker's level: a kill by
