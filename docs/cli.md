@@ -17,6 +17,7 @@ Installed as `b3`; equivalently `python -m b3.cli`.
 | `b3 -c b3.yaml run` | Connect to the server, tail the game log (locally or [over the network](deployment.md#tailing-a-hosted-servers-log)), and run until stopped |
 | `b3 -c b3.yaml replay <logfile>` | Replay a recorded log offline — no server, no RCON. The test/demo harness |
 | `b3 games` | Every valid `server.game`, grouped by engine, marking which need no game log. Needs no config |
+| `b3 version` | This version and the newest released one, side by side. Needs no config |
 | `b3 completion [shell]` | Print the one line that gives your shell tab completion for all of this. Needs no config |
 | `b3 -c b3.yaml plugins` | Every plugin available here — bundled, installed for this server, installed in the shared pool — and which ones this config runs |
 
@@ -166,15 +167,39 @@ a virtualenv symlinked onto `PATH`.
 
 | Command | What it does |
 |---|---|
+| `b3 version` | Print this version and the latest release. Always exits 0 — reading a version must not fail a script because a release exists. `--refresh` asks the remote instead of using the answer from the last week |
 | `b3 update --check` | Ask now, print the answer, change nothing. Exits **1** when an update exists, 0 when current, 2 when the check failed — so a cron job can mail you and a script can tell those apart |
 | `b3 update` | Show current → latest and install it, after asking |
 | `b3 update -y` | The same without the question, for a script |
 | `b3 update --to v2.0.4` | Install a specific tag. This is also how you roll **back** |
 
-The bot also asks by itself, at most once per `bot.update_check_interval` (a day by default), and says
-something **only when there is an update**. `b3 doctor` shows the same answer as an `update` row, and
-`!b3` mentions it in game — neither of them waits on the network, because both read the answer the
-scheduled check already has.
+**You do not have to ask.** After any command finishes, one line goes to stderr when a newer release
+exists:
+
+```console
+$ b3 -c b3.yaml plugins
+... the command's own output ...
+b3 2.1.0 is available (running 2.0.0) — run `b3 update` to install it
+```
+
+That line costs nothing, which is the only reason it is acceptable to print it at all. It **reads a
+remembered answer** — a small JSON file in your cache directory (`~/.cache/b3/update.json`, or
+`%LOCALAPPDATA%\b3\update.json` on Windows) written by whatever asked last: the running bot's daily
+check, `b3 doctor`, or `b3 version`. Only when that answer is more than **a week** old does a command
+pay for a `git ls-remote`, with a five-second timeout, *after* it has finished its own work — so
+nothing you type is ever waiting on the network before it answers you.
+
+Four things it will not do: interrupt output (it comes last, on stderr, so `b3 games | grep cod` is
+unaffected); talk to a pipe (only a terminal gets it — a cron job that wants this uses
+`b3 update --check`, whose exit code is built for exactly that); repeat itself on the commands that
+already report it (`update`, `version`, `doctor`, `run`, `completion`); or say anything when there is
+no update, because being current is not news. `B3_NO_UPDATE_NOTICE=1` silences it for a shell, and
+`bot.update_check: false` switches checking off entirely.
+
+The bot also asks by itself while it runs, at most once per `bot.update_check_interval` (a day by
+default), and says something **only when there is an update**. `b3 doctor` shows the same answer as an
+`update` row, and `!b3` mentions it in game — none of them waits on the network, because all of them
+read the answer some earlier check already wrote down.
 
 This replaces the classic bot's update machinery, which was deleted deliberately, and the differences
 are the point: it reads **a repository you name** (`bot.update_remote`, empty to switch the feature

@@ -144,7 +144,12 @@ def plugin_name_from_url(url: str) -> str:
 class Git:
     """The git commands this module needs. A seam: tests can substitute a fake."""
 
-    def run(self, *args: str, cwd: Path | None = None) -> str:
+    def run(self, *args: str, cwd: Path | None = None, timeout: int | None = None) -> str:
+        """Run one git command. `timeout` overrides the three minutes a clone is allowed.
+
+        A caller somebody is *waiting on* — the update line a command prints — passes a few seconds
+        instead: on an offline machine the difference is a terminal that pauses and one that hangs.
+        """
         cmd = ["git", *args]
         log.debug("running %s", " ".join(cmd))
         try:
@@ -154,7 +159,7 @@ class Git:
                 capture_output=True,
                 text=True,
                 check=False,
-                timeout=180,
+                timeout=180 if timeout is None else timeout,
             )
         except FileNotFoundError as exc:  # git not installed
             raise PluginInstallError("git is not available on PATH") from exc
@@ -167,8 +172,8 @@ class Git:
             )
         return proc.stdout
 
-    def remote_tags(self, url: str) -> list[str]:
-        out = self.run("ls-remote", "--tags", "--refs", url)
+    def remote_tags(self, url: str, timeout: int | None = None) -> list[str]:
+        out = self.run("ls-remote", "--tags", "--refs", url, timeout=timeout)
         return [line.rsplit("/", 1)[-1] for line in out.splitlines() if "refs/tags/" in line]
 
     def clone(self, url: str, ref: str, dest: Path) -> None:

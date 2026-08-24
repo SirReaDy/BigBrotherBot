@@ -29,11 +29,13 @@ release by definition, and telling them to downgrade would be worse than saying 
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 import re
 import subprocess
 import sys
+import time
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -54,6 +56,24 @@ RELEASE_TAG_RE = re.compile(r"^v?\d+(\.\d+)*([-.+][0-9A-Za-z.-]+)?$")
 #: Marks a container, where `pip install` in the running environment is the wrong answer entirely:
 #: the image *is* the version.
 DOCKER_MARKER = Path("/.dockerenv")
+
+#: How stale the remembered answer may get before a *command* asks again. A week, not a day: the bot
+#: has its own `bot.update_check_interval` while it runs, and this is the path for a machine where no
+#: bot is running at the moment — somebody at a terminal, who does not need to pay for a network
+#: round trip more often than that to be told about a release.
+NOTICE_INTERVAL = 7 * 24 * 60 * 60.0
+
+#: How long a *command* waits on git before giving up on the question. The bot's own check can afford
+#: `Git`'s three minutes because it runs off the loop; a command cannot afford to hang somebody's
+#: terminal on an offline machine, and having no answer this time is not a failure.
+NOTICE_TIMEOUT = 5
+
+#: Set to anything to keep every command silent about updates, for a shell where the line is noise.
+QUIET_ENV = "B3_NO_UPDATE_NOTICE"
+
+#: Where the answer is remembered, so that no ordinary command has to ask. Overridable, which is what
+#: the tests use rather than writing to the machine running them.
+CACHE_ENV = "B3_UPDATE_CACHE"
 
 
 @dataclass(frozen=True, slots=True)
@@ -93,16 +113,22 @@ def release_tags(tags: list[str]) -> list[str]:
     return sorted(releases, key=version_key)
 
 
-def check(remote: str, current: str = __version__, *, git: Git | None = None) -> UpdateInfo:
+def check(
+    remote: str,
+    current: str = __version__,
+    *,
+    git: Git | None = None,
+    timeout: int | None = None,
+) -> UpdateInfo:
     """Ask a git remote for its highest release tag. Never raises.
 
     An empty `remote` means the operator switched the feature off, which is not an error and not a
-    reason to log anything.
+    reason to log anything. `timeout` is for callers somebody is waiting on — see `cached_check`.
     """
     if not remote.strip():
         return UpdateInfo(current=current, error="no update remote is configured")
     try:
-        tags = (git or Git()).remote_tags(_with_token(remote))
+        tags = (git or Git()).remote_tags(_with_token(remote), timeout=timeout)
     except PluginInstallError as exc:
         return UpdateInfo(current=current, error=_redact(str(exc)))
     except (OSError, subprocess.SubprocessError) as exc:  # pragma: no cover - defence in depth
@@ -148,6 +174,118 @@ def in_container() -> bool:
         return False
 
 
+def cache_path() -> Path:
+    """Where the last answer is kept.
+
+    A cache and not config or state: losing it costs one `git ls-remote`, which is why it goes to the
+    platform's cache directory and never next to the operator's config.
+    """
+    override = os.environ.get(CACHE_ENV, "").strip()
+    if override:
+        return Path(override)
+    if sys.platform == "win32":
+        base = os.environ.get("LOCALAPPDATA") or os.path.expanduser("~")
+    else:
+        base = os.environ.get("XDG_CACHE_HOME") or os.path.join(os.path.expanduser("~"), ".cache")
+    return Path(base) / "b3" / "update.json"
+
+
+def read_cache(remote: str, current: str = __version__) -> UpdateInfo | None:
+    """The remembered answer, or None when there is not one worth using.
+
+    None rather than an empty `UpdateInfo` for every way this can go wrong — absent, unreadable,
+    truncated by a full disk, written by a version that stored different keys, or *about a different
+    remote* — because all of them mean the same thing to a caller: ask, or say nothing.
+
+    `current` is the version running **now**, never the one that was running when the answer was
+    written. Somebody who has just upgraded should stop being told to upgrade without waiting a week
+    for the cache to expire.
+    """
+    try:
+        raw = json.loads(cache_path().read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    if not isinstance(raw, dict) or raw.get("remote") != remote:
+        return None
+    try:
+        return UpdateInfo(
+            current=current,
+            latest=str(raw.get("latest", "")),
+            error=str(raw.get("error", "")),
+            checked_at=float(raw.get("checked_at", 0.0)),
+        )
+    except (TypeError, ValueError):
+        return None
+
+
+def write_cache(remote: str, info: UpdateInfo) -> None:
+    """Remember an answer. Best effort, and silent when it fails.
+
+    A read-only home directory, a full disk, a container with no writable cache — none of those are
+    a reason for the command somebody actually ran to fail or to complain.
+    """
+    path = cache_path()
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            json.dumps(
+                {
+                    "remote": remote,
+                    "latest": info.latest,
+                    "error": info.error,
+                    "checked_at": info.checked_at,
+                }
+            ),
+            encoding="utf-8",
+        )
+    except OSError as exc:
+        log.debug("could not write the update cache: %s", exc)
+
+
+def cached_check(
+    remote: str,
+    *,
+    current: str = __version__,
+    interval: float = NOTICE_INTERVAL,
+    now: float | None = None,
+    timeout: int | None = NOTICE_TIMEOUT,
+    git: Git | None = None,
+) -> UpdateInfo:
+    """The answer, asking only when what is remembered is older than `interval`.
+
+    This is the whole reason a command can mention a new version without being slow: nearly every
+    call reads a file. When it does ask, it is with a short timeout, and the answer is written down
+    for the next command whether it is good news or an error — a repository that is unreachable
+    stays unreachable for the interval too, rather than being retried by every command.
+    """
+    moment = time.time() if now is None else now
+    remembered = read_cache(remote, current)
+    if remembered is not None and moment - remembered.checked_at < interval:
+        return remembered
+    info = check(remote, current, git=git, timeout=timeout)
+    stamped = UpdateInfo(
+        current=info.current, latest=info.latest, error=info.error, checked_at=moment
+    )
+    write_cache(remote, stamped)
+    return stamped
+
+
+def notice(info: UpdateInfo | None) -> str:
+    """The one line a command prints when there is a newer release, and "" the rest of the time.
+
+    Only an update is worth a line. Being current is not news, and a check that failed is not the
+    business of whoever ran `b3 plugins` — both would train an operator to stop reading this.
+    """
+    if info is None or not info.available:
+        return ""
+    return f"b3 {info.latest} is available (running {info.current}) — run `b3 update` to install it"
+
+
+def notices_wanted() -> bool:
+    """Whether this shell wants to hear about updates at all."""
+    return not os.environ.get(QUIET_ENV, "").strip()
+
+
 class UpdateChecker:
     """The check as a *cached* thing, for the bot to hold.
 
@@ -184,13 +322,23 @@ class UpdateChecker:
 
 
 __all__ = [
+    "CACHE_ENV",
     "DOCKER_MARKER",
+    "NOTICE_INTERVAL",
+    "NOTICE_TIMEOUT",
+    "QUIET_ENV",
     "RELEASE_TAG_RE",
     "TOKEN_ENV",
     "UpdateChecker",
     "UpdateInfo",
+    "cache_path",
+    "cached_check",
     "check",
     "in_container",
     "install_command",
+    "notice",
+    "notices_wanted",
+    "read_cache",
     "release_tags",
+    "write_cache",
 ]

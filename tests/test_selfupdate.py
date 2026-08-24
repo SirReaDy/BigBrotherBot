@@ -32,9 +32,11 @@ class FakeGit:
         self.tags = tags or []
         self.error = error
         self.urls: list[str] = []
+        self.timeouts: list[int | None] = []
 
-    def remote_tags(self, url: str) -> list[str]:
+    def remote_tags(self, url: str, timeout: int | None = None) -> list[str]:
         self.urls.append(url)
+        self.timeouts.append(timeout)
         if self.error is not None:
             raise self.error
         return list(self.tags)

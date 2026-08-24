@@ -36,7 +36,7 @@ from b3.domain.client import Alias, Client, IpAlias, NEVER_EXPIRES, Penalty, Pen
 from b3.parsers import games, punkbuster
 from b3.parsers.cod import status as status_parser
 from b3.parsers.cod.auth import AuthInfo, AuthManager
-from b3.core.selfupdate import UpdateChecker
+from b3.core.selfupdate import UpdateChecker, write_cache
 from b3.parsers.profile import GameProfile, MapRequest, VersionQuirk
 from b3.storage.store import SqlAlchemyStorage
 
@@ -312,6 +312,9 @@ class Bot:
         if checker is None or not checker.due(self.clock.now()):
             return
         info = await asyncio.to_thread(checker.check, self.clock.now())
+        # Written where the CLI reads it, so on a machine that runs a bot no command ever has to ask
+        # for itself: the answer somebody sees after `b3 plugins` is the one this already has.
+        await asyncio.to_thread(write_cache, self.config.bot.update_remote, info)
         if info.available:
             log.warning(
                 "b3 %s is available (running %s) — install it with `b3 update`",

@@ -23,6 +23,11 @@ bot:
                                       # needed when several bots share one database
   plugins_dir: "@home/plugins"        # where `b3 plugin install` puts things
 
+  update_check: true                  # notice a new release: once a day while the bot runs, and at
+                                      # most once a week after a command. false switches both off
+  update_remote: "https://github.com/SirReaDy/BigBrotherBot.git"   # empty also switches it off
+  update_check_interval: "24h"        # how long the running bot keeps an answer before asking again
+
 server:
   game: cod4x                         # cod4x (the CoD4X 1.8 mod) or cod4 (stock 1.7)
   rcon_password: "changeme"

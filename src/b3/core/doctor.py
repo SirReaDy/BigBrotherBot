@@ -187,7 +187,11 @@ def _check_update(config: Config) -> Check:
 
     if not config.bot.update_check or not config.bot.update_remote.strip():
         return Check("update", Status.OK, "not checked (bot.update_check is off)")
-    info = selfupdate.check(config.bot.update_remote)
+    # Asked now, because this is the command whose whole job is to ask now — but with the short
+    # timeout a person waiting at a terminal deserves, and the answer is written where every other
+    # surface reads it, so running `b3 doctor` is also what makes the next command's line accurate.
+    info = selfupdate.check(config.bot.update_remote, timeout=selfupdate.NOTICE_TIMEOUT)
+    selfupdate.write_cache(config.bot.update_remote, info)
     if info.error:
         return Check("update", Status.WARN, info.describe())
     if info.available:

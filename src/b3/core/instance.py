@@ -68,6 +68,10 @@ bot:
   database: {database}
   # Where `b3 plugin install` puts plugins for THIS server.
   plugins_dir: "@conf/plugins"
+  # A new release is mentioned after a command finishes, at most once a week, and once a day by the
+  # running bot. It reads public tags on this repository and sends nothing about this server; `false`
+  # here — or an empty update_remote — switches both off.
+  update_check: true
 {shared_line}
 server:
   game: {game}

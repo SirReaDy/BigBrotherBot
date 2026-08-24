@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import logging
+import sys
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -19,6 +20,7 @@ from pathlib import Path
 
 from typing import Protocol, runtime_checkable
 
+from b3 import __version__
 from b3.config.loader import load_config
 from b3.config.schema import Config
 from b3.core import completion
@@ -65,6 +67,12 @@ LIVE_TICK = 0.2
 #: PowerShell is on the list because argcomplete 3.x registers a native `ArgumentCompleter` for it;
 #: it was not always so, and this project's own notes said Windows had no answer.
 SHELLS = ("bash", "zsh", "fish", "tcsh", "powershell")
+
+#: Commands that say nothing about updates when they finish. `update`, `version` and `doctor` each
+#: report the same thing themselves and would say it twice; `run` logs it on its own schedule while
+#: it runs; `completion` writes a shell snippet somebody pastes, and a stray line in it is a syntax
+#: error in their shell rc.
+NO_UPDATE_NOTICE = frozenset({"update", "version", "doctor", "completion", "run"})
 
 
 def _autocomplete(parser: argparse.ArgumentParser) -> None:
@@ -462,6 +470,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
     config_arg.completer = completion.configs  # type: ignore[attr-defined]
     parser.add_argument("-v", "--verbose", action="store_true")
+    # The first thing anybody types. `b3 version` says more — it also names the latest release — but
+    # the flag has to exist, because a tool that answers `--version` with a usage error looks broken.
+    parser.add_argument("--version", action="version", version=f"b3 {__version__}")
     sub = parser.add_subparsers(dest="cmd", required=True)
     run = sub.add_parser("run", help="connect to the server and run")
     # An operator who knows their database is fine — a shared one another bot has already upgraded,
@@ -548,6 +559,13 @@ def build_parser() -> argparse.ArgumentParser:
         help=f"one of: {', '.join(SHELLS)} (default: guessed from $SHELL)",
     )
 
+    ver = sub.add_parser("version", help="print this version and the latest released one")
+    ver.add_argument(
+        "--refresh",
+        action="store_true",
+        help="ask the remote now instead of using the answer from the last week",
+    )
+
     sub.add_parser("games", help="list the game titles this bot can read")
     sub.add_parser("plugins", help="list every plugin available here, and which this server runs")
     replay = sub.add_parser("replay", help="replay a recorded log file offline")
@@ -627,10 +645,6 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
-    from b3.config.schema import ConfigError
-    from b3.parsers.games import UnknownGameError
-    from b3.runtime.bot import MissingServerModError, WrongGameError
-
     parser = build_parser()
 
     # Before parse_args, and only when the shell is asking: argcomplete reads the parser, writes its
@@ -643,6 +657,20 @@ def main(argv: list[str] | None = None) -> int:
         level=logging.DEBUG if args.verbose else logging.INFO,
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
+    try:
+        return _dispatch(args)
+    finally:
+        # After the command, never before it: whatever somebody ran `b3` for is done and printed by
+        # now, so a line about a new release cannot delay it or come out in the middle of it.
+        _mention_update(args)
+
+
+def _dispatch(args: argparse.Namespace) -> int:
+    """Run the command that was asked for. Split from `main` so the update line comes after it."""
+    from b3.config.schema import ConfigError
+    from b3.parsers.games import UnknownGameError
+    from b3.runtime.bot import MissingServerModError, WrongGameError
+
     # `init` is the command you run when there is no config yet, `games` is pure reference, and
     # `completion` prints a line for a shell — none of the three must need a config to work. The last
     # one especially: an operator sets up tab completion once, from wherever they happen to be
@@ -653,6 +681,10 @@ def main(argv: list[str] | None = None) -> int:
         return _run_games()
     if args.cmd == "completion":
         return _run_completion(args.shell or "")
+    # `version` joins them: "which version am I running" is a question asked *about* an install that
+    # is not working, which is the moment its config is least likely to load.
+    if args.cmd == "version":
+        return _run_version(args.config, args.refresh)
 
     config = load_config(args.config)
     conf_dir = Path(args.config).resolve().parent  # base for @conf tokens in plugin config paths
@@ -989,6 +1021,82 @@ def _run_update(config: Config, check_only: bool, to: str, yes: bool) -> int:
     # version may add a migration, which §4.8's check will refuse to start without.
     print(f"installed {tag}. Restart each bot, then run `b3 -c <config> db upgrade` for each one.")
     return 0
+
+
+def _update_settings(config_path: str) -> tuple[str, bool]:
+    """(remote, may-we-ask) for a command that has no `Config` in its hands.
+
+    `b3 version` and the line printed after a command both run where there may be no config at all —
+    or a broken one, since "the config does not parse" is a thing somebody runs `b3 version` to help
+    them debug. Either way the answer is the schema's own defaults rather than a traceback.
+    """
+    from b3.config.schema import BotConfig
+
+    defaults = BotConfig()
+    if not Path(config_path).is_file():
+        return defaults.update_remote, defaults.update_check
+    try:
+        config = load_config(config_path)
+    except Exception:  # noqa: BLE001 - see the docstring: anything at all here means "the defaults"
+        # Broad on purpose, and this is the one place in the CLI where that is right: a YAML syntax
+        # error, a schema violation, an unreadable file, a path that is a directory. Whatever it is,
+        # the caller is printing a version number or a one-line notice, and neither is worth a
+        # traceback about a config that some *other* command will report properly.
+        return defaults.update_remote, defaults.update_check
+    return config.bot.update_remote, config.bot.update_check
+
+
+def _run_version(config_path: str, refresh: bool) -> int:
+    """`b3 version` — which version this is, and which is the newest published.
+
+    Both, because either alone is half an answer: a number nobody can compare to anything, or a
+    release you cannot tell you already have. It exits **0** whatever it finds, unlike
+    `b3 update --check`: a command somebody types to read a version number must not fail a script
+    that runs it merely because there is a release out.
+    """
+    from b3.core import selfupdate
+
+    print(f"b3 {__version__}")
+    remote, enabled = _update_settings(config_path)
+    if not enabled or not remote.strip():
+        print("latest release: not checked (update checking is off)")
+        return 0
+    # Asked at most once a week unless `--refresh` says now, and remembered for whatever asks next.
+    info = selfupdate.cached_check(remote, interval=0.0 if refresh else selfupdate.NOTICE_INTERVAL)
+    if info.error:
+        print(f"latest release: unknown ({info.error})")
+        return 0
+    print(f"latest release: {info.latest or 'none published yet'}")
+    if info.available:
+        print(f"run `b3 update` to install {info.latest}")
+    return 0
+
+
+def _mention_update(args: argparse.Namespace) -> None:
+    """The line after a command, when a newer release exists. Never in the way of the command.
+
+    Three rules keep this from becoming the thing people mute. It **reads a remembered answer** —
+    at most once a week does any command pay for a `git ls-remote`, with a few seconds' timeout, and
+    it happens *after* the command has done its work and printed it. It goes to **stderr**, so a
+    `b3 games` piped into something else is unaffected. And it says nothing at all unless there is
+    an update: being current is not news, and a failed check is not the business of somebody who ran
+    `b3 plugins`.
+
+    Only for a terminal. A cron job that wants this asks for it with `b3 update --check`, whose exit
+    code is designed for exactly that, and does not want a surprise line in its mail.
+    """
+    from b3.core import selfupdate
+
+    if args.cmd in NO_UPDATE_NOTICE or not selfupdate.notices_wanted():
+        return
+    if not sys.stderr.isatty():
+        return
+    remote, enabled = _update_settings(getattr(args, "config", ""))
+    if not enabled or not remote.strip():
+        return
+    line = selfupdate.notice(selfupdate.cached_check(remote))
+    if line:
+        print(line, file=sys.stderr)
 
 
 def _run_plugin(

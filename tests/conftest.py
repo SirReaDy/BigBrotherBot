@@ -18,6 +18,19 @@ from b3.domain.permissions import DEFAULT_GROUPS, Group
 from b3.parsers.profile import GameProfile
 
 
+@pytest.fixture(autouse=True)
+def _update_cache_in_a_temp_dir(tmp_path_factory, monkeypatch):
+    """No test writes to the machine's own update cache, and none prints an update line.
+
+    Both are environment-driven on purpose, so the whole suite is covered by pointing them somewhere
+    else here — a test that forgot would otherwise leave a file in the developer's home directory and
+    read whatever a previous run happened to put there.
+    """
+    cache = tmp_path_factory.mktemp("update-cache") / "update.json"
+    monkeypatch.setenv("B3_UPDATE_CACHE", str(cache))
+    monkeypatch.setenv("B3_NO_UPDATE_NOTICE", "1")
+
+
 class FakeStorage:
     """Minimal Storage stand-in for command/plugin tests."""
 
