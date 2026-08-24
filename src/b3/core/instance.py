@@ -15,6 +15,7 @@ after a reboot.
 from __future__ import annotations
 
 import logging
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -44,6 +45,9 @@ class InstanceSpec:
     #: Altitude only: the file the game server reads commands from. Left empty, it is guessed from
     #: the game log's directory, which is where a real install puts it.
     command_file: str = ""
+    #: Which plugins this server starts with. `admin` is not optional — it is the command framework's
+    #: only consumer and every other plugin's dependency — so it is put first whatever is asked for.
+    plugins: tuple[str, ...] = ("admin",)
 
 
 CONFIG_TEMPLATE = """\
@@ -77,9 +81,7 @@ server:
 
 # Which plugins this server runs. `b3 plugin install` appends to this list for you.
 plugins:
-  - name: admin
-    config: "@conf/plugin_admin.yaml"
-"""
+{plugin_lines}"""
 
 SERVICE_TEMPLATE = """\
 # systemd unit for {name}. Install with:
@@ -147,10 +149,41 @@ def _command_file_line(spec: InstanceSpec) -> str:
     )
 
 
+#: One entry of the `plugins:` block. Written as constants rather than inline, because the YAML
+#: they produce is indentation-sensitive and a line of it inside an f-string is unreadable.
+NAME_LINE = "  - name: {name}\n"
+CONFIG_LINE = '    config: "@conf/plugin_{name}.yaml"\n'
+
+
+def _default_examples_dir() -> Path | None:
+    """Where the shipped example configs are, when a caller did not say.
+
+    A source checkout has them beside the package; an installed wheel does not ship them at all, and
+    then a plugin simply gets no `config:` line — which is correct, since there would be no file.
+    """
+    candidate = Path(__file__).resolve().parent.parent.parent.parent / "examples"
+    return candidate if candidate.is_dir() else None
+
+
+def plugin_lines(names: Iterable[str], examples_dir: Path | None) -> str:
+    """The `plugins:` block, with a config line only for the plugins that ship an example.
+
+    A `config:` pointing at a file that is not there is worse than none: the loader reports it as
+    a missing config rather than as a plugin running on its defaults, which is what it would be.
+    """
+    out: list[str] = []
+    for name in names:
+        out.append(NAME_LINE.format(name=name))
+        if examples_dir is not None and (examples_dir / f"plugin_{name}.yaml").is_file():
+            out.append(CONFIG_LINE.format(name=name))
+    return "".join(out)
+
+
 def create_instance(
     spec: InstanceSpec,
     *,
     admin_config_source: Path | None = None,
+    examples_dir: Path | None = None,
     service: bool = False,
     python: str = "python3",
     user: str = "b3",
@@ -189,6 +222,11 @@ def create_instance(
             config_path=config_path,
             shared_line=shared_line,
             command_file_line=_command_file_line(spec),
+            # `admin` first and once, whatever was asked for: it is every other plugin's dependency.
+            plugin_lines=plugin_lines(
+                dict.fromkeys(("admin", *spec.plugins)),
+                examples_dir if examples_dir is not None else _default_examples_dir(),
+            ),
             # Altitude's log is JSON, which is UTF-8 by definition; the CoD engines are latin-1.
             encoding="utf-8" if _needs_command_file(spec.game) else "latin-1",
         ),
@@ -196,10 +234,20 @@ def create_instance(
     )
     written = [config_path]
 
-    admin_config = directory / "plugin_admin.yaml"
-    if admin_config_source is not None and admin_config_source.is_file():
-        admin_config.write_text(admin_config_source.read_text(encoding="utf-8"), encoding="utf-8")
-        written.append(admin_config)
+    # `admin_config_source` is the older, single-file form of the same thing; both are accepted so a
+    # caller that only wants the admin config does not have to know where the examples live.
+    sources = dict.fromkeys(spec.plugins)
+    for name in sources:
+        source = None
+        if name == "admin" and admin_config_source is not None and admin_config_source.is_file():
+            source = admin_config_source
+        elif examples_dir is not None and (examples_dir / f"plugin_{name}.yaml").is_file():
+            source = examples_dir / f"plugin_{name}.yaml"
+        if source is None:
+            continue
+        target = directory / f"plugin_{name}.yaml"
+        target.write_text(source.read_text(encoding="utf-8"), encoding="utf-8")
+        written.append(target)
 
     if service:
         service_name = f"b3-{spec.name}.service"

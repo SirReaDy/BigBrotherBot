@@ -84,6 +84,34 @@ Legacy import preserves client ids, group bitmasks, epoch timestamps, and penalt
 dangling `admin_id` references are nulled and orphaned penalties/aliases are skipped (the old
 MyISAM schema had no foreign keys), with a summary report of exactly what was imported or skipped.
 
+## Setting a server up
+
+`b3 init <directory>` creates one game server's instance directory: the config, an example config per
+plugin, `plugins/`, and optionally a systemd unit.
+
+**With no `--game` and a terminal to ask at, it asks.** That is the point of the interactive half: a
+command that only takes flags cannot help somebody who has not read the flags yet, and `b3 init` is
+the first command a new operator runs. The questions are in the order an operator thinks in — which
+game, where it is, how to talk to it, where its log is, where to keep the data, what to run — and each
+answer is checked **as it is given**: the game against the list of titles (with the nearest match when
+it is a typo), the port as a port, the log as a file that exists (or an `ftp://`/`sftp://`/`http://`
+URL), and the database by *opening* it, which is the only way to find a missing driver before the
+first start rather than after it.
+
+Nothing is written until the last question is answered, so Ctrl-C leaves no half-made directory. It
+then offers to run `b3 doctor` straight away, because a config being written is not the same thing as
+a server being reachable, and the gap between those two is where a first evening goes.
+
+| Command | What it does |
+|---|---|
+| `b3 init srv` | Ask the questions, then write `srv/` |
+| `b3 init srv --game cod4 --rcon-password pw …` | Take the flags and write it — never asks |
+| `b3 init srv --interactive` | Ask even though flags were given |
+| `b3 init srv --no-interactive` | Never ask, even with no `--game` |
+
+A scripted `b3 init` — in a Dockerfile, in a provisioning script — never stops to ask: with `--game`
+given, or with nothing attached to a terminal, it takes the flags and their defaults.
+
 ## Updates
 
 | Command | What it does |

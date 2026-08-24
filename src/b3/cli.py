@@ -14,6 +14,7 @@ from typing import Protocol, runtime_checkable
 
 from b3.config.loader import load_config
 from b3.config.schema import Config
+from b3.core.instance import InstanceSpec
 from b3.net.logsource import LogSource
 from b3.runtime.bot import Bot, RconClient
 
@@ -411,6 +412,20 @@ def main(argv: list[str] | None = None) -> int:
     init.add_argument("--service", action="store_true", help="also write a systemd unit file")
     init.add_argument("--service-user", default="b3", help="user the systemd unit runs as")
     init.add_argument("--force", action="store_true", help="overwrite an existing config")
+    # The default when no --game is given and there is somebody to ask: `b3 init` is the first
+    # command a new operator runs, and taking flags they have not read yet is backwards.
+    init.add_argument(
+        "--interactive",
+        action="store_true",
+        help="ask the questions instead of taking flags (the default when --game is not given)",
+    )
+    init.add_argument(
+        "--no-interactive",
+        dest="interactive",
+        action="store_false",
+        help="never ask; use the flags and their defaults",
+    )
+    init.set_defaults(interactive=None)
     sub.add_parser("doctor", help="check this install before starting it for the first time")
     probe = sub.add_parser(
         "probe",
@@ -554,14 +569,44 @@ def main(argv: list[str] | None = None) -> int:
 
 def _run_init(args: argparse.Namespace) -> int:
     """`b3 init <dir>` — scaffold one game server's instance directory."""
+    directory = Path(args.directory).resolve()
+    answers = None
+    if _should_ask(args):
+        from b3.core import wizard
+
+        try:
+            answers = wizard.ask(directory, defaults=_spec_from_flags(args, directory))
+        except (EOFError, KeyboardInterrupt):
+            # Ctrl-D or Ctrl-C part way through. Nothing has been written yet, which is the whole
+            # reason the questions come before the file rather than after each answer.
+            print("\nnothing written")
+            return 1
+
+    spec = answers.spec if answers is not None else _spec_from_flags(args, directory)
+    return _create(args, spec, run_doctor=bool(answers and answers.run_doctor))
+
+
+def _should_ask(args: argparse.Namespace) -> bool:
+    """Whether to ask rather than take the flags.
+
+    `--interactive` and `--no-interactive` are explicit. With neither, asking is the default when no
+    `--game` was given *and* there is a terminal to ask at — a scripted `b3 init` with its flags in a
+    Dockerfile must never stop and wait for somebody who is not there.
+    """
     import sys
 
-    from b3.core.instance import InstanceError, InstanceSpec, create_instance
+    if args.interactive is not None:
+        return bool(args.interactive)
+    if args.game:
+        return False
+    return sys.stdin.isatty() and sys.stdout.isatty()
 
-    spec = InstanceSpec(
-        directory=Path(args.directory).resolve(),
+
+def _spec_from_flags(args: argparse.Namespace, directory: Path) -> InstanceSpec:
+    return InstanceSpec(
+        directory=directory,
         name=args.name,
-        game=args.game,
+        game=args.game or "cod4",
         host=args.host,
         port=args.port,
         rcon_password=args.rcon_password,
@@ -570,11 +615,18 @@ def _run_init(args: argparse.Namespace) -> int:
         shared_plugins_dir=args.shared_plugins_dir,
         command_file=args.command_file,
     )
-    template = Path(__file__).resolve().parent.parent.parent / "examples" / "plugin_admin.yaml"
+
+
+def _create(args: argparse.Namespace, spec: InstanceSpec, *, run_doctor: bool) -> int:
+    import sys
+
+    from b3.core.instance import InstanceError, create_instance
+
+    examples = Path(__file__).resolve().parent.parent.parent / "examples"
     try:
         written = create_instance(
             spec,
-            admin_config_source=template if template.is_file() else None,
+            examples_dir=examples if examples.is_dir() else None,
             service=args.service,
             python=sys.executable,
             user=args.service_user,
@@ -592,9 +644,16 @@ def _run_init(args: argparse.Namespace) -> int:
     if _needs_command_file(spec.game):
         # This family has no rcon password to set, and one path it cannot work without.
         print(f"  (check server.command_file — {spec.game} is driven by writing to that file)")
-    elif not args.rcon_password:
+    elif not spec.rcon_password:
         print("  (set server.rcon_password first — it is empty)")
-    return 0
+    if not run_doctor:
+        return 0
+    # Offered because the config being *written* is not the same as the server being reachable, and
+    # the gap between those two is where a first evening goes.
+    print()
+    from b3.config.loader import load_config
+
+    return _run_doctor(load_config(spec.directory / "b3.yaml"), spec.directory)
 
 
 def _run_games() -> int:
