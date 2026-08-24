@@ -67,8 +67,9 @@ the list back. The list is restored when the plugin is disabled as well as at th
 reply says the window exists, which is as far as a bot with no memory across restarts can go.
 
 `!paset` and `!paget` are the same two commands `poweradminurt` offers. Neither plugin is restricted
-by title, so an operator who loads both on a Black Ops server will see the command registry warn that
-one overrode the other; both do the same thing, so nothing breaks either way.
+by title, so an operator who loads both on a Black Ops server will find the second one **refused**
+those two names, with both plugins named in the log. Both do the same thing, so whichever keeps them
+works.
 """
 
 from __future__ import annotations

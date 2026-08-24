@@ -76,8 +76,8 @@ teams 3 and 4 to be playing sides in.
 
 `!kill`, `!teams`, `!swap`, `!changeteam`, `!scramble` and `!setnextmap` are command or alias names
 `poweradminurt` and `poweradminbf3` also use. Neither of those is restricted to this title (
-`poweradminurt` asks for verbs instead), so an operator who loads two of them on one server will see
-the command registry warn that one overrode the other.
+`poweradminurt` asks for verbs instead), so an operator who loads two of them on one server will find
+the second one **refused** the clashing names, with both plugins named in the log.
 """
 
 from __future__ import annotations

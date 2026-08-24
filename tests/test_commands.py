@@ -178,3 +178,76 @@ async def test_a_refused_command_is_not_audited_as_run(console):
     await console.bus.drain()
 
     assert seen == []
+
+
+# -- two plugins wanting one word ----------------------------------------------------------------
+
+
+class Alpha:
+    """Stands in for a plugin. Only its class name reaches the message."""
+
+
+class BravoPlugin:
+    pass
+
+
+def test_a_command_another_plugin_owns_is_refused_rather_than_overridden(console, caplog):
+    """It used to override with a warning, which is the worst of both: an operator loading two
+    plugins that both offer `!paset` — poweradminurt and poweradmincod7 do — got whichever started
+    last, silently, and the one they lost is the one they had configured."""
+    first = Command(name="paset", handler=lambda ctx: None, plugin=Alpha())
+    second = Command(name="paset", handler=lambda ctx: None, plugin=BravoPlugin())
+
+    assert console.command_registry.register(first) is True
+    with caplog.at_level("ERROR"):
+        assert console.command_registry.register(second) is False
+
+    # The first to load keeps it — which is load order, which is the operator's `plugins:` list.
+    assert console.command_registry.get("paset") is first
+    assert "alpha" in caplog.text.lower() and "bravo" in caplog.text.lower()
+
+
+def test_the_collision_is_remembered_so_it_can_be_reported_together(console):
+    console.command_registry.register(
+        Command(name="kill", handler=lambda ctx: None, plugin=Alpha())
+    )
+    console.command_registry.register(
+        Command(name="kill", handler=lambda ctx: None, plugin=BravoPlugin())
+    )
+
+    clash = console.command_registry.conflicts[0]
+
+    assert (clash.word, clash.kind, clash.owner, clash.refused) == (
+        "kill",
+        "command",
+        "alpha",
+        "bravo",
+    )
+    assert "kept by alpha" in clash.describe()
+
+
+def test_an_alias_clash_costs_the_short_form_and_not_the_command(console, caplog):
+    """Losing `!pb` is a smaller thing than losing the command, and `!cmdalias` can give it another
+    short form. Losing the command cannot be undone from in game at all."""
+    console.command_registry.register(
+        Command(name="permban", handler=lambda ctx: None, alias="pb", plugin=Alpha())
+    )
+    second = Command(name="punkbuster", handler=lambda ctx: None, alias="pb", plugin=BravoPlugin())
+
+    with caplog.at_level("ERROR"):
+        assert console.command_registry.register(second) is True
+
+    assert console.command_registry.get("punkbuster") is second  # the command is there
+    assert console.command_registry.get("pb").name == "permban"  # the alias is not its
+    assert second.alias is None
+    assert "alias" in caplog.text
+
+
+def test_the_same_plugin_registering_twice_is_not_a_collision(console):
+    """A plugin disabled and enabled again re-runs its own startup. That is not two owners."""
+    plugin = Alpha()
+    first = Command(name="afk", handler=lambda ctx: None, plugin=plugin)
+
+    assert console.command_registry.register(first) is True
+    assert console.command_registry.register(first) is True
+    assert console.command_registry.conflicts == []

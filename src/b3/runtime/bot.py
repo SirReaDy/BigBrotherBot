@@ -258,7 +258,26 @@ class Bot:
                 # Only where there is something to lift. See `Bot.mute` for why the deadline is here
                 # and not in whichever plugin happened to set it.
                 self.scheduler.add(self._lift_expired_mutes, second="*/5", name="Bot.mutes")
+        self._report_command_conflicts()
         self.setup_update_check()
+
+    def _report_command_conflicts(self) -> None:
+        """Say, once, which plugins wanted the same word — the way a missing dependency is reported.
+
+        Each collision was already logged as it happened, in the middle of a startup nobody reads
+        line by line. This is the summary an operator can act on, and it names the losing plugin
+        because that is the one whose config they wrote and whose command is not there.
+        """
+        conflicts = self.command_registry.conflicts
+        if not conflicts:
+            return
+        log.warning(
+            "%d command name(s) wanted by two plugins; the first to load kept each one:",
+            len(conflicts),
+        )
+        for clash in conflicts:
+            log.warning("  %s", clash.describe())
+        log.warning("  -> `!cmdalias` can rename one, or drop a plugin from `plugins:`")
 
     def setup_update_check(self) -> None:
         """Ask, at most once a day, whether a newer release exists — and only say so if one does.

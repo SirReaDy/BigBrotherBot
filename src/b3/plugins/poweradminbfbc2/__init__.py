@@ -80,8 +80,8 @@ its centre-screen message counts **milliseconds**, so the ten seconds the profil
 milliseconds; and neither of the Frostbite 1 titles had any round or yell verbs declared at all.
 
 `!pakill`, `!pateams`, `!paset` and `!paget` are also `poweradminurt` command names, and that plugin
-is not restricted by title. An operator who loads both on one server will see the command registry
-warn that one overrode the other.
+is not restricted by title. An operator who loads both on one server will find the second one
+**refused** those names, with both plugins named in the log; the first to load keeps them.
 """
 
 from __future__ import annotations

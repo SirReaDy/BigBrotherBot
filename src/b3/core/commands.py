@@ -102,6 +102,32 @@ def command(
     return decorator
 
 
+@dataclass(frozen=True, slots=True)
+class Conflict:
+    """Two plugins wanting one word, and which of them got it."""
+
+    word: str
+    kind: str  # "command" or "alias"
+    owner: str
+    refused: str
+
+    def describe(self) -> str:
+        return f"{self.kind} {self.word!r}: kept by {self.owner}, refused to {self.refused}"
+
+
+def _plugin_name(plugin: object) -> str:
+    """What to call a plugin in a message: the name an operator wrote in their `plugins:` list.
+
+    Derived from the class name — every plugin class here is `<Name>Plugin` — rather than asked for,
+    because a `Plugin` does not know the name it was loaded under and adding a field for one message
+    would be the bigger change.
+    """
+    if plugin is None:
+        return "the bot"
+    name = type(plugin).__name__
+    return (name[: -len("Plugin")] if name.endswith("Plugin") else name).lower()
+
+
 class CommandRegistry:
     def __init__(self) -> None:
         self._by_name: dict[str, Command] = {}
@@ -115,14 +141,58 @@ class CommandRegistry:
         #: did (it rewrote `Command.canUse` on the class *and* on every instance already made). A
         #: hook on the object that owns the commands can be read, tested and turned off again.
         self.grant_check: Callable[[Client, str], bool] | None = None
+        #: Names two plugins both wanted. Kept rather than only logged, so the runtime can report
+        #: them together once every plugin has started — one line an operator reads, instead of
+        #: several scattered through a startup they scrolled past.
+        self.conflicts: list[Conflict] = []
 
-    def register(self, cmd: Command) -> None:
-        if cmd.name in self._by_name:
-            log.warning("command %r already registered; overriding", cmd.name)
+    def register(self, cmd: Command) -> bool:
+        """Add a command. **Refuses** a name another plugin already owns, and says who owns it.
+
+        This used to override with a warning, which is the worst of both: an operator who loads two
+        plugins offering `!paset` — `poweradminurt` and `poweradmincod7` both do — got whichever
+        started last, silently, and the log line explaining it scrolled past at startup. The one they
+        lost is the one they configured.
+
+        Refusing is the same rule the loader applies to a missing dependency: a half-configured bot is
+        worse than one that says what is wrong. The command that was registered *first* wins, which is
+        load order, which is the operator's `plugins:` list — so the fix is theirs to make and this
+        names both sides of it.
+
+        An **alias** clash is not fatal to the command: the command registers under its own name and
+        loses only the short form, because losing `!pb` is a smaller thing than losing the command,
+        and `!cmdalias` can give it another one.
+        """
+        existing = self._by_name.get(cmd.name)
+        if existing is not None:
+            if existing.plugin is cmd.plugin:
+                return True  # the same plugin restarting; nothing has changed
+            self._refuse(cmd.name, existing, cmd, "command")
+            return False
         self._by_name[cmd.name] = cmd
         if cmd.alias:
-            self._by_name[cmd.alias] = cmd
+            clash = self._by_name.get(cmd.alias)
+            if clash is not None and clash.plugin is not cmd.plugin:
+                self._refuse(cmd.alias, clash, cmd, "alias")
+                cmd.alias = None
+            else:
+                self._by_name[cmd.alias] = cmd
         self._commands.append(cmd)
+        return True
+
+    def _refuse(self, word: str, existing: Command, wanted: Command, kind: str) -> None:
+        """Record and report one collision, naming both owners so the fix is obvious."""
+        owner = _plugin_name(existing.plugin)
+        asker = _plugin_name(wanted.plugin)
+        self.conflicts.append(Conflict(word=word, kind=kind, owner=owner, refused=asker))
+        log.error(
+            "%s %r belongs to the %s plugin, so %s cannot have it%s",
+            kind,
+            word,
+            owner,
+            asker,
+            "" if kind == "command" else " — that command keeps its full name",
+        )
 
     def get(self, name: str) -> Command | None:
         return self._by_name.get(name.lower())

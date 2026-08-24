@@ -67,8 +67,9 @@ Battlefield spelling of that verb living inside a plugin. It is the same command
 the alias is `!pbcmd` rather than `!punk`.
 
 `!swap` and `!nuke` are also `poweradminurt` aliases (`paswap`, `panuke`). Neither plugin is
-restricted by title, so an operator loading both on one server will see the command registry warn
-that one overrode the other.
+restricted by title, so an operator loading both on one server will find the second one **refused**
+those names, with both plugins named in the log — the first to load keeps them, which is the order of
+their own `plugins:` list.
 """
 
 from __future__ import annotations

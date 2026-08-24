@@ -81,8 +81,11 @@ class Plugin(ABC):
                     help=meta["help"],
                     plugin=self,
                 )
-                self.console.command_registry.register(cmd)
-                self._commands.append(cmd)
+                # A command another plugin already owns is refused, with both names in the log —
+                # see `CommandRegistry.register`. Not appended here either, or `unload` would
+                # unregister somebody else's command on its way out.
+                if self.console.command_registry.register(cmd):
+                    self._commands.append(cmd)
 
     def subscribe(self, event_type: EventType, handler: Callable[..., Any]) -> Subscription:
         sub = self.console.bus.subscribe(event_type, handler, is_enabled=self.is_enabled)
