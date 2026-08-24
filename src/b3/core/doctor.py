@@ -63,6 +63,7 @@ def run_checks(
         _check_server(config),
         _check_timezone(config),
         _check_database(config),
+        _check_schema(config),
         _check_game_log(config),
         _check_rcon(config, rcon_factory),
         *_check_plugins(config, conf_dir),
@@ -126,6 +127,46 @@ def _check_database(config: Config) -> Check:
                 storage.close()
             except Exception:  # pragma: no cover - nothing useful to do
                 pass
+
+
+def _check_schema(config: Config) -> Check:
+    """Whether the database has had the migrations this code expects.
+
+    A *fresh* install is always right — `connect()` creates the schema and stamps it — so this is
+    about an **upgraded** one, where the only symptom of a missed `b3 db upgrade` is whatever the new
+    column was for failing oddly. It runs after the database check, which is what creates and stamps a
+    missing schema, so an empty database reads as current rather than as unstamped.
+    """
+    from b3.storage import migrate
+
+    state = migrate.schema_state(config.bot.database)
+    if state.unknown:
+        # The database check above has already reported *why*; repeating it as a second failure would
+        # make one problem look like two.
+        return Check("schema", Status.WARN, state.describe())
+    if state.behind:
+        return Check(
+            "schema",
+            Status.FAIL,
+            state.describe(),
+            "run: b3 -c <this config> db upgrade  (the bot refuses to start until you do)",
+        )
+    if state.ahead:
+        return Check(
+            "schema",
+            Status.WARN,
+            state.describe(),
+            "a newer bot has upgraded this database; an older one writing to it may quietly stop "
+            "populating new columns. Update this install, or point it at its own database",
+        )
+    if state.unstamped:
+        return Check(
+            "schema",
+            Status.WARN,
+            state.describe(),
+            "run: b3 -c <this config> db stamp  if this schema really is up to date",
+        )
+    return Check("schema", Status.OK, state.describe())
 
 
 def _check_game_log(config: Config) -> Check:

@@ -289,7 +289,15 @@ def _ravaged_client(config: Config) -> PushClient:
     )
 
 
-async def _run_live(config: Config, conf_dir: Path | None = None, config_path: str = "") -> int:
+async def _run_live(
+    config: Config,
+    conf_dir: Path | None = None,
+    config_path: str = "",
+    *,
+    allow_schema_drift: bool = False,
+) -> int:
+    if not allow_schema_drift and _refuse_on_schema_drift(config, config_path):
+        return 1
     connection = _connect(config)
     rcon, source = connection.rcon, connection.source
     bot = build_bot(config, rcon=rcon, conf_dir=conf_dir)
@@ -366,7 +374,15 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("-c", "--config", default="b3.yaml", help="path to the YAML config")
     parser.add_argument("-v", "--verbose", action="store_true")
     sub = parser.add_subparsers(dest="cmd", required=True)
-    sub.add_parser("run", help="connect to the server and run")
+    run = sub.add_parser("run", help="connect to the server and run")
+    # An operator who knows their database is fine — a shared one another bot has already upgraded,
+    # say — can say so. Named for what it allows rather than for what it disables, so it reads
+    # honestly in a systemd unit somebody finds two years from now.
+    run.add_argument(
+        "--allow-schema-drift",
+        action="store_true",
+        help="start even when the database has not had this version's migrations",
+    )
 
     init = sub.add_parser("init", help="create a bot instance directory for one game server")
     init.add_argument("directory", help="where the instance lives, e.g. /srv/cod4_1/b3")
@@ -494,7 +510,14 @@ def main(argv: list[str] | None = None) -> int:
         if args.cmd == "probe":
             return _run_probe(config, conf_dir, args.lines, args.cvar, args.redact)
         if args.cmd == "run":
-            return asyncio.run(_run_live(config, conf_dir, args.config))
+            return asyncio.run(
+                _run_live(
+                    config,
+                    conf_dir,
+                    args.config,
+                    allow_schema_drift=args.allow_schema_drift,
+                )
+            )
         elif args.cmd == "replay":
             asyncio.run(_run_replay(config, args.logfile, conf_dir, args.config))
         elif args.cmd == "plugins":
@@ -669,13 +692,46 @@ def _run_doctor(config: Config, conf_dir: Path | None) -> int:
     return 0
 
 
+def _refuse_on_schema_drift(config: Config, config_path: str) -> bool:
+    """True when the bot must not start because the database is behind the code.
+
+    Running half-migrated is worse than refusing: the failure is a column that is not there, which
+    surfaces as one feature behaving oddly rather than as anything anybody would connect to an
+    upgrade. Every other operator mistake in this project is treated the same way — see the plugin
+    loader's fatal-vs-tolerated rule.
+
+    Only *behind* refuses. A database ahead of this code, a database that cannot be reached, and one
+    with no stamp at all are all warnings: the first is somebody else's newer bot, the second is
+    already reported by everything that touches the database, and the third is a schema built by
+    hand, which is unusual but not this command's business to veto.
+    """
+    from b3.storage import migrate
+
+    state = migrate.schema_state(config.bot.database)
+    if state.ahead:
+        logging.warning("database %s", state.describe())
+        logging.warning(
+            "-> a newer bot has migrated this database; this one may quietly stop populating "
+            "new columns"
+        )
+        return False
+    if not state.behind:
+        return False
+    logging.error("database %s", state.describe())
+    logging.error("-> run: b3 -c %s db upgrade", config_path or "b3.yaml")
+    logging.error("-> or start with --allow-schema-drift if you know this database is fine")
+    return True
+
+
 def _run_db(config: Config, action: str, revision: str) -> None:
     from b3.storage import migrate
 
     url = config.bot.database
     if action == "upgrade":
-        migrate.upgrade(url, revision)
-        logging.info("database upgraded to %s", migrate.current_revision(url))
+        # `command.upgrade` succeeds silently whether it applied five migrations or none, which is
+        # indistinguishable from doing nothing — and "did I remember to run it?" is the question.
+        result = migrate.upgrade_reporting(url, revision)
+        logging.info("database %s", result.describe())
     elif action == "stamp":
         migrate.stamp(url, revision)
         logging.info("database stamped at %s", migrate.current_revision(url))

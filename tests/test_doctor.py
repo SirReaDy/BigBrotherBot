@@ -216,3 +216,104 @@ async def test_the_cli_exits_nonzero_when_something_is_broken(tmp_path, monkeypa
     assert exit_code == 1
     assert "FAIL" in out
     assert "problem(s) to fix" in out
+
+
+# -- the schema, which a fresh install always passes and an upgraded one may not ------------------
+
+
+def test_a_fresh_database_is_reported_as_current(tmp_path):
+    """`_check_database` creates and stamps the schema, so the check after it sees head."""
+    config = _config(tmp_path)
+
+    check = _named(run_checks(config, tmp_path, rcon_factory=_rcon(STATUS_REPLY)), "schema")
+
+    assert check.status is Status.OK
+    assert "current" in check.detail
+
+
+def test_a_database_behind_the_code_fails_and_names_the_command(tmp_path):
+    """The whole point: the symptom of a missed `b3 db upgrade` is otherwise a column that is not
+    there, which surfaces as one feature behaving oddly."""
+    from b3.storage.migrate import upgrade
+
+    config = _config(tmp_path)
+    upgrade(config.bot.database, "0001")
+
+    check = _named(run_checks(config, tmp_path, rcon_factory=_rcon(STATUS_REPLY)), "schema")
+
+    assert check.status is Status.FAIL
+    assert "0001" in check.detail
+    assert "db upgrade" in check.hint
+
+
+def test_a_database_ahead_of_this_code_warns_rather_than_fails(tmp_path):
+    """A shared database a newer bot has already migrated. `db upgrade` cannot help here, so telling
+    this operator to run it would be wrong."""
+    from sqlalchemy import create_engine, text
+
+    from b3.storage.migrate import upgrade
+
+    config = _config(tmp_path)
+    upgrade(config.bot.database, "head")
+    engine = create_engine(config.bot.database)
+    with engine.begin() as conn:
+        conn.execute(text("UPDATE alembic_version SET version_num = '9999'"))
+    engine.dispose()
+
+    check = _named(run_checks(config, tmp_path, rcon_factory=_rcon(STATUS_REPLY)), "schema")
+
+    assert check.status is Status.WARN
+    assert "newer" in check.detail
+
+
+def test_the_bot_refuses_to_start_on_a_database_that_is_behind(tmp_path, caplog):
+    """Running half-migrated is worse than refusing: the failure is a column that is not there, which
+    surfaces as one feature behaving oddly rather than as anything anybody connects to an upgrade."""
+    from b3.cli import _refuse_on_schema_drift
+    from b3.storage.migrate import upgrade
+
+    config = _config(tmp_path)
+    upgrade(config.bot.database, "0001")
+
+    with caplog.at_level("ERROR"):
+        refused = _refuse_on_schema_drift(config, "b3.yaml")
+
+    assert refused is True
+    assert "db upgrade" in caplog.text
+    assert "--allow-schema-drift" in caplog.text
+
+
+def test_a_database_at_head_starts_without_a_word(tmp_path, caplog):
+    from b3.cli import _refuse_on_schema_drift
+    from b3.storage.migrate import upgrade
+
+    config = _config(tmp_path)
+    upgrade(config.bot.database, "head")
+
+    with caplog.at_level("WARNING"):
+        refused = _refuse_on_schema_drift(config, "b3.yaml")
+
+    assert refused is False
+    assert caplog.text == ""
+
+
+def test_a_database_ahead_warns_but_still_starts(tmp_path, caplog):
+    """An older bot writing to a newer schema is a real risk, but refusing to start would take a
+    working server down over somebody else's upgrade."""
+    from sqlalchemy import create_engine, text
+
+    from b3.cli import _refuse_on_schema_drift
+    from b3.storage.migrate import upgrade
+
+    config = _config(tmp_path)
+    upgrade(config.bot.database, "head")
+    engine = create_engine(config.bot.database)
+    with engine.begin() as conn:
+        conn.execute(text("UPDATE alembic_version SET version_num = '9999'"))
+    engine.dispose()
+
+    with caplog.at_level("WARNING"):
+        refused = _refuse_on_schema_drift(config, "b3.yaml")
+
+    assert refused is False
+    assert "newer" in caplog.text

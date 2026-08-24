@@ -58,9 +58,26 @@ Schema is managed by Alembic; a fresh database is created and stamped automatica
 |---|---|
 | `b3 db current` | Show the applied migration revision |
 | `b3 db head` | Show the latest available revision |
-| `b3 db upgrade [--revision REV]` | Apply pending migrations (default: `head`) |
+| `b3 db upgrade [--revision REV]` | Apply pending migrations (default: `head`), reporting `0001 -> 0003` and which it applied |
 | `b3 db stamp [--revision REV]` | Mark the database as being at a revision without running it |
 | `b3 import-db <sqlalchemy-url>` | Import a legacy (Python-2 era) B3 database |
+
+**After updating the bot, run `b3 db upgrade` for each config.** A *fresh* install is always right —
+the schema is created and stamped — but an upgraded one is not: the code moves to a revision the
+database has not applied, and the only symptom is whatever the new column was for failing oddly. So
+the bot **refuses to start** when its database is behind, naming the revisions and the command:
+
+```
+ERROR database at 0001, code expects 0003 — missing 0002, 0003
+ERROR -> run: b3 -c b3.yaml db upgrade
+ERROR -> or start with --allow-schema-drift if you know this database is fine
+```
+
+`b3 doctor` reports the same thing as a `schema` row before you get there. A database that is
+*ahead* — a shared one a newer bot has already migrated — is a warning rather than a refusal: an
+older bot writing to a newer schema may quietly stop populating new columns, but taking a working
+server down over somebody else's upgrade would be worse. `b3 run --allow-schema-drift` starts anyway
+when you know better.
 
 Legacy import preserves client ids, group bitmasks, epoch timestamps, and penalty semantics;
 dangling `admin_id` references are nulled and orphaned penalties/aliases are skipped (the old
