@@ -169,15 +169,14 @@ def valid_plugins(answer: str) -> str | None:
 
 
 def bundled_plugins() -> list[str]:
-    """Every plugin that ships with the bot, read from the package rather than from a list here."""
-    package = Path(__file__).resolve().parent.parent / "plugins"
-    if not package.is_dir():
-        return list(SUGGESTED_PLUGINS)
-    return sorted(
-        item.name
-        for item in package.iterdir()
-        if item.is_dir() and (item / "__init__.py").is_file() and item.name != "__pycache__"
-    )
+    """Every plugin that ships with the bot, read from the package rather than from a list here.
+
+    The same reading `b3.core.completion` does for the shell, and deliberately the same function:
+    two answers to "what is bundled?" would eventually be two different answers.
+    """
+    from b3.core.completion import bundled
+
+    return bundled() or list(SUGGESTED_PLUGINS)
 
 
 def ask(

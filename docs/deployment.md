@@ -44,6 +44,11 @@ sudo systemctl enable --now b3-cod4_1
 `plugins/`, and — with `--service` — a systemd unit that knows exit code 221 from `!restart` means
 "start me again" rather than "this crashed".
 
+This is also the layout tab completion is written for: the symlink above means `b3` on `PATH` is a
+console script inside a virtualenv, and `b3 completion <shell>` prints a registration that runs `b3`
+itself to ask what comes next, so it works there. `pip install 'b3ng[completion]'`, then
+[the CLI page](cli.md#tab-completion).
+
 ## Several game servers on one machine
 
 Run `init` once per server. The only things that *must* differ are the **port**, the **game log** and the

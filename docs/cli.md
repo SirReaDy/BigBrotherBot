@@ -17,6 +17,7 @@ Installed as `b3`; equivalently `python -m b3.cli`.
 | `b3 -c b3.yaml run` | Connect to the server, tail the game log (locally or [over the network](deployment.md#tailing-a-hosted-servers-log)), and run until stopped |
 | `b3 -c b3.yaml replay <logfile>` | Replay a recorded log offline — no server, no RCON. The test/demo harness |
 | `b3 games` | Every valid `server.game`, grouped by engine, marking which need no game log. Needs no config |
+| `b3 completion [shell]` | Print the one line that gives your shell tab completion for all of this. Needs no config |
 | `b3 -c b3.yaml plugins` | Every plugin available here — bundled, installed for this server, installed in the shared pool — and which ones this config runs |
 
 `init` flags: `--name`, `--game`, `--host`, `--port`, `--rcon-password`, `--game-log`,
@@ -111,6 +112,55 @@ a server being reachable, and the gap between those two is where a first evening
 
 A scripted `b3 init` — in a Dockerfile, in a provisioning script — never stops to ask: with `--game`
 given, or with nothing attached to a terminal, it takes the flags and their defaults.
+
+## Tab completion
+
+None of the values above are guessable. There are 38 game ids, thirty-odd bundled plugins, a config
+path per server and a migration revision that only exists in the scripts — and until now the only way
+to see any of them was `b3 games`, `b3 plugins`, or the source. Tab is where somebody looks first.
+
+```console
+$ b3 completion bash >> ~/.bashrc     # then start a new shell
+$ b3 init srv --game bf<TAB>
+bf3  bf4  bfbc2  bfh
+$ b3 plugin enable power<TAB>
+poweradminbf3  poweradminbfbc2  poweradmincod7  poweradminhf  poweradminmoh  poweradminurt
+```
+
+`b3 completion` **prints**; it does not install. Editing somebody's shell configuration behind their
+back is not something a game-server bot should do, and every shell keeps its own file with its own
+conventions — one line an operator can read before pasting is both smaller and honest. With no shell
+named it guesses from `$SHELL` and says which it guessed, because a bash snippet pasted into zsh fails
+silently and leaves you wondering.
+
+| Shell | Where the line goes |
+|---|---|
+| `bash` | `~/.bashrc` |
+| `zsh` | `~/.zshrc` |
+| `fish` | `~/.config/fish/completions/b3.fish` |
+| `tcsh` | `~/.cshrc` |
+| `powershell` | your `$PROFILE` |
+
+PowerShell is on that list, which this project's own notes had said Windows had no answer for: modern
+`argcomplete` registers a native `ArgumentCompleter` for it, so Windows gets the same completions as
+everywhere else.
+
+What completes, and where each list comes from — none of it restated anywhere, which is why a title or
+a plugin added tomorrow completes without anybody remembering:
+
+| Where you press tab | What you are offered | Read from |
+|---|---|---|
+| `-c/--config` | `*.yaml`/`*.yml`, and directories with a trailing `/` so a second tab walks in | the filesystem |
+| `--game` | every title the bot reads | the profile table |
+| `b3 plugin enable/disable/update <name>` | bundled plugins **and** the ones installed on this machine | the plugin package, `conf/plugins/`, `plugins/` |
+| `b3 plugin remove <name>` | only what was installed — a bundled name is what that command exists to reject | `conf/plugins/`, `plugins/` |
+| `b3 db … --revision` | every revision, plus `head` and `base` | the packaged migration scripts — no database, which is exactly when you are typing a revision by hand |
+
+Completion is an extra, not a dependency: `pip install 'b3ng[completion]'`. Without it the bot behaves
+identically and `b3 completion` says that one line instead of a traceback — a bot that would not start
+without a completion library is a poor trade. Registration runs `b3` itself to ask what comes next, so
+it works with the layout [deployment](deployment.md) recommends, where `b3` is a console script inside
+a virtualenv symlinked onto `PATH`.
 
 ## Updates
 
