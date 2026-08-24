@@ -452,15 +452,12 @@ def test_the_titles_differ_in_nothing_but_the_map_list():
             )
             == BF3
         )
-        assert profile.rotate_command == "admin.runNextRound"
         assert profile.map_arguments == ()
-        # Frostbite 1 has the centre-screen message and names the `all` subset, as the classic
-        # `bfbc2.py` did; it has no round or yell verbs here because the classic parser for it never
-        # sent any, so there is nothing to copy and nothing is invented. `poweradminbfbc2` and
-        # `poweradminmoh` are where those get read.
-        assert profile.saybig_template == 'admin.yell "%s" 10 all'
-        assert profile.server_verbs == {}
-        assert set(profile.player_verbs) == {"kill", "move"}
+        # And the two titles of this generation do not even agree with each other: Bad Company 2
+        # moves the game on in levels and the 2010 Medal of Honor in rounds. One profile carrying
+        # Medal of Honor's for both is what `poweradminbfbc2` found.
+        assert BFBC2.rotate_command == "admin.runNextLevel"
+        assert MOH.rotate_command == "admin.runNextRound"
 
 
 def test_the_centre_screen_message_is_the_engines_own_verb():
@@ -468,7 +465,38 @@ def test_the_centre_screen_message_is_the_engines_own_verb():
     announcement and everything else meant to be unmissable was an ordinary chat line on all six
     titles. `admin.yell` is what the classic bot used, and it takes a duration."""
     assert BF3.saybig_template == 'admin.yell "%s" 10'
-    assert BFBC2.saybig_template == 'admin.yell "%s" 10 all'
+
+
+def test_frostbite_1_counts_its_yell_in_milliseconds():
+    """The same ten, and it was ten *milliseconds* — gone before the frame it drew on.
+
+    The classic's Bad Company 2 parser passed `duration=2400` for a message meant to be read, and
+    `poweradminbfbc2` above it passed 900 for a one-second countdown step; both are milliseconds.
+    Frostbite 2 takes seconds. So the one figure that served all six titles was right for four of
+    them and invisible on the other two — `admin.yell` accepted it either way, which is what made it
+    impossible to see.
+    """
+    assert BFBC2.saybig_template == 'admin.yell "%s" 10000 all'
+    assert "%(ms)s" in BFBC2.server_verbs["yell"]
+    assert "%(seconds)s" in BF3.server_verbs["yell"]
+
+
+def test_frostbite_1_declares_the_verbs_its_own_titles_take():
+    """Read for `poweradminbfbc2`, which is what the round control on this generation was waiting on.
+
+    Named as what they do, so a plugin asking "can this server restart the map for me?" does not
+    have to know which engine it is talking to: `cyclemap` and `map_restart` are the same two names
+    Urban Terror declares, and `exec` is the same name for "run a file of commands on the server".
+    """
+    assert BFBC2.server_verbs["cyclemap"] == "admin.runNextLevel"
+    assert BFBC2.server_verbs["map_restart"] == "admin.restartMap"
+    assert BFBC2.server_verbs["exec"] == 'admin.runScript "%(file)s"'
+    assert "player" in BFBC2.player_verbs["yell_player"]
+    # The team and squad yell subsets are Frostbite 2's here. This generation has them in the
+    # protocol, but the classic never sent one from Bad Company 2 — its team, enemy and squad
+    # commands sent ordinary chat — so there is no captured grammar and none is invented.
+    assert "yell_team" not in BFBC2.server_verbs
+    assert "yell_squad" not in BFBC2.server_verbs
 
 
 def test_the_round_and_yell_verbs_are_asked_for_rather_than_assumed():

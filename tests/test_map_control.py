@@ -233,13 +233,18 @@ def test_the_two_generations_are_told_apart_by_name() -> None:
     assert LEGACY_MAPLIST == {"bfbc2", "moh"}
 
 
-def test_the_frostbite_generations_use_their_own_rotate_verb() -> None:
-    """Sending either generation the other's verb is an unknown command, so `!maprotate` did nothing.
+def test_every_frostbite_title_uses_its_own_rotate_verb() -> None:
+    """Sending a title a verb it has not got is an unknown command, so `!maprotate` did nothing.
 
-    `admin.runNextRound` is Frostbite 1's and `mapList.runNextRound` is Frostbite 2's; every one of
-    the six titles carried the Frostbite 2 spelling before this.
+    There are **three** spellings across the six titles, not two. Frostbite 2 says
+    `mapList.runNextRound`; the 2010 Medal of Honor says `admin.runNextRound`; and Bad Company 2 says
+    `admin.runNextLevel` — that generation's two titles do not agree with each other. Every one of
+    the six carried the Frostbite 2 spelling first, and then both Frostbite 1 titles carried Medal of
+    Honor's, which is what `poweradminbfbc2` turned up: `!map` on Bad Company 2 inserted the map,
+    pointed the server at it, and then sent the one command that would have loaded it to a title that
+    does not take it.
     """
-    assert BFBC2.rotate_command == "admin.runNextRound"
+    assert BFBC2.rotate_command == "admin.runNextLevel"
     assert MOH.rotate_command == "admin.runNextRound"
     assert BF3.rotate_command == "mapList.runNextRound"
 
@@ -367,7 +372,7 @@ def test_the_two_generations_are_paced_at_their_own_rate() -> None:
 
 def test_a_frostbite_1_map_change_uses_the_flat_list_verbs(frostbite_server) -> None:
     frostbite_server.legacy_maplist = True
-    client = _client(frostbite_server, legacy_maplist=True)
+    client = _client(frostbite_server, legacy_maplist=True, rotate_command=MOH.rotate_command)
     try:
         client.change_map("Levels/MP_007")
     finally:
@@ -377,4 +382,23 @@ def test_a_frostbite_1_map_change_uses_the_flat_list_verbs(frostbite_server) -> 
     assert "admin.runNextRound" in verbs
     # `mapList.add` is Frostbite 2's, and this generation does not have it.
     assert "mapList.add" not in verbs
+    assert frostbite_server.current_map() == "Levels/MP_007"
+
+
+def test_the_last_step_of_a_map_change_is_the_titles_own_rotate_verb(frostbite_server) -> None:
+    """The two Frostbite 1 titles differ here, and the client was hardcoded to Medal of Honor's.
+
+    So on Bad Company 2 the map was inserted into the rotation and pointed at, and then the command
+    that loads it was one the title has not got — a `!map` that did nothing until the round happened
+    to end on its own.
+    """
+    frostbite_server.legacy_maplist = True
+    client = _client(frostbite_server, legacy_maplist=True, rotate_command=BFBC2.rotate_command)
+    try:
+        client.change_map("Levels/MP_007")
+    finally:
+        client.close()
+    verbs = [words[0] for words in frostbite_server.received]
+    assert "admin.runNextLevel" in verbs
+    assert "admin.runNextRound" not in verbs
     assert frostbite_server.current_map() == "Levels/MP_007"

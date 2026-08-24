@@ -1,0 +1,66 @@
+# poweradminbfbc2 — Bad Company 2's admin commands, teams, playlists and match mode.
+#
+# Point at it from the main config (this plugin only loads on `server.game: bfbc2`):
+#
+#   plugins:
+#     - name: poweradminbfbc2
+#       config: "@conf/plugin_poweradminbfbc2.yaml"
+#
+# What it adds, in groups:
+#
+#   the teams       !pateams (teams)  !pateambalance  !pachangeteam (ct)  !paspectate (spectate)
+#   players         !pakill (kill)
+#   the match       !pamatch (match)  !ready
+#   the map         !pamaprestart (maprestart)  !pamapreload (mapreload)  !pamaplist (maplist)
+#                   !pasetnextmap (setnextmap)
+#   the playlists   !paconquest (conq)  !parush (rush)  !pasqdm (sqdm)  !pasqrush (sqru)
+#   yelling         !payell (yell)  !payellteam (yt)  !payellenemy (ye)  !payellsquad (ys)
+#                   !payellplayer (yp)
+#   the server      !paset  !paget  !paserverinfo  !paident (id)  !runscript  !pb_sv_command (pbcmd)
+#
+# Levels and aliases are the classic plugin's and are set in code; `!cmdlevel <command> <level>`
+# changes one at runtime and `!cmdalias` changes the short form.
+#
+# Bad Company 2 is Frostbite **1**. Two things follow that are worth knowing before you use these:
+# a game mode is chosen by *playlist* and takes effect at the next map, not per map as on
+# Battlefield 3; and this generation has no spectator team, so `!paspectate` puts the player back on
+# the deploy screen — out of the game, watching — which is the only thing the engine offers.
+#
+# `!pamatch on` asks everybody to type `!ready`, nags whoever has not every ten seconds, and when
+# they all have, counts down from ten and restarts the map. `!pamatch off` calls it off. While a
+# match is on the automatic team check stands down, since the people playing have agreed the sides
+# between themselves — and it comes back on afterwards, which in the classic it never did.
+
+settings:
+  # Move players across when the sides drift apart, and tell whoever made them uneven. Off as the
+  # classic shipped it.
+  #
+  # It is checked when somebody changes team, and `!pateams` runs it on demand. The player moved is
+  # whoever joined the bigger team **most recently** — the classic sorted the other way and moved
+  # whoever had been there longest, which is the opposite of who caused it.
+  teambalance: false
+
+  # Players at or above this level are never moved by the automatic check. The classic had no
+  # exemption at all, so it moved the admin who had just joined to sort the teams out.
+  no_balance_level: mod
+
+  # How many players one side may be ahead by before anybody is moved. Floored at 1, because 0 would
+  # move every arrival straight back again.
+  max_difference: 1
+
+  # An admin at or above this level is not level-checked when acting on another player. Below it, you
+  # may not act on your equals or your betters, and that one rule covers !pakill, !pachangeteam and
+  # !paspectate. (The classic made no check anywhere in this plugin, so any moderator could kill a
+  # senior admin.)
+  no_level_check_level: fulladmin
+
+  # How long a `!payell` stays on players' screens, in **seconds**. It goes out to the engine in
+  # milliseconds, which is the unit this generation counts in — and the reason every `say_big` on
+  # Bad Company 2 used to be a ten-millisecond flash.
+  yell_duration: 10
+
+  # Plugins switched off while a match is on, and back on when it ends — a comma-separated list, or
+  # a YAML list. Only the ones that were actually running are switched back on: the classic enabled
+  # everything on this list when a match ended, so a plugin you had deliberately switched off came
+  # back on because somebody had played a match.
+  match_plugins: "spree, tk, pingwatch"

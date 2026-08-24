@@ -39,6 +39,13 @@ MAX_REASON = 80
 #: `!yell` commands, which is why those pass it rather than reading this.
 BIG_MESSAGE_SECONDS = 10
 
+#: The same figure for Frostbite 1, which counts that duration in **milliseconds** — the classic
+#: `bfbc2.py` passed `duration=2400` for a message meant to be readable, and the plugin above it
+#: passed 900 for a one-second countdown step. So the ten this generation was being sent was ten
+#: *milliseconds*: `admin.yell` was accepted, and the message was gone before the frame it drew on.
+#: The unit is the whole reason Frostbite 1 spells its yell out separately below.
+BIG_MESSAGE_MILLISECONDS = 10_000
+
 #: The lowest build of each title these grammars were written against, lifted verbatim from the
 #: classic parsers' own constants (`BF3_REQUIRED_VERSION` and its siblings). They are floors, not
 #: targets: every server anybody is still running is far above them, and they exist to refuse one so
@@ -127,19 +134,47 @@ _BASE = GameProfile(
 #:
 #: **The one place the two generations part company.** Every verb the bot uses for chat, kicks and
 #: bans is identical across all six titles, which is what makes one profile serve them — but the map
-#: list is not: Frostbite 1 keeps a flat list of level names and ends a round with
-#: `admin.runNextRound`, where Frostbite 2 keeps (map, gamemode, rounds) entries and uses
-#: `mapList.runNextRound`. Sending either generation the other's verb is an unknown command, so
-#: `!maprotate` did nothing on these two until now. `gamemode`/`rounds` go with it: this generation's
-#: map list has nowhere to put them, so they are not offered rather than accepted and dropped.
-_FROSTBITE1 = replace(
-    _BASE, rotate_command="admin.runNextRound", map_arguments=(), map_argument_separator=","
-)
+#: list is not: Frostbite 1 keeps a flat list of level names and moves it on with a verb of its own,
+#: where Frostbite 2 keeps (map, gamemode, rounds) entries and uses `mapList.runNextRound`. Sending
+#: either generation the other's verb is an unknown command, so `!maprotate` did nothing on these two
+#: until now. `gamemode`/`rounds` go with it: this generation's map list has nowhere to put them, so
+#: they are not offered rather than accepted and dropped.
+#:
+#: **And the two titles in it do not share their round verbs either**, which is the second thing
+#: asserting sameness hid. Bad Company 2 moves the game on with `admin.runNextLevel` and restarts it
+#: with `admin.restartMap`; the 2010 Medal of Honor has neither and uses `admin.runNextRound` and
+#: `admin.restartRound`. The classic wrote a parser per title and each used its own pair, so nothing
+#: there ever had to notice; here one profile served both and carried Medal of Honor's, so
+#: `!maprotate` and `!map` on Bad Company 2 ended with a verb that title has not got — the map was
+#: inserted and pointed at, and then the round never advanced. Declared per title below.
+_FROSTBITE1 = replace(_BASE, map_arguments=(), map_argument_separator=",")
 BFBC2 = replace(
     _FROSTBITE1,
     name="bfbc2",
     map_names=maps.BFBC2_MAPS,
     version_check=VersionCheck("version", "BFBC2", BFBC2_R9),
+    rotate_command="admin.runNextLevel",
+    # Milliseconds on this generation — see BIG_MESSAGE_MILLISECONDS. Ten of them is not a message.
+    saybig_template=f'admin.yell "%s" {BIG_MESSAGE_MILLISECONDS} all',
+    server_verbs={
+        # This title's round control, which is spelled in levels rather than rounds: there is no
+        # `admin.runNextRound` here. Named `cyclemap` and `map_restart` because that is what they do
+        # and what every other family here calls them.
+        "cyclemap": "admin.runNextLevel",
+        "map_restart": "admin.restartMap",
+        # `admin.runScript` runs a file of RCON commands that lives on the *game server*. The same
+        # verb name Urban Terror's `exec` carries, for the same reason: a plugin asking "can this
+        # server run a config file for me?" should not have to know which engine it is talking to.
+        "exec": 'admin.runScript "%(file)s"',
+        # The centre-screen message with a duration the caller chose. Frostbite 1 names the `all`
+        # subset explicitly, and counts in milliseconds — hence `ms` rather than F2's `seconds`, so
+        # that a plugin written for the other generation cannot quietly pass the wrong unit.
+        "yell": 'admin.yell "%(text)s" %(ms)s all',
+    },
+    player_verbs={
+        **_BASE.player_verbs,
+        "yell_player": 'admin.yell "%(text)s" %(ms)s player "%(cid)s"',
+    },
 )
 #: Medal of Honor 2010 is the one title with no build floor — the classic checked its name only.
 MOH = replace(
@@ -147,14 +182,15 @@ MOH = replace(
     name="moh",
     map_names=maps.MOH_MAPS,
     version_check=VersionCheck("version", "MOH"),
+    rotate_command="admin.runNextRound",
 )
 
 #: Frostbite 2 — BF3, BF4, Hardline and MoH Warfighter.
 #:
-#: The round and yell verbs are declared for this generation only. Frostbite 1 spells its round
-#: control differently and the classic parser for it never used any of them, so there is nothing here
-#: to copy from and nothing is invented: `poweradminbfbc2` and `poweradminmoh` are where those get
-#: read and declared.
+#: The round verbs here are this generation's own spelling: Frostbite 1 has its own pair per title,
+#: declared above. The yell subsets — a team, a squad — are Frostbite 2's, because the classic sent
+#: those only here; `poweradminbfbc2` reaches its team and squad with the one yell verb Bad Company 2
+#: is on record as taking rather than being given an invented grammar.
 _FROSTBITE2 = replace(
     _BASE,
     rotate_command="mapList.runNextRound",
@@ -216,6 +252,7 @@ ALL: dict[str, GameProfile] = {p.name: p for p in (BFBC2, MOH, BF3, BF4, BFH, MO
 
 __all__ = [
     "ALL",
+    "BIG_MESSAGE_MILLISECONDS",
     "BF3",
     "BF3_REQUIRED_BUILD",
     "BF4",

@@ -39,6 +39,7 @@ list, each with an optional config of its own (see `examples/`):
 | `codam` | a Call of Duty admin mod's own verbs, from a list you write | `!codam` plus `c` + every verb you list |
 | `poweradmincod7` | Black Ops's playlists, map exclusions, DLC packs and config files | `!pasetmap` `!paplaylist` `!pagetplaylists` `!pasetplaylist` `!paexcludemaps` `!paset` `!paget` `!pasetdlc` `!palistcfg` `!paload` `!pamaprestart` `!pafastrestart` `!pagametype` |
 | `poweradminbf3` | Battlefield 3's teams, scrambler, VIP list and preset server configs | `!roundnext` `!endround` `!kill` `!nuke` `!changeteam` `!swap` `!autoassign` `!autobalance` `!scramble` `!setnextmap` `!yell` `!vips` `!loadconfig` … |
+| `poweradminbfbc2` | Bad Company 2's teams, playlists, yells and ready-up match mode | `!pateams` `!pateambalance` `!pachangeteam` `!paspectate` `!pakill` `!pamatch` `!ready` `!pamaprestart` `!pasetnextmap` `!parush` `!payell` `!paset` `!paget` … |
 
 ### censor — bad language, and the escalating mute
 
@@ -518,6 +519,43 @@ every `say_big` on all six Frostbite titles was an ordinary chat line, and `Cons
 `set <name> "<value>"` where Frostbite takes the setting's name as the command — so every setting
 written on this family was answered `UnknownCommand` in silence.
 Config: `examples/plugin_poweradminbf3.yaml`.
+
+### poweradminbfbc2 — Bad Company 2, and a team balancer that never balanced
+
+The same shape as `poweradminbf3` a generation earlier, and most of the differences are the
+generation: round control is spelled in levels rather than rounds, the map list is a flat list of
+level names so the next map is an *index* into it, a game mode is chosen by **playlist** and takes
+effect at the next map, and there is no spectator team — `!paspectate` puts a player back on the
+deploy screen, which is the only thing the engine offers. `!pamatch on` is the other half: everybody
+types `!ready`, whoever has not is nagged every ten seconds, and when they all have the bot counts
+down from ten and restarts the map, with the plugins you list switched off for the duration.
+
+**The team balancer had never moved anybody.** Three separate faults, each enough on its own.
+`getTeams()` appended both teams to the same list, so team 2 was always empty and the gap was always
+the size of team 1 — three-a-side read as six against nobody. `teambalance()` then read the join time
+with `c.isvar(...)`, which returns a **bool**, and asked that bool for `.value`: `AttributeError`,
+every time, on both the automatic path and `!pateams` — and it raised *after* putting "Autobalancing
+Teams!" on everybody's screen, so the announcement was the only part that worked. And the sort was
+ascending, so the players it would have moved are whoever had been on that team longest, which is the
+opposite end of the list from whoever just made the sides uneven.
+
+`!pachangeteam` compared a team id to the string `"1"` where the parser makes it an `int`, so it
+moved *everybody* to team 2 — the players already there stayed put while the bot reported "forced to
+the other team". **Four of the five yell commands did not yell**: `!payellteam`, `!payellenemy`,
+`!payellsquad` and `!payellplayer` all sent an ordinary private chat line. `!pamaplist` built its
+command as one string rather than a word list, so a filename that the R9 protocol does not take
+anyway went out glued to the verb. `!pamapreload` emptied the server's map list, put one map in it,
+cycled, and then re-read the list from disk — discarding the two commands before it, and any rotation
+an admin had built. `!paset friendlyFire` with no value was an `IndexError`. And a match cost the
+server its team balancer permanently: `!pamatch on` switched it off and nothing ever switched it back.
+
+Writing it turned up three faults below the plugin. This title's rotate verb is
+`admin.runNextLevel`, and both Frostbite 1 titles were being sent Medal of Honor's
+`admin.runNextRound` — so `!map` inserted the map, pointed the server at it and then failed on the
+one command that loads it. Its centre-screen message counts **milliseconds**, so the ten seconds the
+profile asked for was ten milliseconds: every `say_big` on Bad Company 2 was a flash nobody could
+see. And neither Frostbite 1 title had a single round or yell verb declared, which is what this
+plugin was waiting on. Config: `examples/plugin_poweradminbfbc2.yaml`.
 
 ### poweradmincod7 — Black Ops, where you cannot just load a map
 

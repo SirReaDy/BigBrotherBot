@@ -229,19 +229,23 @@ def _battleye_client(config: Config) -> PushClient:
 
 def _frostbite_client(config: Config) -> PushClient:
     from b3.net.frostbite import FrostbiteClient
+    from b3.parsers.frostbite.profiles import ALL as FROSTBITE_PROFILES
     from b3.parsers.frostbite.profiles import LEGACY_MAPLIST
 
+    profile = FROSTBITE_PROFILES.get(config.server.game)
     return FrostbiteClient(
         config.server.host,
         config.server.port,
         config.server.rcon_password,
         timeout=config.server.rcon_timeout,
-        # The only per-title thing this layer needs: Bad Company 2 and the 2010 Medal of Honor keep a
-        # flat map list, where the four Frostbite 2 titles keep (map, gamemode, rounds) entries. Every
-        # other difference between the six is data on the profile.
-        # The two generations differ in the map list, and in how fast their chat area can be read:
-        # the classic paced Frostbite 1 at 2s and Frostbite 2 at 0.8s. Both follow from this flag.
+        # Two per-title things this layer needs. Bad Company 2 and the 2010 Medal of Honor keep a
+        # flat map list, where the four Frostbite 2 titles keep (map, gamemode, rounds) entries; the
+        # two generations also differ in how fast their chat area can be read (the classic paced
+        # Frostbite 1 at 2s and Frostbite 2 at 0.8s), and both follow from this one flag.
         legacy_maplist=config.server.game in LEGACY_MAPLIST,
+        # And the verb that moves the game on, which is the last step of loading a named map. Three
+        # spellings across the six titles, so it comes from the profile rather than from the flag.
+        rotate_command=profile.rotate_command if profile else "",
     )
 
 

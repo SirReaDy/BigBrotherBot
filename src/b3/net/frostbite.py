@@ -98,6 +98,10 @@ MAX_ROTATION = 1000
 #: outright — so a wrong guess degrades to "the map loaded in the wrong mode", where an empty string
 #: degrades to "the map did not load".
 DEFAULT_GAMEMODE = "ConquestLarge0"
+
+#: The Frostbite 2 verb for "move the game on", and the default for a caller that does not say. The
+#: three titles here that spell it differently pass their own (see `GameProfile.rotate_command`).
+ROTATE_FROSTBITE2 = "mapList.runNextRound"
 DEFAULT_ROUNDS = "2"
 
 
@@ -252,6 +256,7 @@ class FrostbiteClient:
         retry_interval: float = RETRY_INTERVAL,
         retry_max: float = RETRY_MAX,
         legacy_maplist: bool = False,
+        rotate_command: str = ROTATE_FROSTBITE2,
         say_interval: float | None = None,
         clock: Clock | None = None,
     ) -> None:
@@ -261,9 +266,16 @@ class FrostbiteClient:
         #: Bad Company 2 and the 2010 Medal of Honor. The two Frostbite generations share every verb
         #: the bot uses for chat, kicks and bans — which is why one profile serves all six titles —
         #: but they do **not** share the map list, and this is the only place that difference shows.
-        #: Frostbite 1 holds a flat list of level names and moves with `admin.runNextRound`;
-        #: Frostbite 2 holds (map, gamemode, rounds) triplets and moves with `mapList.runNextRound`.
+        #: Frostbite 1 holds a flat list of level names; Frostbite 2 holds (map, gamemode, rounds)
+        #: triplets.
         self._legacy_maplist = legacy_maplist
+        #: The verb that moves the game on, which is the last step of loading a named map. Passed in
+        #: rather than derived from the flag above, because the two Frostbite 1 titles do **not**
+        #: agree on it: Bad Company 2 takes `admin.runNextLevel` and the 2010 Medal of Honor takes
+        #: `admin.runNextRound`. It was hardcoded to the latter for both, so on Bad Company 2 `!map`
+        #: inserted the map, pointed the server at it, and then failed on the one command that would
+        #: have loaded it. `GameProfile.rotate_command` is the same string `!maprotate` sends.
+        self._rotate_command = rotate_command or ROTATE_FROSTBITE2
         #: Seconds between chat lines. Defaults to the pace this generation's chat area can be read
         #: at — see SAY_INTERVAL — since the two differ and the caller already says which it is.
         self._say_interval = (
@@ -470,14 +482,14 @@ class FrostbiteClient:
             index = self._next_index()
             self._command_words(["mapList.insert", str(index), name])
             self._command_words(["mapList.nextLevelIndex", str(index)])
-            self._command_words(["admin.runNextRound"])
+            self._command_words([self._rotate_command])
             return
         rounds = values.get("rounds") or self._current_rounds()
         gamemode = values.get("gamemode") or self._current_gamemode()
         index = self._next_index()
         self._command_words(["mapList.add", name, gamemode, str(rounds), str(index)])
         self._command_words(["mapList.setNextMapIndex", str(index)])
-        self._command_words(["mapList.runNextRound"])
+        self._command_words([self._rotate_command])
 
     def _next_index(self) -> int:
         """The slot just after the map being played, which is where a `!map` target belongs.

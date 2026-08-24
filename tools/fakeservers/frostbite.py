@@ -250,7 +250,13 @@ class FakeFrostbiteServer:
             return self._insert_map(words[1:])
         if verb in ("mapList.setNextMapIndex", "mapList.nextLevelIndex"):
             return self._set_next_index(words[1:])
-        if verb in ("mapList.runNextRound", "admin.runNextRound"):
+        if verb in ("mapList.runNextRound", "admin.runNextRound", "admin.runNextLevel"):
+            # Three spellings for one thing, one per generation and then one more: Frostbite 2 says
+            # `mapList.runNextRound`, the 2010 Medal of Honor says `admin.runNextRound` and Bad
+            # Company 2 says `admin.runNextLevel`. All three are honoured here so that a client
+            # sending the wrong one fails visibly — this fake answers OK to anything it does not
+            # know, which is exactly how a rotate verb a title has not got looks like success.
+            #
             # The whole point of `!map`: the queued entry becomes the one being played. A fake that
             # answered OK without moving could not tell a working map change from a no-op.
             self.map_index = min(self.next_map_index, max(len(self.map_list) - 1, 0))
