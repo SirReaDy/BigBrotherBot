@@ -1415,10 +1415,35 @@ class Bot:
         half-rendered: §1.10 is the entry about a penalty verb that could not be filled in being sent
         anyway, and this is the same rule.
         """
+        lines = self._render_verb(name, client, **values)
+        if lines is None:
+            return False
+        for line in lines:
+            self._send(line)
+        return True
+
+    def ask_verb(self, name: str, client: Client, **values: str) -> str | None:
+        """See `Console.ask_verb`: do it, and hand back what the server said.
+
+        The same rendering and the same refusals as `apply_verb`; only the sending differs, because
+        for a handful of verbs the reply *is* the result — Urban Terror's `startserverdemo` answers
+        with the filename it has started writing. A template holding more than one command answers
+        with the last reply, which is the only thing a caller could use.
+        """
+        lines = self._render_verb(name, client, **values)
+        if lines is None:
+            return None
+        reply = ""
+        for line in lines:
+            reply = self._ask(line)
+        return reply
+
+    def _render_verb(self, name: str, client: Client, **values: str) -> list[str] | None:
+        """A player verb as the lines to send, or None when it cannot be filled in."""
         template = self.profile.player_verbs.get(name)
         if not template:
             log.warning("%s has no verb for %r", self.profile.name, name)
-            return False
+            return None
         fields = {
             "cid": sanitize_rcon_value(client.cid or ""),
             "name": sanitize_rcon_value(client.name),
@@ -1440,12 +1465,8 @@ class Bot:
                 template,
                 missing,
             )
-            return False
-        for line in rendered.splitlines():
-            collapsed = " ".join(line.split())
-            if collapsed:
-                self._send(collapsed)
-        return True
+            return None
+        return [" ".join(line.split()) for line in rendered.splitlines() if line.split()]
 
     def supports_server_verb(self, name: str) -> bool:
         """Whether this title declares a verb for ``name`` that names no player."""
@@ -1453,10 +1474,29 @@ class Bot:
 
     def apply_server_verb(self, name: str, **values: str) -> bool:
         """Run a verb that names no player. Same rules as `apply_verb`, minus the client."""
+        lines = self._render_server_verb(name, **values)
+        if lines is None:
+            return False
+        for line in lines:
+            self._send(line)
+        return True
+
+    def ask_server_verb(self, name: str, **values: str) -> str | None:
+        """See `Console.ask_server_verb` — `ask_verb` for the verbs that name no player."""
+        lines = self._render_server_verb(name, **values)
+        if lines is None:
+            return None
+        reply = ""
+        for line in lines:
+            reply = self._ask(line)
+        return reply
+
+    def _render_server_verb(self, name: str, **values: str) -> list[str] | None:
+        """A server verb as the lines to send, or None when it cannot be filled in."""
         template = self.profile.server_verbs.get(name)
         if not template:
             log.warning("%s has no verb for %r", self.profile.name, name)
-            return False
+            return None
         try:
             rendered = template % {
                 key: sanitize_rcon_value(str(value)) for key, value in values.items()
@@ -1469,12 +1509,8 @@ class Bot:
                 template,
                 missing,
             )
-            return False
-        for line in rendered.splitlines():
-            collapsed = " ".join(line.split())
-            if collapsed:
-                self._send(collapsed)
-        return True
+            return None
+        return [" ".join(line.split()) for line in rendered.splitlines() if line.split()]
 
     def can_cancel_vote(self) -> bool:
         """Whether this title has a verb for stopping a vote — see `GameProfile.veto_command`."""

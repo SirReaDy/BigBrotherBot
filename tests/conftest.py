@@ -178,6 +178,10 @@ class FakeConsole:
         #: Urban Terror's set by default, since it is the only family here that has any.
         self.player_verbs: set[str] = {"slap", "nuke", "kill", "mute", "forceteam", "swap"}
         self.verbs_applied: list[tuple[str, Client, dict[str, str]]] = []
+        #: What the server answers a verb asked through `ask_verb`, keyed by verb name. Only a
+        #: handful of verbs have a reply worth reading — Urban Terror's `startserverdemo` says which
+        #: file it has begun writing — so this is empty by default and a test sets what it needs.
+        self.verb_replies: dict[str, str] = {}
         #: The verbs that name no player, and the ones a plugin ran.
         self.server_verbs: set[str] = {
             "swapteams",
@@ -338,6 +342,21 @@ class FakeConsole:
 
     def supports_server_verb(self, name: str) -> bool:
         return name in self.server_verbs
+
+    def ask_verb(self, name: str, client: Client, **values: str) -> str | None:
+        """As the runtime answers it: the verb is applied and the server's reply comes back.
+
+        `verb_replies` is keyed by verb name, since a test cares which verb was asked and not how the
+        title spells it.
+        """
+        if not self.apply_verb(name, client, **values):
+            return None
+        return self.verb_replies.get(name, "")
+
+    def ask_server_verb(self, name: str, **values: str) -> str | None:
+        if not self.apply_server_verb(name, **values):
+            return None
+        return self.verb_replies.get(name, "")
 
     def apply_server_verb(self, name: str, **values: str) -> bool:
         if name not in self.server_verbs:

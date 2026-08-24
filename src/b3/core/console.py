@@ -262,12 +262,28 @@ class Console(Protocol):
         arguments were not all supplied — never a silent half-sent command."""
         ...
 
+    def ask_verb(self, name: str, client: Client, **values: str) -> str | None:
+        """Do ``name`` to a player and hand back **what the server said**.
+
+        The counterpart of `apply_verb` for the few verbs whose reply is the point rather than a
+        courtesy. Urban Terror's `startserverdemo` answers with the filename it has begun writing,
+        and a plugin that cannot read that cannot tell a demo that started from one that did not —
+        nor find the file afterwards to delete it. `None` where this engine has no such verb or the
+        template's arguments were not all supplied, which is the same refusal `apply_verb` makes; an
+        empty string means the server said nothing.
+        """
+        ...
+
     def supports_server_verb(self, name: str) -> bool:
         """Whether this engine has a verb for ``name`` that names no player — `shuffleteams`, say."""
         ...
 
     def apply_server_verb(self, name: str, **values: str) -> bool:
         """Run one. False when this engine has no such verb or an argument was not supplied."""
+        ...
+
+    def ask_server_verb(self, name: str, **values: str) -> str | None:
+        """Run one and hand back what the server said — `ask_verb` for the verbs naming no player."""
         ...
 
     def can_cancel_vote(self) -> bool:

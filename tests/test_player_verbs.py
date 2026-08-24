@@ -20,17 +20,18 @@ from dataclasses import replace
 from b3.config.schema import BotConfig, Config, PluginEntry, ServerConfig
 from b3.core.clock import FakeClock
 from b3.domain.client import Client
-from b3.parsers.q3.profiles import IOURT42
+from b3.parsers.q3.profiles import IOURT41, IOURT42
 from b3.runtime.bot import Bot
 
 
 class Rcon:
-    def __init__(self) -> None:
+    def __init__(self, reply: str = "") -> None:
         self.commands: list[str] = []
+        self.reply = reply
 
     def command(self, cmd: str) -> str:
         self.commands.append(cmd)
-        return ""
+        return self.reply
 
 
 def _bot(tmp_path, game="iourt42"):  # noqa: ANN001, ANN202
@@ -54,7 +55,11 @@ def _client(name="Bob", cid="3"):  # noqa: ANN001, ANN202
 
 
 def test_urban_terror_declares_its_own_verbs():
-    """Taken from the classic `iourt42` parser's command table, which is where they were hiding."""
+    """Taken from the classic `iourt42` parser's command table, which is where they were hiding.
+
+    The two demo verbs are 4.2's and later: server-side demo recording did not exist in 4.1, which is
+    how `urtserversidedemo` knows to switch itself off there without asking the server.
+    """
     assert set(IOURT42.player_verbs) == {
         "slap",
         "nuke",
@@ -62,7 +67,10 @@ def test_urban_terror_declares_its_own_verbs():
         "mute",
         "forceteam",
         "swap",
+        "record_demo",
+        "record_stop",
     }
+    assert set(IOURT41.player_verbs) == {"slap", "nuke", "kill", "mute", "forceteam", "swap"}
     assert IOURT42.player_verbs["kill"] == "smite %(cid)s"  # the engine's own spelling
 
 
@@ -75,6 +83,8 @@ def test_the_verbs_that_name_no_player_are_their_own_table():
         "reload",
         "cyclemap",
         "exec",
+        "record_all",
+        "record_stop_all",
     }
 
 
@@ -145,6 +155,30 @@ def test_a_verb_with_an_argument(tmp_path):
     bot.apply_verb("mute", _client(cid="4"), seconds="0")
 
     assert rcon.commands == ["mute 4 60", "mute 4 0"]
+    bot.storage.close()
+
+
+def test_a_verbs_reply_can_be_read_where_that_is_the_point(tmp_path):
+    """Every verb until `urtserversidedemo` was fire-and-forget. `startserverdemo` answers with the
+    filename it has begun writing, and a plugin that cannot read that cannot find the demo again."""
+    answer = "startserverdemo: recording Joe to serverdemos/joe.dm_68"
+    config = Config(
+        bot=BotConfig(database=f"sqlite:///{tmp_path / 'b3.sqlite'}"),
+        server=ServerConfig(game="iourt42"),
+        plugins=[PluginEntry(name="admin")],
+    )
+    rcon = Rcon(reply=answer)
+    bot = Bot(config, rcon=rcon, clock=FakeClock())
+    bot.start()
+    rcon.commands.clear()
+
+    assert bot.ask_verb("record_demo", _client(cid="3")) == answer
+    assert rcon.commands == ["startserverdemo 3"]
+    assert bot.ask_server_verb("record_all") == answer
+    # A verb this title has not got answers None, which is a different thing from an empty reply: the
+    # caller can tell "the engine cannot do this" from "the server said nothing".
+    assert bot.ask_verb("teleport", _client()) is None
+    assert bot.ask_server_verb("teleport") is None
     bot.storage.close()
 
 

@@ -1,0 +1,43 @@
+# urtserversidedemo — Urban Terror's server-side demo recording.
+#
+# Point at it from the main config (this plugin needs Urban Terror **4.2 or later**; 4.1 predates the
+# feature and the plugin switches itself off there with a reason in the log):
+#
+#   plugins:
+#     - name: urtserversidedemo
+#       config: "@conf/plugin_urtserversidedemo.yaml"
+#
+# What it adds:
+#
+#   !startserverdemo <player|all> [<minutes>]   (startdemo)   record a player from the server
+#   !stopserverdemo <player|all>                (stopdemo)    stop recording
+#
+# Levels and aliases are the classic plugin's and are set in code; `!cmdlevel <command> <level>`
+# changes one at runtime and `!cmdalias` changes the short form.
+#
+# A server-side demo is the only evidence an admin can collect about somebody they suspect: a
+# client-side demo needs that player's cooperation. The server writes the file itself and answers with
+# its name, which the bot logs — with the player's name, GUID and address — so a demo can be found
+# again afterwards.
+#
+# `!startserverdemo all` records everybody **and keeps recording whoever joins next**, until
+# `!stopserverdemo all`. That state survives switching the plugin off and on again, which is
+# deliberate: an operator who disables the plugin for a minute has not changed their mind about what
+# to record.
+#
+# A player who is connected but has not picked a team yet cannot be recorded — the server says so —
+# and the demo starts by itself the moment they join. If they never do, the attempt is given up on
+# after five minutes rather than being remembered for the life of the bot.
+#
+# `jumper` uses this plugin as a service: it records every jump run and deletes the demo again unless
+# the run set a record. Load this one for that to work.
+
+settings:
+  # Minutes a demo runs for when `!startserverdemo <player>` names no length. 0 means "until somebody
+  # stops it", which is what the classic's command did — a demo an admin started because they are
+  # watching somebody should not stop while they are still watching.
+  #
+  # `!startserverdemo <player> 5` asks for a length whatever this says. In the classic that was
+  # possible only from two third-party plugins (`haxbusterurt` and `follow`), so for everybody else
+  # the setting existed and nothing could reach it.
+  default_minutes: 0

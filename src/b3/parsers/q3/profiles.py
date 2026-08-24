@@ -135,9 +135,28 @@ _URT = replace(
         "exec": "exec %(file)s",
     },
 )
+#: Server-side demo recording, which arrived in 4.2 — so 4.1 gets neither verb, and a plugin asking
+#: `supports_verb` before offering a command is how an operator on the older build finds out from the
+#: bot rather than from a server reply nobody reads. The reply is the *point* of these two: it carries
+#: the filename being written, which is the only way anything can find that demo again.
+#: `record_all`/`record_stop_all` name no player and take the engine's own `all` keyword.
+_URT_DEMO_PLAYER_VERBS = {
+    "record_demo": "startserverdemo %(cid)s",
+    "record_stop": "stopserverdemo %(cid)s",
+}
+_URT_DEMO_SERVER_VERBS = {
+    "record_all": "startserverdemo all",
+    "record_stop_all": "stopserverdemo all",
+}
 IOURT41 = replace(_URT, name="iourt41")
-IOURT42 = replace(_URT, name="iourt42", veto_command="veto")
-IOURT43 = replace(_URT, name="iourt43", veto_command="veto")
+_URT42 = replace(
+    _URT,
+    veto_command="veto",
+    player_verbs={**_URT.player_verbs, **_URT_DEMO_PLAYER_VERBS},
+    server_verbs={**_URT.server_verbs, **_URT_DEMO_SERVER_VERBS},
+)
+IOURT42 = replace(_URT42, name="iourt42")
+IOURT43 = replace(_URT42, name="iourt43")
 
 #: Every Quake3 title, by the id used in `server.game`.
 ALL: dict[str, GameProfile] = {

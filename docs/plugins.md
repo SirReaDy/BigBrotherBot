@@ -42,6 +42,7 @@ list, each with an optional config of its own (see `examples/`):
 | `poweradminbfbc2` | Bad Company 2's teams, playlists, yells and ready-up match mode | `!pateams` `!pateambalance` `!pachangeteam` `!paspectate` `!pakill` `!pamatch` `!ready` `!pamaprestart` `!pasetnextmap` `!parush` `!payell` `!paset` `!paget` … |
 | `poweradminmoh` | the 2010 Medal of Honor's teams, scrambler, match mode and reserved slots | `!teams` `!teambalance` `!changeteam` `!spect` `!swap` `!kill` `!scramble` `!scramblemode` `!autoscramble` `!match` `!ready` `!runnextround` `!setnextmap` `!reserveslot` … |
 | `poweradminhf` | Homefront's teams, match mode and its three player verbs | `!pateams` `!pateambalance` `!paautobalance` `!pachangeteam` `!paspectate` `!pakill` `!pamatch` `!ready` `!payell` `!paident` `!panextmap` |
+| `urtserversidedemo` | records a player from an Urban Terror 4.2 server, and tells you the filename | `!startserverdemo` `!stopserverdemo` |
 
 ### censor — bad language, and the escalating mute
 
@@ -644,6 +645,38 @@ command inside it. One of those is worth knowing: **`switch_team` takes no team.
 `admin forceteamswitch` puts a player on the other side and cannot be asked for a particular one, so
 the balancer moves players *off* the bigger side — the same thing on a two-sided game, and the only
 thing offered. Config: `examples/plugin_poweradminhf.yaml`.
+
+### urtserversidedemo — evidence an admin can collect
+
+Urban Terror 4.2 can record a demo of one player from the server side, which is the only kind of
+evidence about a suspected cheater that does not need that player's cooperation. `!startserverdemo
+<player>` starts one, `!startserverdemo all` records everybody and keeps recording whoever joins next,
+and `!stopserverdemo` reverses either. A length can be asked for — `!startserverdemo bob 5` — which in
+the classic was reachable only from two third-party plugins, so for everybody else the machinery
+existed and nothing could ask.
+
+**The reply is the point.** `startserverdemo` answers with the filename it has begun writing, and the
+bot logs it with the player's name, GUID and address; without reading that, nothing can say a demo
+started or find the file again. `jumper` needs exactly that, which is why this is a service as well as
+two commands. Reading a verb's reply needed a seam of its own: every engine verb until now was
+fire-and-forget, so `Console.ask_verb` is `apply_verb` for the few whose answer is the result.
+
+**Nothing on shutdown ever ran** in the classic. `onExit` and `onStop` were defined and never
+registered as handlers, so a bot that stopped left the server recording — and `!startserverdemo all`
+outlived the bot that asked for it. The method they would have called could not have worked anyway:
+`for guid, stopper in self._auto_stop_timers:` iterates a dict, which yields keys, so unpacking a GUID
+into two names raises. Two faults in one path, each hiding the other. Beyond that: a reply the author
+had not anticipated hit `raise AssertionError` **inside a thread**, so the attempt vanished with the
+thread and the player stayed in the waiting table for good; a timed demo of a player who had already
+left raised `KeyError` instead of stopping; and the two commands disagreed about what `all` meant
+(`!startserverdemo ALL` looked for a player called "ALL"). There are no threads and no timers here —
+one scheduled pass, and the retry happens the moment the player joins a team, which is what the thread
+was waiting for.
+
+The verbs belong to the title: `record_demo`/`record_stop` and `record_all`/`record_stop_all` are
+declared on 4.2 and 4.3 and **not on 4.1**, so the plugin asks the profile rather than the server and
+switches itself off with a reason on the older build. Config:
+`examples/plugin_urtserversidedemo.yaml`.
 
 ### poweradmincod7 — Black Ops, where you cannot just load a map
 
