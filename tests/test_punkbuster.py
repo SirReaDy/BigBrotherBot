@@ -468,3 +468,70 @@ def test_a_screenshot_on_a_server_without_punkbuster_reports_that():
     bot.setup_punkbuster()
 
     assert not bot.request_screenshot(Client(guid="G", name="Bob", cid="3"))
+
+
+# -- how the verb is carried, which is the title's business ----------------------
+
+
+class FrostbitePbRcon:
+    """A Battlefield server: PunkBuster answers only through `punkBuster.pb_sv_command`.
+
+    Everything else is `UnknownCommand`, which is what a real one says — and which the startup probe
+    reads as "no PunkBuster here".
+    """
+
+    def __init__(self) -> None:
+        self.sent: list[str] = []
+
+    def command(self, cmd: str) -> str:
+        self.sent.append(cmd)
+        if cmd == "version":
+            return "BFBC2 527791"
+        if not cmd.startswith("punkBuster.pb_sv_command"):
+            return f'UnknownCommand: "{cmd.split()[0]}"'
+        return PB_VERSION if "PB_SV_Ver" in cmd else ""
+
+    def close(self) -> None:
+        pass
+
+
+def test_punkbuster_on_a_battlefield_server_was_never_built_at_all():
+    """`PB_SV_Ver` is not a command on this engine, it is an *argument* — so the probe was answered
+    `UnknownCommand` and the service was skipped on all six Frostbite titles, in silence, while the
+    profile said `punkbuster=True`."""
+    rcon = FrostbitePbRcon()
+    bot = _pb_bot(rcon, game="bfbc2")
+    bot.setup_punkbuster()
+
+    assert bot.punkbuster is not None
+    assert rcon.sent[-1] == 'punkBuster.pb_sv_command "PB_SV_Ver"'
+
+
+def test_the_quake_families_send_the_verb_as_it_stands():
+    """The other side of the same fact: `%s` is the default carrier, and a `PB_SV_*` verb really is
+    an RCON command there."""
+    rcon = PbRcon()
+    bot = _pb_bot(rcon)
+    bot.setup_punkbuster()
+
+    assert rcon.sent == ["PB_SV_Ver"]
+
+
+def test_a_quote_inside_a_wrapped_verb_does_not_end_the_word():
+    """Frostbite commands are word lists, so an unescaped quote inside the argument would turn the
+    rest of a ban command into arguments of its own."""
+    rcon = FrostbitePbRcon()
+    bot = _pb_bot(rcon, game="bfbc2")
+    bot.setup_punkbuster()
+
+    bot.send_punkbuster('PB_SV_BanGuid "abc" "Bob"')
+
+    assert rcon.sent[-1] == 'punkBuster.pb_sv_command "PB_SV_BanGuid \\"abc\\" \\"Bob\\""'
+
+
+def test_a_line_for_punkbuster_on_a_server_without_it_answers_none():
+    """So `!punkbuster` can tell "there is no PunkBuster here" from "PunkBuster said nothing"."""
+    bot = _pb_bot(PbRcon(installed=False))
+    bot.setup_punkbuster()
+
+    assert bot.send_punkbuster("PB_SV_PList") is None

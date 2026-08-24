@@ -112,7 +112,14 @@ _BASE = GameProfile(
     # Battlefield ran PunkBuster, and the classic Frostbite parser built the service unconditionally.
     # It matters less here than on Quake 3, since an EA GUID is already a persistent identity — what
     # it buys is the second id, the screenshot request and PunkBuster's own ban list.
+    #
+    # **And it needs the second line to work at all.** On this engine a PunkBuster verb is not a
+    # command, it is an argument: every command here is a word list with a known verb at the front,
+    # so `PB_SV_Ver` sent bare is answered `UnknownCommand` — which is precisely what the startup
+    # probe reads as "PunkBuster is not installed here". So the service was never built on any of the
+    # six titles, and the profile saying `punkbuster=True` is what made that look intentional.
     punkbuster=True,
+    punkbuster_template='punkBuster.pb_sv_command "%s"',
     # **Loading a named map is not a command on this engine, so there is no template for it.** It
     # means putting the map into the rotation at a computed index and then pointing the server at
     # that index — four commands, one of whose arguments is arithmetic over a reply — so it lives on

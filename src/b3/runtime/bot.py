@@ -299,8 +299,12 @@ class Bot:
         wanted = self.config.server.punkbuster
         if not self.profile.punkbuster or wanted is False or self._rcon is None:
             return
+        # Asked the way this title carries a PunkBuster verb, which is the whole of the Frostbite
+        # story: the probe went out bare there, was answered `UnknownCommand`, and that answer reads
+        # as "not installed" — so no Battlefield server ever got the service.
+        probe = self._punkbuster_line(punkbuster.VERSION_COMMAND)
         try:
-            reply = self._rcon.command(punkbuster.VERSION_COMMAND)
+            reply = self._rcon.command(probe)
         except Exception as exc:  # noqa: BLE001 - a question we could not ask is not an answer
             log.warning("could not ask whether PunkBuster is running: %s", exc)
             return
@@ -309,7 +313,7 @@ class Bot:
                 log.warning(
                     "server.punkbuster is set, but %r answered %r — this server is not running "
                     "PunkBuster, so no PunkBuster id will ever be recorded and `!pbss` cannot work",
-                    punkbuster.VERSION_COMMAND,
+                    probe,
                     (reply or "").strip()[:80],
                 )
             return
@@ -342,9 +346,40 @@ class Bot:
             log.warning("punkbuster screenshot request failed: %s", exc)
             return False
 
+    def _punkbuster_line(self, cmd: str) -> str:
+        """A PunkBuster verb as this engine carries it.
+
+        `GameProfile.punkbuster_template` is the carrier, and on every family but one it is `%s` — a
+        `PB_SV_*` verb *is* an RCON command there. Frostbite hands it to `punkBuster.pb_sv_command`
+        instead, and the inner quotes are escaped because that engine's commands are word lists: a
+        bare quote inside the argument would end the word and turn the rest of a ban command into
+        arguments of its own.
+        """
+        template = self.profile.punkbuster_template or "%s"
+        if template == "%s":
+            return cmd
+        return template % cmd.replace('"', '\\"')
+
     def _send_and_read(self, cmd: str) -> str:
-        """Send and return the reply — what :class:`punkbuster.PunkBuster` sends its verbs through."""
-        return self._ask(cmd)
+        """Send a PunkBuster verb and return the reply — what :class:`punkbuster.PunkBuster` uses."""
+        return self._ask(self._punkbuster_line(cmd))
+
+    def send_punkbuster(self, command: str) -> str | None:
+        """See `Console.send_punkbuster`. None where this server is not running PunkBuster.
+
+        Deliberately *not* on :class:`punkbuster.PunkBuster` as another method: this is a line an
+        operator typed, so there is nothing to model. It exists because three plugins had grown their
+        own copy of it — `poweradminbf3`, `poweradminbfbc2` and the classic `poweradminmoh` — each
+        with the verb's spelling written into the plugin, which is how a Battlefield-only spelling
+        ends up in a plugin that is not about Battlefield.
+        """
+        if self.punkbuster is None:
+            return None
+        try:
+            return self._send_and_read(command)
+        except Exception as exc:  # noqa: BLE001 - the admin gets told, rather than a traceback
+            log.warning("punkbuster command failed: %s", exc)
+            return None
 
     def apply_optional_mods(self) -> None:
         """Ask what is installed, and take the better verbs when a mod offers them.

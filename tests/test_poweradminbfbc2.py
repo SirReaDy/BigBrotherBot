@@ -606,16 +606,6 @@ async def test_a_script_is_run_by_name_and_nothing_else_is(console):
     assert "not a config file" in _last(console, boss)
 
 
-@pytest.mark.asyncio
-async def test_a_punkbuster_command_is_handed_over_intact(console):
-    _plugin(console)
-    boss = _boss(console)
-
-    await _run(console, boss, "!pb_sv_command pb_sv_plist")
-
-    assert console.rcon_sent == ['punkBuster.pb_sv_command "pb_sv_plist"']
-
-
 # -- match mode ------------------------------------------------------------------------------------
 
 

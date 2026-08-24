@@ -147,6 +147,11 @@ class FakeConsole:
         #: Whether this server is running PunkBuster, and who a screenshot was asked of.
         self.punkbuster = True
         self.screenshots: list[Client] = []
+        #: Lines handed to PunkBuster through the port, and canned replies for them. Recorded apart
+        #: from `rcon_sent` because *how* the verb is carried is the title's business, not a
+        #: plugin's — see `Console.send_punkbuster`.
+        self.punkbuster_sent: list[str] = []
+        self.punkbuster_replies: dict[str, str] = {}
         self.told: list[tuple[Client, str]] = []
         # Server-query answers tests can set; every read verb reports "nothing known" by default.
         self.players: list[PlayerInfo] = []
@@ -279,6 +284,13 @@ class FakeConsole:
     def request_screenshot(self, client: Client) -> bool:
         self.screenshots.append(client)
         return self.punkbuster
+
+    def send_punkbuster(self, command: str) -> str | None:
+        """As the runtime answers it: None on a server with no PunkBuster, the reply otherwise."""
+        if not self.punkbuster:
+            return None
+        self.punkbuster_sent.append(command)
+        return self.punkbuster_replies.get(command, "")
 
     def send_rcon(self, command: str) -> str:
         self.rcon_sent.append(command)

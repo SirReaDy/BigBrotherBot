@@ -170,6 +170,20 @@ class Console(Protocol):
         """
         ...
 
+    def send_punkbuster(self, command: str) -> str | None:
+        """Hand a line to PunkBuster and return its reply. ``None`` where there is no PunkBuster.
+
+        Here for the same reason `request_screenshot` is: **how** a PunkBuster verb reaches the
+        anti-cheat is a fact about the title. On the Quake 3 and Call of Duty families a `PB_SV_*`
+        verb is an RCON command in its own right; on Frostbite it is an argument to
+        `punkBuster.pb_sv_command`. Three plugins had each written one of those spellings into
+        themselves, which is how a plugin ends up only working on the engine its author had.
+
+        The distinction from `None` matters to a caller: a plugin can tell "this server has no
+        PunkBuster" from "PunkBuster answered nothing", and say the right one.
+        """
+        ...
+
     def get_map(self) -> str | None:
         """The map currently running, asked of the server (not the cached `game.map_name`)."""
         ...

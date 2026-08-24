@@ -16,10 +16,14 @@
 #   the playlists   !paconquest (conq)  !parush (rush)  !pasqdm (sqdm)  !pasqrush (sqru)
 #   yelling         !payell (yell)  !payellteam (yt)  !payellenemy (ye)  !payellsquad (ys)
 #                   !payellplayer (yp)
-#   the server      !paset  !paget  !paserverinfo  !paident (id)  !runscript  !pb_sv_command (pbcmd)
+#   the server      !paset  !paget  !paserverinfo  !paident (id)  !runscript
 #
 # Levels and aliases are the classic plugin's and are set in code; `!cmdlevel <command> <level>`
 # changes one at runtime and `!cmdalias` changes the short form.
+#
+# The classic's `!pb_sv_command` is **`!punkbuster` in the admin plugin**, aliased `!pbcmd` — the name
+# this plugin's own config gave it. Every PunkBuster family has that verb, and how it reaches the
+# anti-cheat is a fact about the title rather than about Bad Company 2.
 #
 # Bad Company 2 is Frostbite **1**. Two things follow that are worth knowing before you use these:
 # a game mode is chosen by *playlist* and takes effect at the next map, not per map as on

@@ -60,10 +60,11 @@ Changed from the classic, and the first is why two of its features were dead:
 * **`movedByBot` is gone.** The classic set that variable on every move and read it nowhere in this
   plugin.
 
-**Not ported.** `!paversion`-style version printing was never here; `!punkbuster` is, but it is the
-one command in this plugin that is not really Battlefield-specific — every PunkBuster family has a
-`pb_sv_command` — so when the CoD and other Frostbite plugins want it, it should move to core
-PunkBuster support beside `!pbss` rather than be copied a third time.
+**Not ported.** `!paversion`-style version printing was never here. `!punkbuster` was, and it has
+**moved to the admin plugin** beside `!pbss`: it is the one command here that is not really
+Battlefield-specific — every PunkBuster family has a `pb_sv_command` — and leaving it in meant the
+Battlefield spelling of that verb living inside a plugin. It is the same command, at the same level;
+the alias is `!pbcmd` rather than `!punk`.
 
 `!swap` and `!nuke` are also `poweradminurt` aliases (`paswap`, `panuke`). Neither plugin is
 restricted by title, so an operator loading both on one server will see the command registry warn
@@ -236,8 +237,6 @@ MESSAGES = {
     "pab3_load_done": "{name} has been sent in full",
     "pab3_load_skipped": "{name}: line {line} is neither a setting nor a map, and was not sent",
     "pab3_load_failed": "{name} could not be read ({error})",
-    "pab3_punkbuster_usage": "!punkbuster <command>",
-    "pab3_punkbuster": "sent {command} to PunkBuster",
 }
 
 
@@ -1188,20 +1187,6 @@ class Poweradminbf3Plugin(Plugin):
         self._loading = Loading(name=found[0], lines=deque(lines), client=ctx.client)
         log.info("poweradminbf3: %s is sending %s", ctx.client.name, found[0])
         ctx.reply(self.message("pab3_load_started", name=found[0], lines=len(lines)))
-
-    # -- PunkBuster ----------------------------------------------------------
-
-    @command("punkbuster", level=100, alias="punk")
-    def cmd_punkbuster(self, ctx: CommandContext) -> None:
-        """punkbuster <command> - hand a command to PunkBuster"""
-        wanted = ctx.args.strip()
-        if not wanted:
-            ctx.reply(self.message("pab3_punkbuster_usage"))
-            return
-        line = sanitize_rcon_value(wanted, None)
-        self.console.rcon_words(f'punkBuster.pb_sv_command "{line}"')
-        log.info("poweradminbf3: %s sent PunkBuster %r", ctx.client.name, line)
-        ctx.reply(self.message("pab3_punkbuster", command=line))
 
     # -- the one scheduled pass ----------------------------------------------
 

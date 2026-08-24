@@ -16,7 +16,6 @@
 #   yelling         !yell (y)  !yellteam (yt)  !yellsquad (ys)  !yellplayer (yp)
 #   VIPs            !vips  !viplist  !vipadd (vip)  !vipremove (viprm)  !vipclear  !vipload  !vipsave
 #   server configs  !listconfig  !loadconfig
-#   punkbuster      !punkbuster (punk)
 #
 # Levels and aliases are the classic plugin's and are set in code; `!cmdlevel <command> <level>`
 # changes one at runtime and `!cmdalias` changes the short form.
@@ -26,6 +25,10 @@
 # two, because the first player has to leave their squad before the second can be put into it.
 #
 # `!serverreboot` restarts the game server, so it asks first: `!serverreboot yes`.
+#
+# `!punkbuster` used to be here and is now `!punkbuster` (`!pbcmd`) in the admin plugin, at the same
+# level: every PunkBuster family has that verb, and how it reaches the anti-cheat is a fact about the
+# title rather than about Battlefield.
 
 settings:
   # An admin at or above this level is not level-checked when acting on another player — the classic's

@@ -13,8 +13,8 @@ switches the automatic check on and off, and `!pachangeteam` and `!paspectate` m
 restarts the map, with the plugins an operator lists switched off for the duration. **The map** —
 `!pamaprestart`, `!pamapreload`, `!pasetnextmap`, `!pamaplist` and the four playlist commands
 (`!paconquest`, `!parush`, `!pasqdm`, `!pasqrush`). **Talking to people** — five `!payell` commands
-and `!pakill`. And **the server** — `!paset`, `!paget`, `!paserverinfo`, `!paident`, `!runscript`
-and `!pb_sv_command`.
+and `!pakill`. And **the server** — `!paset`, `!paget`, `!paserverinfo`, `!paident` and
+`!runscript`.
 
 Changed from the classic, and the first three are why the team balancer never balanced anything:
 
@@ -68,7 +68,10 @@ Changed from the classic, and the first three are why the team balancer never ba
   `!!paident bob` put somebody's IP in public chat.
 
 **Not ported.** `!paversion` printed the plugin's own version string and author; there is no
-per-plugin version here, and `!b3` already says what the bot is.
+per-plugin version here, and `!b3` already says what the bot is. `!pb_sv_command` is **`!punkbuster`
+in the admin plugin** (aliased `!pbcmd`, which is the name this plugin's config gave it): every
+PunkBuster family has that verb, and each of the classic's Frostbite plugins carried its own copy
+with the Battlefield spelling written in.
 
 Writing this turned up three faults below the plugin, all fixed in the Frostbite profile: this
 title's rotate verb is `admin.runNextLevel` and it was being sent Medal of Honor's
@@ -192,8 +195,6 @@ MESSAGES = {
     "pabc2_script_usage": "!runscript <file.cfg>",
     "pabc2_script_bad_name": "{name} is not a config file I will run",
     "pabc2_script": "running {name} on the server",
-    "pabc2_punkbuster_usage": "!pb_sv_command <command>",
-    "pabc2_punkbuster": "sent {command} to PunkBuster",
     "pabc2_match_usage": "!pamatch on|off",
     "pabc2_match_on": "match mode is on",
     "pabc2_match_off": "match mode is off",
@@ -821,18 +822,6 @@ class Poweradminbfbc2Plugin(Plugin):
             return
         log.info("poweradminbfbc2: %s ran %s on the server", ctx.client.name, wanted)
         ctx.reply(self.message("pabc2_script", name=wanted))
-
-    @command("pb_sv_command", level=100, alias="pbcmd")
-    def cmd_pb_sv_command(self, ctx: CommandContext) -> None:
-        """pb_sv_command <command> - hand a command to PunkBuster"""
-        wanted = ctx.args.strip()
-        if not wanted:
-            ctx.reply(self.message("pabc2_punkbuster_usage"))
-            return
-        line = sanitize_rcon_value(wanted, None)
-        self.console.rcon_words(f'punkBuster.pb_sv_command "{line}"')
-        log.info("poweradminbfbc2: %s sent PunkBuster %r", ctx.client.name, line)
-        ctx.reply(self.message("pabc2_punkbuster", command=line))
 
     # -- match mode ----------------------------------------------------------
 

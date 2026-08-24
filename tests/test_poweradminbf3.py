@@ -1101,19 +1101,6 @@ async def test_a_map_nobody_has_is_refused_with_a_few_that_exist(console):
     assert "no map like moon" in _last(console, boss)
 
 
-# -- punkbuster ------------------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_a_punkbuster_command_is_handed_over_intact(console):
-    _plugin(console)
-    boss = _boss(console)
-
-    await _run(console, boss, "!punkbuster pb_sv_plist")
-
-    assert 'punkBuster.pb_sv_command "pb_sv_plist"' in console.rcon_sent
-
-
 # -- it is a Battlefield 3 plugin ------------------------------------------------------------------
 
 

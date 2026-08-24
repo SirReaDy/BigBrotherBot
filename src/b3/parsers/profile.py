@@ -402,6 +402,15 @@ class GameProfile:
     # may hand out no usable `cl_guid`, and there a PunkBuster id is the only persistent thing about
     # a player. Whether it is actually installed is asked at startup, not assumed from this.
     punkbuster: bool = False
+    # **How a PunkBuster verb is carried on this engine.** On the Quake 3 and Call of Duty families
+    # a `PB_SV_*` verb *is* an RCON command and goes out as it stands, which is what `"%s"` says.
+    # Frostbite is the exception: every one of its commands is a word list with a known verb at the
+    # front, so a PunkBuster line has to be handed over as an argument to `punkBuster.pb_sv_command`
+    # — and sending `PB_SV_Ver` bare, which is what happened before, is answered `UnknownCommand`.
+    # That answer is exactly what `setup_punkbuster` reads as "this server is not running
+    # PunkBuster", so **the whole service was silently absent on all six Battlefield titles**: no
+    # PunkBuster ids, no `!pbss`, no PunkBuster bans, on the family that ships it as standard.
+    punkbuster_template: str = "%s"
     # Mods that are not needed, but improve things when they are there — see :class:`OptionalMod`.
     # Asked about once, at connect. A tuple because a server can have more than one, and they are
     # applied in order so a later one wins a field an earlier one also names.

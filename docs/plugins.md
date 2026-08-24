@@ -494,7 +494,8 @@ drift apart, and the **scrambler** deals everybody out again at a round or a map
 previous round's score where the server reported one. Then the settings (`!unlockmode`, `!vehicles`,
 `!idle`, `!gunmaster`), the four `!yell` commands, `!setnextmap`, and the two lists a Battlefield
 server keeps: the reserved slots (`!vips`, `!vipadd`, …) and the preset server configs
-(`!listconfig`, `!loadconfig`).
+(`!listconfig`, `!loadconfig`). Its `!punkbuster` has moved to the admin plugin, where every
+PunkBuster family can reach it.
 
 **Two of its features were dead.** The auto-scrambler's gamemode blacklist announced the skip with a
 log line that raised `TypeError` — `r"…%s…" + " …" % blacklist` binds the `%` to the second literal,

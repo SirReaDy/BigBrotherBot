@@ -958,3 +958,52 @@ async def test_an_ordinary_admin_cannot_touch_plugins(console):
     _plugin, proc, spare = _with_spare(console)
     await proc.handle(_client("Mod", "senioradmin", cid="2", id_=2), "!plugin enable spare")
     assert not spare.is_enabled()
+
+
+# -- !punkbuster: the command three plugins each had their own copy of -------------------------
+
+
+@pytest.mark.asyncio
+async def test_a_line_for_punkbuster_is_handed_over_and_its_answer_shown(console):
+    """The classic's copies of this — one per Frostbite plugin — threw PunkBuster's reply away, so an
+    admin could not tell a command it had run from one it had not understood."""
+    _plugin, proc = _setup(console)
+    console.punkbuster_replies["pb_sv_plist"] = "Player List: [Slot #] ..."
+
+    await proc.handle(_boss(), "!punkbuster pb_sv_plist")
+
+    assert console.punkbuster_sent == ["pb_sv_plist"]
+    assert "Player List" in _last(console)
+
+
+@pytest.mark.asyncio
+async def test_punkbuster_on_a_server_without_it_says_so(console):
+    """Rather than sending a line into the dark, which is what a plugin holding the verb's spelling
+    itself could only do."""
+    _plugin, proc = _setup(console)
+    console.punkbuster = False
+
+    await proc.handle(_boss(), "!punkbuster pb_sv_plist")
+
+    assert console.punkbuster_sent == []
+    assert "not running PunkBuster" in _last(console)
+
+
+@pytest.mark.asyncio
+async def test_punkbuster_with_nothing_to_send_says_how_to_use_it(console):
+    _plugin, proc = _setup(console)
+
+    await proc.handle(_boss(), "!punkbuster")
+
+    assert console.punkbuster_sent == []
+    assert "punkbuster <command>" in _last(console)
+
+
+@pytest.mark.asyncio
+async def test_only_a_superadmin_may_talk_to_punkbuster(console):
+    """`PB_SV_*` includes the ban list and the anti-cheat's own settings."""
+    _plugin, proc = _setup(console)
+
+    await proc.handle(_client("Senior", "senioradmin", cid="2", id_=2), "!punkbuster pb_sv_plist")
+
+    assert console.punkbuster_sent == []

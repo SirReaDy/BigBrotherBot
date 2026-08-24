@@ -68,13 +68,14 @@ a fresh player should not be able to make the bot shout at the whole server.
 | `!reconfig` |  | 100 | Re-read the configuration file |
 | `!restart` |  | 100 | Stop with a restart code, for whatever supervises the bot |
 | `!plugin` |  | 100 | `list`, `info <name>`, `enable <name>`, `disable <name>` — turn a plugin on or off without restarting |
+| `!punkbuster <command>` | `!pbcmd` | 100 | Hand a line to PunkBuster and show what it says |
 | `!runas <player> <command>` | `!su` | 100 | Run a command as someone else |
 | `!unmask [player]` |  | 100 | Stop hiding a level |
 
 That is **all 59 of the classic bot's admin commands**, at its `plugin_admin.ini` default levels
 (guest 0, user 1, reg 2, mod 20, admin 40, fulladmin 60, senioradmin 80, superadmin 100) — plus
-`!pbss`, which the classic offered through a separate `punkbuster` plugin rather than as a core
-command.
+`!pbss` and `!punkbuster`, which the classic offered through a separate `punkbuster` plugin and
+through a copy in each of its three Frostbite plugins rather than as core commands.
 
 `<player>` resolves as a slot id (`3`), a case-insensitive partial name (`bo` → Bob), or a database
 id (`@42`). Commands that act on people who have already left — `!unban`, `!baninfo`, `!aliases`,
@@ -107,6 +108,14 @@ the engine understands gets the usage line rather than a map loaded in the wrong
 `!pbss <player>` (level 60) asks PunkBuster for a screenshot of what a player is seeing. It only
 works where the server is running PunkBuster — the bot asks at startup — and the picture is saved
 in PunkBuster's own folder **on the game server**, not sent back to the admin who asked.
+
+`!punkbuster <command>` (level 100, `!pbcmd`) hands a line straight to PunkBuster and shows the
+reply: `!punkbuster pb_sv_plist`, `!punkbuster PB_SV_BanGuid …`, anything the anti-cheat takes. It is
+superadmin because `PB_SV_*` covers the ban list, the config file and PunkBuster's own settings. How
+the line reaches PunkBuster is the title's business, not yours — on Quake 3 and Call of Duty servers
+a `PB_SV_*` verb is an RCON command in its own right, and on Battlefield it is an argument to
+`punkBuster.pb_sv_command`. Where the server is not running PunkBuster the command says so rather
+than sending the line into the dark.
 
 A few commands deliberately behave differently from the classic bot:
 

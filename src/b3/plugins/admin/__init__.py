@@ -1253,6 +1253,32 @@ class AdminPlugin(Plugin):
         # "requested" would leave them waiting in game for something that is never coming.
         ctx.reply(self.message("punkbuster_screenshot", player=target.name))
 
+    @command(level=100, alias="pbcmd")
+    def cmd_punkbuster(self, ctx: CommandContext) -> None:
+        """punkbuster <command> - hand a line to PunkBuster and show what it says
+
+        Here rather than in a per-game plugin because every PunkBuster family has this verb, and
+        three of the classic's plugins had each grown their own copy of it with the spelling written
+        in — which is how `punkBuster.pb_sv_command` ended up inside a plugin. `Console` knows how
+        this title carries a PunkBuster verb; this command knows nothing about it.
+
+        Superadmin, because `PB_SV_*` includes the ban list, the config file and the anti-cheat's own
+        settings: everything PunkBuster can do, it can do from here.
+        """
+        wanted = ctx.args.strip()
+        if not wanted:
+            ctx.reply(self.message("usage", usage="punkbuster <command>"))
+            return
+        reply = self.console.send_punkbuster(wanted)
+        if reply is None:
+            ctx.reply(self.message("punkbuster_unavailable"))
+            return
+        log.info("admin: %s sent PunkBuster %r", ctx.client.name, wanted)
+        # The reply is shown, and that is the point of the command: the classic's copies of it threw
+        # the answer away, so an admin could not tell a command PunkBuster had run from one it had
+        # not understood.
+        ctx.reply(self.message("punkbuster_reply", reply=reply.strip() or "(nothing)"))
+
     # -- masking ------------------------------------------------------------
 
     @command(level=100)

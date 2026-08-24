@@ -110,7 +110,8 @@ DEFAULT_MESSAGES: dict[str, str] = {
     # only "requested" leaves them waiting in game for something that will never arrive.
     "punkbuster_screenshot": "asked PunkBuster for a screenshot of {player} (it is saved on the "
     "game server, in PunkBuster's own folder)",
-    "punkbuster_unavailable": "this server is not running PunkBuster, so it cannot take screenshots",
+    "punkbuster_unavailable": "this server is not running PunkBuster, so there is nothing to ask",
+    "punkbuster_reply": "PunkBuster says: {reply}",
     # -- lookup / info -------------------------------------------------------
     "found_player": "found {name} in slot {cid}",
     "lookup_found": "@{id} {name} — last seen {when}",
