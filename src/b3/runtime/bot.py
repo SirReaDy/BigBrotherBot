@@ -1422,6 +1422,12 @@ class Bot:
         fields = {
             "cid": sanitize_rcon_value(client.cid or ""),
             "name": sanitize_rcon_value(client.name),
+            # The player's persistent id, because on some engines that **is** the handle a verb takes:
+            # Homefront's `admin kill`, `admin forceteamswitch` and `admin makespectate` all name the
+            # Steam id, and its `cid` is the player's name. Offered here for the same reason
+            # `_penalty_fields` and `tell` offer it — a profile names the field its own engine wants,
+            # and a verb template was the one place that could not.
+            "guid": sanitize_rcon_value(client.guid),
             **{key: sanitize_rcon_value(str(value)) for key, value in values.items()},
         }
         try:

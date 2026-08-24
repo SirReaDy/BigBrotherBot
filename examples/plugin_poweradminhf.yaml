@@ -1,0 +1,62 @@
+# poweradminhf — Homefront's teams, match mode and the three things it can do to a player.
+#
+# Point at it from the main config (this plugin only loads on `server.game: homefront`):
+#
+#   plugins:
+#     - name: poweradminhf
+#       config: "@conf/plugin_poweradminhf.yaml"
+#
+# What it adds, in groups:
+#
+#   the teams       !pateams (teams)  !pateambalance  !paautobalance (autobalance)
+#                   !pachangeteam (ct)  !paspectate (spectate)
+#   players         !pakill (kill)
+#   the match       !pamatch (match)  !ready
+#   the small ones  !payell (yell)  !paident (id)  !panextmap (endmap)
+#
+# Levels and aliases are the classic plugin's and are set in code; `!cmdlevel <command> <level>`
+# changes one at runtime and `!cmdalias` changes the short form.
+#
+# **The vote protector has moved.** The classic's `[voteprotector]` section — stopping players calling
+# kick and ban votes against your admins — is the `protect:` section on the **`callvote`** plugin now,
+# where it works on any engine that says who a vote is about. Set `protect.level: mod` there to get
+# what this plugin used to do; see `examples/plugin_callvote.yaml`.
+#
+# Two things about this engine are worth knowing. `admin forceteamswitch` takes **no team**: it puts
+# the named player on the other side, so nothing here can ask for a particular one — which is the same
+# thing on a two-sided game. And there is no way to restart a map at all: `admin nextmap` is the only
+# instruction this server takes about the rotation, so a match starts on the *next* map.
+#
+# `!pamatch on` asks everybody to type `!ready`, nags whoever has not every ten seconds, and when they
+# all have, counts down from ten and moves the map on. `!pamatch off` calls it off. While a match is on
+# the automatic team check stands down — the people playing have agreed the sides between themselves —
+# and it comes back afterwards, which in the classic it never did.
+
+settings:
+  # Warn whoever makes the teams uneven and put them back on the other side. Off as the classic
+  # shipped it. Checked when a player changes team; `!pateams` runs it on demand.
+  #
+  # This is the bot doing it. `!paautobalance on` hands the same job to the server's own balancer
+  # instead, which is a switch rather than a setting — this engine has no cvars, so the bot cannot
+  # read back whether it is on, only set it.
+  teambalance: false
+
+  # Players at or above this level are never moved by the automatic check. The classic had no
+  # exemption at all, so it moved the admin who had just joined to sort the teams out.
+  no_balance_level: mod
+
+  # How many players one side may be ahead by before anybody is moved. Floored at 1, because 0 would
+  # move every arrival straight back again.
+  max_difference: 1
+
+  # An admin at or above this level is not level-checked when acting on another player. Below it, you
+  # may not act on your equals or your betters, and that one rule covers !pakill, !pachangeteam and
+  # !paspectate. (The classic made no check anywhere in this plugin, so any moderator could kill a
+  # senior admin.)
+  no_level_check_level: fulladmin
+
+  # Plugins switched off while a match is on, and back on when it ends — a comma-separated list, or a
+  # YAML list. Only the ones that were actually running are switched back on: the classic enabled
+  # everything on this list when a match ended, so a plugin you had deliberately switched off came
+  # back on because somebody had played a match.
+  match_plugins: "spree, tk, pingwatch"

@@ -49,6 +49,23 @@ HOMEFRONT = GameProfile(
     rotation_cvar="",  # this engine has no cvars at all
     map_template="",  # and no way to load a named map: only "next"
     rotate_command="admin nextmap",
+    # What this engine can do *to* a player beyond the penalties, all keyed on the Steam id — read for
+    # `poweradminhf`, which is where they are used. `switch_team` is named for what it is: unlike
+    # every other engine here, Homefront's team verb takes **no team**. It puts the player on the
+    # other side, so a plugin cannot ask for a particular one and none is offered.
+    player_verbs={
+        "kill": 'admin kill "%(guid)s"',
+        "switch_team": 'admin forceteamswitch "%(guid)s"',
+        "spectate": 'admin makespectate "%(guid)s"',
+    },
+    server_verbs={
+        # The same verb as `rotate_command`, named so a plugin can ask whether this title has it
+        # before offering an admin a command that would do nothing.
+        "cyclemap": "admin nextmap",
+        # The server's own team balancer, which is a switch rather than a setting: this engine has no
+        # cvars at all, so there is nothing to read back and `!paautobalance` can only set it.
+        "autobalance": "admin SetAutoBalance %(state)s",
+    },
 )
 
 ALL: dict[str, GameProfile] = {HOMEFRONT.name: HOMEFRONT}

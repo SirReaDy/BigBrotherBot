@@ -41,6 +41,7 @@ list, each with an optional config of its own (see `examples/`):
 | `poweradminbf3` | Battlefield 3's teams, scrambler, VIP list and preset server configs | `!roundnext` `!endround` `!kill` `!nuke` `!changeteam` `!swap` `!autoassign` `!autobalance` `!scramble` `!setnextmap` `!yell` `!vips` `!loadconfig` … |
 | `poweradminbfbc2` | Bad Company 2's teams, playlists, yells and ready-up match mode | `!pateams` `!pateambalance` `!pachangeteam` `!paspectate` `!pakill` `!pamatch` `!ready` `!pamaprestart` `!pasetnextmap` `!parush` `!payell` `!paset` `!paget` … |
 | `poweradminmoh` | the 2010 Medal of Honor's teams, scrambler, match mode and reserved slots | `!teams` `!teambalance` `!changeteam` `!spect` `!swap` `!kill` `!scramble` `!scramblemode` `!autoscramble` `!match` `!ready` `!runnextround` `!setnextmap` `!reserveslot` … |
+| `poweradminhf` | Homefront's teams, match mode and its three player verbs | `!pateams` `!pateambalance` `!paautobalance` `!pachangeteam` `!paspectate` `!pakill` `!pamatch` `!ready` `!payell` `!paident` `!panextmap` |
 
 ### censor — bad language, and the escalating mute
 
@@ -607,6 +608,42 @@ there is no `admin.yell` here — so everything this plugin says is chat, and `s
 rather than being answered `UnknownCommand`. And **team 3 is the spectators**, which is why the
 balancer does not count the people watching as a side. Config:
 `examples/plugin_poweradminmoh.yaml`.
+
+### poweradminhf — Homefront, and a match manager for the wrong game
+
+Filed with the Frostbite `poweradmin*` plugins for years — in this project's own notes as well as by
+resemblance — and it is not one of them: it is Homefront. The resemblance is that the same author
+copied the same match manager into it and changed nothing.
+
+**That copy is the port's headline.** Its nags and its countdown send `('admin.yell', …)` and it
+finishes with `('admin.restartMap',)` — Frostbite verbs, as *tuples*, to a parser whose `write` takes a
+string. So `!pamatch on` announced a match, registered `!ready`, and then every nag, the whole
+countdown and the restart at the end went nowhere. The ready-up here is the shared one, and it ends
+with the only instruction this engine takes about its rotation: `admin nextmap`, so a match starts on
+the next map rather than on this one again.
+
+**Two commands were broken by an operator.** `!paautobalance off` sent the server the single word
+`false` — `'admin SetAutoBalance %s' % 'true' if on else 'false'` binds the `%` before the conditional,
+so turning it on worked and turning it off did not, and neither said anything, so nobody could tell.
+`!pateambalance` with no argument answered the same way and so replied with the bare word `off`
+whenever it was off. And the balancer's other half, the "you unbalanced the teams" warning, **could
+never fire**: it tested a player's *name* against a list of Steam ids, because a 2011 change moved
+every verb here to Steam ids and left the comparison behind. Beyond that: no level check anywhere,
+so any moderator could `!pakill` a senior admin; `!paident` put a player's Steam id in public chat and
+offered an IP address this engine never reports; and match mode cost the server its team check
+permanently.
+
+**The vote protector left the plugin.** Stopping players calling kick and ban votes against admins is
+`callvote`'s `protect:` section now — it is a policy about votes, and that plugin already holds the
+running vote, the level table and the veto. On Homefront it does what this plugin did; on an engine
+that can cancel a vote it stops it outright, which this one could not.
+
+What this engine can do to a player is on its profile (`kill`, `switch_team`, `spectate`, plus the
+server's `autobalance` and `cyclemap`), which is what let the plugin be written without a Homefront
+command inside it. One of those is worth knowing: **`switch_team` takes no team.**
+`admin forceteamswitch` puts a player on the other side and cannot be asked for a particular one, so
+the balancer moves players *off* the bigger side — the same thing on a two-sided game, and the only
+thing offered. Config: `examples/plugin_poweradminhf.yaml`.
 
 ### poweradmincod7 — Black Ops, where you cannot just load a map
 
