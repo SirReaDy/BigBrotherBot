@@ -7,10 +7,20 @@ python -m pip install -e ".[dev]"
 pytest
 ruff check src tests tools
 mypy src
+python tools/check_links.py
+python tools/check_counts.py
 ```
 
-All three have to pass. `mypy` runs in strict mode over `src`, and `ruff` is configured for a
+The first three have to pass: `mypy` runs in strict mode over `src`, and `ruff` is configured for a
 100-column line length and Python 3.11.
+
+The last two check the documents rather than the code, and both exist because their failure is
+**silent**. A wrong relative link renders as an ordinary link and scrolls nowhere;
+`tools/check_links.py` finds it. A wrong *number* is worse, because it reads as a measurement — this
+repository has already carried a test count of 1,983 against an actual 2,525 —  so
+`tools/check_counts.py` measures the tests, the test files, the lines and the bundled plugins and
+fails when a document disagrees. Counts have to match exactly; line totals may drift by 5%, since a
+figure that has to be edited on every commit gets edited carelessly instead.
 
 ## Adding a game title
 

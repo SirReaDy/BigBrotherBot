@@ -114,13 +114,21 @@ jobs:
           exit $status
 
   docs:
-    name: markdown links
+    name: markdown links and counts
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      # No install: the checker is stdlib only.
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      # The link checker is stdlib only; the count checker asks pytest how many tests there are.
       - run: python tools/check_links.py
+      - run: python -m pip install -e ".[dev]"
+      # Only the published documents exist here: PARITY.md and TODO.md are gitignored, and the
+      # checker reports on whatever it finds rather than insisting they are present.
+      - name: Counts
+        if: ${{ !cancelled() }}
+        run: python tools/check_counts.py
