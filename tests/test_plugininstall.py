@@ -89,8 +89,23 @@ def test_plugin_name_from_url(url, name):
 # -- version handling ------------------------------------------------------
 
 
-def test_version_key_ignores_non_numeric_parts():
-    assert version_key("v1.2.3") == version_key("1.2.3") == (1, 2, 3)
+def test_a_leading_v_and_a_missing_zero_change_nothing():
+    assert version_key("v1.2.3") == version_key("1.2.3") == version_key(" 1.2.3 ")
+    assert version_key("1.2") == version_key("1.2.0")
+
+
+def test_a_pre_release_sorts_below_the_release_it_precedes():
+    """Read as numbers alone, `2.1.0-rc1` is (2, 1, 0, 1) and `2.1.0` is (2, 1, 0) — so the candidate
+    outranked the release for ever. That is the bug this key exists to not have."""
+    order = ["2.1.0.dev1", "2.1.0a0", "2.1.0b2", "2.1.0-rc1", "2.1.0", "2.1.0.post1", "2.1.1"]
+
+    assert sorted(order, key=version_key) == order
+
+
+def test_a_tag_that_is_not_a_version_still_sorts_somewhere():
+    """`resolve_ref` ranks whatever a repository publishes, branch names included."""
+    assert version_key("nightly-2026-08-24") > version_key("0.0.1")
+    assert version_key("main") == version_key("0")
 
 
 def test_highest_semver_tag_wins_not_lexicographic():
@@ -100,6 +115,32 @@ def test_highest_semver_tag_wins_not_lexicographic():
 
     # Lexicographically "v1.9.0" > "v1.10.0"; numerically it is not.
     assert resolve_ref(FakeGit(), "url", None) == "v1.10.0"
+
+
+def test_a_release_candidate_does_not_win_the_tag_resolution():
+    """A plugin's tags are ranked by the same key, so this is the same fault in the other place it
+    could bite: `b3 plugin install` would have pinned to the candidate rather than the release."""
+
+    class FakeGit(Git):
+        def remote_tags(self, url, timeout=None):  # noqa: ANN001, ANN201
+            return ["v1.2.0-rc1", "v1.2.0", "v1.1.0"]
+
+    assert resolve_ref(FakeGit(), "url", None) == "v1.2.0"
+
+
+def test_a_plugin_needing_the_release_installs_on_a_pre_release_core():
+    """The one comparison that ignores the stage, deliberately: during a pre-release series the core
+    *is* that API, and the strict reading would refuse every plugin until the tag exists."""
+    from b3.core.plugininstall import PluginManifest, check_core_version
+
+    manifest = PluginManifest(
+        name="thing", version="1.0.0", entry_point="thing:Thing", min_core_version="2.0.0"
+    )
+
+    check_core_version(manifest, "2.0.0a0")  # must not raise
+
+    with pytest.raises(PluginInstallError):
+        check_core_version(manifest, "1.9.9")
 
 
 def test_explicit_ref_beats_tag_resolution():

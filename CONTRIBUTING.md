@@ -82,6 +82,12 @@ git push origin main v2.1.0
 The `Release` workflow then checks the three agree, builds a wheel and an sdist, installs the wheel
 into a clean virtualenv and runs it, and attaches both files to the GitHub release.
 
+**A pre-release tag is not offered as an update.** `v2.1.0-rc1`, `v2.2.0b1`, `2.0.0a0` — tag them,
+push them, install one with `b3 update --to v2.1.0-rc1`; but the update line every operator sees names
+the newest **final** release, and nothing else. That is deliberate: a candidate that could be offered
+would go on being offered after the release it was a candidate for had shipped. The same ordering runs
+the other way, so somebody running `2.0.0a0` *is* offered `2.0.0` when it lands.
+
 **There is no PyPI**, by decision: the source of truth is this repository, and installing is
 `pip install git+https://github.com/SirReaDy/BigBrotherBot@v2.1.0` — which needs nobody's permission
 and is the same distribution story as `b3 plugin install`, which pins plugins by tag from git. The

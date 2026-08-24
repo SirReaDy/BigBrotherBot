@@ -51,11 +51,67 @@ def test_ten_is_newer_than_nine():
 
 
 def test_only_release_tags_are_compared():
-    """`version_key` reads numbers out of any string, so a branch tag would happily outrank a
-    release. Anything that is not a version is ignored rather than ranked."""
+    """`version_key` falls back to reading numbers out of any string, so a branch tag would happily
+    outrank a release. Anything that is not a version is ignored rather than ranked."""
     assert release_tags(["latest", "nightly-2026-08-24", "v2.1.0", "release-candidate"]) == [
         "v2.1.0"
     ]
+
+
+def test_a_pre_release_is_never_offered_as_the_latest():
+    """A candidate is a real tag somebody meant to push, and `--to` installs one on purpose. But it
+    is not something to *offer*: the line printed after every command has to name the release, and
+    read as numbers alone an rc outranks the release it was a candidate for — for ever."""
+    assert release_tags(["v2.1.0-rc1", "v2.1.0", "v2.2.0b1", "v2.1.0+build3"]) == ["v2.1.0"]
+
+
+def test_a_remote_with_only_candidates_has_published_no_release():
+    info = check(REMOTE, "2.0.0", git=FakeGit(["v2.1.0-rc1", "v2.1.0-rc2"]))  # type: ignore[arg-type]
+
+    assert info.latest == ""
+    assert info.available is False
+    assert "no releases published yet" in info.describe()
+
+
+def test_running_a_pre_release_is_offered_the_release_it_precedes():
+    """The half of this that would have hurt: **every install today runs `2.0.0a0`**. Read as numbers
+    alone `2.0.0a0` and `2.0.0` compare equal, so the day `v2.0.0` was tagged every one of them would
+    have been told it was already on the latest, and never offered the release."""
+    info = check(REMOTE, "2.0.0a0", git=FakeGit(["v2.0.0"]))  # type: ignore[arg-type]
+
+    assert info.available is True
+    assert "2.0.0 is available (running 2.0.0a0)" in info.describe()
+
+
+def test_a_candidate_can_still_be_installed_on_purpose(tmp_path, monkeypatch, capsys):
+    """Refusing to *offer* one is not refusing to install one. `--to` takes any tag the remote has."""
+    import subprocess
+
+    from b3.cli import main
+    from b3.core import selfupdate
+
+    monkeypatch.chdir(tmp_path)
+    main(["init", "srv", "--rcon-password", "pw"])
+    # Nothing is on offer — the remote's only release is the one already running. `--to` is how an
+    # operator says "install this anyway", and it is also how a rollback is done.
+    monkeypatch.setattr(
+        selfupdate,
+        "check",
+        lambda remote, current=None, **kw: UpdateInfo(current="2.0.0", latest="2.0.0"),  # noqa: ARG005
+    )
+    monkeypatch.setattr(selfupdate, "in_container", lambda: False)
+    ran: list[list[str]] = []
+
+    def fake_run(command, **kwargs):  # noqa: ANN001, ANN003, ANN202, ARG001
+        ran.append(command)
+        return subprocess.CompletedProcess(command, 0)
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    code = main(["-c", str(tmp_path / "srv" / "b3.yaml"), "update", "--to", "v2.1.0-rc1", "-y"])
+
+    assert code == 0
+    assert ran and ran[0][-1].endswith("@v2.1.0-rc1")
 
 
 def test_an_update_is_reported_when_the_remote_is_ahead():

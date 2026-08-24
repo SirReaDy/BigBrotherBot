@@ -171,7 +171,7 @@ a virtualenv symlinked onto `PATH`.
 | `b3 update --check` | Ask now, print the answer, change nothing. Exits **1** when an update exists, 0 when current, 2 when the check failed — so a cron job can mail you and a script can tell those apart |
 | `b3 update` | Show current → latest and install it, after asking |
 | `b3 update -y` | The same without the question, for a script |
-| `b3 update --to v2.0.4` | Install a specific tag. This is also how you roll **back** |
+| `b3 update --to v2.0.4` | Install a specific tag. This is also how you roll **back**, and the only way to install a pre-release |
 
 **You do not have to ask.** After any command finishes, one line goes to stderr when a newer release
 exists:
@@ -195,6 +195,12 @@ unaffected); talk to a pipe (only a terminal gets it — a cron job that wants t
 already report it (`update`, `version`, `doctor`, `run`, `completion`); or say anything when there is
 no update, because being current is not news. `B3_NO_UPDATE_NOTICE=1` silences it for a shell, and
 `bot.update_check: false` switches checking off entirely.
+
+**Only final releases are offered.** A `v2.1.0-rc1` or `v2.2.0b1` tag is a real tag somebody meant to
+push, and `b3 update --to v2.1.0-rc1` installs one on purpose — but neither this line nor
+`update --check` will ever name one, because a candidate that could be offered would go on being
+offered after the release it was a candidate for had shipped. The same ordering runs the other way:
+running `2.0.0a0`, you are offered `2.0.0` when it lands.
 
 The bot also asks by itself while it runs, at most once per `bot.update_check_interval` (a day by
 default), and says something **only when there is an update**. `b3 doctor` shows the same answer as an

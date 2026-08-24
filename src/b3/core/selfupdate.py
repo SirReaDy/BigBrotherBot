@@ -49,9 +49,14 @@ log = logging.getLogger(__name__)
 TOKEN_ENV = "B3_UPDATE_TOKEN"
 
 #: What a release tag looks like. Anything else on the remote — a branch tag, a `latest`, somebody's
-#: experiment — is ignored rather than compared, because `version_key` reads numbers out of any
-#: string and would happily rank `release-candidate` against `v2.1.0`.
-RELEASE_TAG_RE = re.compile(r"^v?\d+(\.\d+)*([-.+][0-9A-Za-z.-]+)?$")
+#: experiment — is ignored rather than compared, because `version_key` falls back to reading numbers
+#: out of any string and would otherwise rank `release-candidate` against `v2.1.0`.
+#:
+#: **Numbers only, and nothing after them.** A pre-release is a real tag that somebody meant to push,
+#: and `b3 update --to v2.1.0-rc1` installs one on purpose — but it is not something to *offer*. An
+#: update line that appears on every command has to name the release, and it would go on naming an
+#: rc after the release it was a candidate for had shipped.
+RELEASE_TAG_RE = re.compile(r"^v?\d+(\.\d+)*$")
 
 #: Marks a container, where `pip install` in the running environment is the wrong answer entirely:
 #: the image *is* the version.

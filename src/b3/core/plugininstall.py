@@ -89,16 +89,76 @@ class InstalledPlugin:
 # -- version helpers -------------------------------------------------------
 
 
-def version_key(text: str) -> tuple[int, ...]:
-    """Sortable key for a version/tag string. Non-numeric parts are ignored, so ``v1.2.0`` == 1.2.0."""
-    parts = re.findall(r"\d+", text)
-    return tuple(int(p) for p in parts[:4]) or (0,)
+#: How many numbers of a version are compared. Four, because that is what the classic bot's own
+#: versions used (`1.10.0b3`) and nothing here needs a fifth.
+VERSION_PARTS = 4
+
+#: Where a suffixed version sorts against the plain one. **This is the whole point of this key**: read
+#: as numbers alone, `2.1.0-rc1` is (2, 1, 0, 1) and `2.1.0` is (2, 1, 0), so the release candidate
+#: outranks the release it was a candidate for — for ever, because the rc keeps that extra number.
+#: A marker nobody here knows is treated as a pre-release rather than as a release: an unfamiliar tag
+#: should not be able to beat a clean one.
+STAGE_RANK = {
+    "dev": 0,
+    "a": 1,
+    "alpha": 1,
+    "b": 2,
+    "beta": 2,
+    "c": 3,
+    "rc": 3,
+    "pre": 3,
+    "preview": 3,
+}
+UNKNOWN_STAGE = 0
+FINAL_STAGE = 4
+POST_STAGE = 5
+POST_MARKERS = ("post", "r", "rev")
+
+#: `v2.1.0`, `2.1.0rc1`, `2.0.0a0`, `1.10.0-beta.2`: numbers, then an optional marker and its own
+#: number. Anything else is not a version, and falls back to reading numbers out of the string.
+_VERSION_RE = re.compile(r"^v?(\d+(?:\.\d+)*)(?:[-._+]?([A-Za-z]+)\.?(\d*))?")
+
+
+def _numbers(text: str) -> tuple[int, ...]:
+    parts = tuple(int(p) for p in text.split(".")[:VERSION_PARTS] if p.isdigit())
+    return parts + (0,) * (VERSION_PARTS - len(parts))
+
+
+def version_key(text: str) -> tuple[tuple[int, ...], int, int]:
+    """Sortable key for a version/tag string: its numbers, its stage, and the stage's own number.
+
+    ``v1.2.0`` and ``1.2.0`` are equal, and ``1.2`` equals ``1.2.0`` — the numbers are padded, so a
+    version that omits a zero does not sort below one that writes it.
+
+    The stage is what makes this more than a tuple of digits. A **pre-release sorts below the release
+    it precedes**: `2.0.0a0` < `2.0.0` < `2.0.0.post1`, which is PEP 440's order and everybody's
+    intuition. Reading numbers alone got this backwards in the one direction that matters — it made
+    every release candidate permanently newer than its own release.
+    """
+    match = _VERSION_RE.match(text.strip())
+    if match is None:
+        # Not a version at all: a branch name, `latest`, somebody's experiment. Read the numbers out
+        # of it as this always did, so sorting a mixed list of tags still lands somewhere sensible.
+        found = re.findall(r"\d+", text)[:VERSION_PARTS]
+        digits = tuple(int(p) for p in found)
+        return (digits + (0,) * (VERSION_PARTS - len(digits)), FINAL_STAGE, 0)
+    numbers = _numbers(match.group(1))
+    marker = (match.group(2) or "").lower()
+    ordinal = int(match.group(3)) if match.group(3) else 0
+    if not marker:
+        return (numbers, FINAL_STAGE, 0)
+    if marker in POST_MARKERS:
+        return (numbers, POST_STAGE, ordinal)
+    return (numbers, STAGE_RANK.get(marker, UNKNOWN_STAGE), ordinal)
+
+
+def release_numbers(text: str) -> tuple[int, ...]:
+    """Just the numbers, with the stage dropped. See `check_core_version` for the one caller."""
+    return version_key(text)[0]
 
 
 def _version_lt(left: str, right: str) -> bool:
-    a, b = version_key(left), version_key(right)
-    width = max(len(a), len(b))
-    return a + (0,) * (width - len(a)) < b + (0,) * (width - len(b))
+    return version_key(left) < version_key(right)
 
 
 # -- spec parsing ----------------------------------------------------------
@@ -223,7 +283,15 @@ def read_manifest(repo: Path) -> PluginManifest:
 
 
 def check_core_version(manifest: PluginManifest, core_version: str = CORE_VERSION) -> None:
-    if _version_lt(core_version, manifest.min_core_version):
+    """Refuse a plugin that needs a newer core than this one.
+
+    Compared on the **numbers only**, deliberately, and this is the one comparison in the project
+    that ignores the pre-release stage. A plugin declaring `min_core_version: 2.0.0` — which is what
+    the documented example manifest declares — has to install on `2.0.0a0`, because during a
+    pre-release series that *is* the 2.0.0 API. The strict reading would mean no plugin could be
+    installed at all until the release is tagged, which is precisely when people are trying them.
+    """
+    if release_numbers(core_version) < release_numbers(manifest.min_core_version):
         raise PluginInstallError(
             f"plugin {manifest.name!r} needs B3 >= {manifest.min_core_version}; "
             f"this is {core_version}"
