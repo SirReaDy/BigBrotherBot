@@ -1175,12 +1175,26 @@ class Bot:
         return self.profile.team_id(team)
 
     def rcon_words(self, command: str) -> list[str]:
-        """See `Console.rcon_words`. Falls back to the flattened reply on the eight text families."""
+        """See `Console.rcon_words`. Falls back to the flattened reply on the eight text families.
+
+        **A refusal is an answer here, not an exception.** The Frostbite client raises on a reply that
+        does not begin `OK`, because at that level a refused command really is an error — but the
+        engine's word for what was wrong (`PlayerAlreadyInList`, `InvalidArguments`,
+        `CommandDisallowedOnRanked`) is the most useful thing a plugin can tell an admin, and a plugin
+        that had to catch a *net-layer* exception to read it would be a plugin tied to one engine.
+        The words come back instead, and nothing here raises: a caller checks the first word or
+        ignores it, exactly as it would on the text families where a refusal has always been text.
+        """
         words = getattr(self._rcon, "command_words", None)
-        if words is not None:
+        if words is None:
+            reply = self.send_rcon(command)
+            return [reply] if reply else []
+        try:
             return list(words(command))
-        reply = self.send_rcon(command)
-        return [reply] if reply else []
+        except Exception as exc:  # noqa: BLE001 - a refusal is the server's answer, not our failure
+            refusal = [str(word) for word in getattr(exc, "words", []) if str(word)]
+            log.info("%s: %r was refused: %s", self.profile.name, command, refusal or exc)
+            return refusal
 
     def get_map(self) -> str | None:
         if self._rcon is None or not self.profile.status_commands:

@@ -129,6 +129,11 @@ class Console(Protocol):
 
         Same terms as `send_rcon`: it is for a plugin that already knows which engine it is talking
         to, and the caller owns what it puts in the string.
+
+        **A refused command answers rather than raising.** Where the engine has a word for what was
+        wrong — `PlayerAlreadyInList`, `InvalidArguments`, `CommandDisallowedOnRanked` — that word is
+        the reply, so a plugin can say it to the admin who typed the command. `[]` means the server
+        said nothing at all.
         """
         ...
 

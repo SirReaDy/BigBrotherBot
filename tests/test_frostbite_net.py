@@ -218,6 +218,28 @@ def test_a_refused_command_names_the_reason(server):  # noqa: ANN001
         client.close()
 
 
+def test_the_runtime_hands_a_refusal_back_as_words_rather_than_raising(server, tmp_path):  # noqa: ANN001
+    """One level up, a refusal is information: `PlayerAlreadyInList` is what an admin needs to be
+    told, and a plugin that had to catch a net-layer exception to read it would be a plugin tied to
+    one engine. `Console.rcon_words` answers with the words and never raises."""
+    from b3.config.schema import BotConfig, Config, ServerConfig
+    from b3.core.clock import FakeClock
+    from b3.runtime.bot import Bot
+
+    client = _client(server)
+    config = Config(
+        bot=BotConfig(database=f"sqlite:///{tmp_path / 'b3.sqlite'}"),
+        server=ServerConfig(game="moh"),
+    )
+    bot = Bot(config, rcon=client, clock=FakeClock())
+    try:
+        server._answer = lambda words: ["PlayerAlreadyInList"]  # type: ignore[method-assign]
+
+        assert bot.rcon_words("reservedSpectateSlots.addPlayer Bob") == ["PlayerAlreadyInList"]
+    finally:
+        client.close()
+
+
 def test_a_reply_arriving_in_pieces_is_reassembled():
     """TCP is a stream: a read can hand over half a packet. Only the size field says where it ends."""
     fake = FakeFrostbiteServer(password="test", chunk_size=7, resend_unacked_after=99).start()
