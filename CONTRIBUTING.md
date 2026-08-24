@@ -62,3 +62,27 @@ yourself subclassing to change strings, the strings belong in the profile.
 
 Keep a PR to one change, with tests. Say which game and which engine you ran it against, and whether
 that was a real server or a fake, since the two are very different evidence.
+
+## Cutting a release
+
+Versions are `vX.Y.Z` tags on this repository, and **three things have to agree**: the tag,
+`project.version` in `pyproject.toml`, and `b3.__version__`. The release workflow refuses a tag where
+they do not, because `b3 update` compares the running `b3.__version__` against the highest tag here —
+a disagreement makes the bot either miss an update or offer one that installs the same code.
+
+```bash
+# 1. bump both, in one commit
+#    pyproject.toml:   version = "2.1.0"
+#    src/b3/__init__.py: __version__ = "2.1.0"
+git commit -am "chore: 2.1.0"
+git tag v2.1.0
+git push origin main v2.1.0
+```
+
+The `Release` workflow then checks the three agree, builds a wheel and an sdist, installs the wheel
+into a clean virtualenv and runs it, and attaches both files to the GitHub release.
+
+**There is no PyPI**, by decision: the source of truth is this repository, and installing is
+`pip install git+https://github.com/SirReaDy/BigBrotherBot@v2.1.0` — which needs nobody's permission
+and is the same distribution story as `b3 plugin install`, which pins plugins by tag from git. The
+built files exist so an install needs no git checkout, not because anything is published elsewhere.

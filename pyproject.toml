@@ -40,12 +40,15 @@ sftp = ["paramiko>=3.4"]
 geo = ["maxminddb>=2.6"]
 # Test + dev tooling.
 dev = [
-    "pytest>=8.0",
-    "pytest-asyncio>=0.23",
-    # Capped: a linter changes what it enforces between releases, and CI installs whatever is
-    # newest. Raise it when upgrading on purpose, with any resulting diff in the same commit.
+    # Every tool here is capped, and for one reason: CI installs whatever is newest, so an upstream
+    # release on a Tuesday can turn a green branch red and look exactly like our bug. A cap makes an
+    # upgrade a commit somebody made, with any resulting diff in it. Raise them on purpose.
+    "pytest>=8.0,<10.0",
+    "pytest-asyncio>=0.23,<2.0",
+    # A linter changes what it enforces between releases.
     "ruff>=0.15,<0.17",
-    "mypy>=1.9",
+    # And a type checker changes what it can infer, which is the same thing with a longer diff.
+    "mypy>=1.9,<3.0",
     # Type stubs for the libraries the bot reads config and remote logs with. Without these,
     # `mypy --strict` cannot see into them and reports every call site as untyped.
     "types-PyYAML>=6.0",

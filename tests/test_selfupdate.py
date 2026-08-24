@@ -326,3 +326,27 @@ def test_doctor_does_not_reach_the_network_unless_asked(tmp_path, monkeypatch):
     checks = run_checks(config, tmp_path)
 
     assert not any(check.name == "update" for check in checks)
+
+
+# -- packaging -----------------------------------------------------------------------------------
+
+
+def test_the_package_version_and_the_module_version_agree():
+    """`b3 update` compares the running `b3.__version__` against the highest tag on the remote, and
+    the release workflow refuses a tag that disagrees with `pyproject.toml`. If these two can drift
+    from each other, the bot either misses an update or offers one that installs the same code."""
+    import pathlib
+    import re
+    import tomllib
+
+    import b3
+
+    root = pathlib.Path(__file__).resolve().parent.parent
+    packaged = tomllib.loads(root.joinpath("pyproject.toml").read_text(encoding="utf-8"))
+    assert packaged["project"]["version"] == b3.__version__
+
+    # And the workflow reads the module version with a regex rather than by importing it, so the
+    # assignment has to stay in a shape that regex can find.
+    source = root.joinpath("src", "b3", "__init__.py").read_text(encoding="utf-8")
+    found = re.search(r'__version__\s*=\s*"([^"]+)"', source)
+    assert found is not None and found.group(1) == b3.__version__

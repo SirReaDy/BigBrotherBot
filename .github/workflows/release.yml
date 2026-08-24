@@ -1,0 +1,76 @@
+# Build the package on a version tag and attach it to the GitHub release.
+#
+# There is no PyPI, by decision: the source of truth is this repository, and installing is
+# `pip install git+https://github.com/SirReaDy/BigBrotherBot@v2.1.0`. So what this workflow is *for*
+# is not publishing — it is proving, on every tag, that the package builds at all, and leaving a
+# wheel and an sdist attached to the release so an install needs no git checkout and no build step.
+#
+# The version check is the first job on purpose. `b3 update` compares the running `b3.__version__`
+# against the highest tag on this remote, so a tag whose name disagrees with the version inside it
+# would make the bot either miss an update or offer one that installs the same code.
+
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch: # so the build can be exercised without cutting a release
+
+permissions:
+  contents: write # only to attach the built files to the release this tag creates
+
+jobs:
+  version:
+    name: tag matches the version
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Compare
+        shell: bash
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          pkg=$(python -c "import tomllib,pathlib;print(tomllib.loads(pathlib.Path('pyproject.toml').read_text())['project']['version'])")
+          mod=$(python -c "import pathlib,re;print(re.search(r'__version__\s*=\s*\"([^\"]+)\"', pathlib.Path('src/b3/__init__.py').read_text()).group(1))")
+          echo "tag=$tag pyproject=$pkg b3.__version__=$mod"
+          if [ "$tag" != "$pkg" ] || [ "$tag" != "$mod" ]; then
+            echo "::error::the tag, pyproject.toml and b3.__version__ must agree — see CONTRIBUTING.md"
+            exit 1
+          fi
+
+  build:
+    name: wheel and sdist
+    needs: version
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: python -m pip install --upgrade build
+      - run: python -m build
+      # Installing what was just built, in a clean environment, is the only thing that proves the
+      # package is not merely buildable but usable: a missing `packages.find` entry or an unlisted
+      # dependency is invisible to `python -m build`.
+      - name: Install the wheel and run it
+        shell: bash
+        run: |
+          python -m venv /tmp/smoke
+          /tmp/smoke/bin/python -m pip install --quiet dist/*.whl
+          /tmp/smoke/bin/b3 games | head -5
+          /tmp/smoke/bin/python -c "import b3; print('installed', b3.__version__)"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/*
+      - name: Attach to the release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        # `--clobber` so re-running this workflow on the same tag replaces the files rather than
+        # failing, which is what happens when a release is edited by hand first.
+        run: gh release upload "${GITHUB_REF_NAME}" dist/* --clobber

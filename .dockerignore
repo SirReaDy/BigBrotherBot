@@ -1,0 +1,30 @@
+# Everything the image does not need, which is nearly everything: the build copies `pyproject.toml`,
+# `README.md` and `src/` and nothing else. Listed rather than left out so that adding a directory to
+# the repository cannot quietly enlarge the image — and so a database or a config from a local test
+# run can never be baked into one.
+.git
+.github
+.venv
+venv
+__pycache__
+*.pyc
+*.sqlite
+*.sqlite3
+*.log
+.pytest_cache
+.ruff_cache
+.mypy_cache
+dist
+build
+*.egg-info
+tests
+tools
+docs
+examples
+conf
+b3.yaml
+plugin_*.yaml
+# The gitignored planning documents, which are not published and not in an image either.
+DESIGN.md
+PARITY.md
+TODO.md

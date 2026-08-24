@@ -175,6 +175,35 @@ process. Anything that restarts a process will do, provided it treats **exit cod
 again"** (that is `!restart`) and **0 as "stay stopped"** (that is `!die`). On Windows, use one scheduled
 task or service per instance directory, each with its own `-c`.
 
+## In a container
+
+There is a `Dockerfile` in the repository. It builds one image that runs any of the 38 titles — the
+image carries the code, the instance directory carries everything about a server:
+
+```bash
+docker build -t b3ng .
+docker run -d --name cod4_1 --restart unless-stopped   -v /srv/cod4_1/b3:/data   b3ng
+```
+
+`/data` is the instance directory this page has been describing all along: `b3.yaml`, the database and
+`conf/plugins/` live there, on the host, so upgrading is `docker pull` (or a rebuild) and nothing about
+a server is inside the image. Run one container per game server, exactly as you would run one systemd
+unit per game server, and give each its own directory.
+
+Anything that is not `run` works too, because the entry point is the bot's CLI with the config already
+pointed at:
+
+```bash
+docker run --rm -v /srv/cod4_1/b3:/data b3ng doctor
+docker run --rm -v /srv/cod4_1/b3:/data b3ng db upgrade
+```
+
+The container runs as a non-root user with uid 10001, so the instance directory has to be writable by
+it: `chown -R 10001:10001 /srv/cod4_1/b3`.
+
+**`b3 update` does not work in a container, and says so.** The image is the version: a `pip install`
+inside a container is thrown away with the container. Build or pull a new image instead.
+
 ## Tailing a hosted server's log
 
 `server.game_log` is normally a path, which means the bot runs on the game server's own box. Point it
