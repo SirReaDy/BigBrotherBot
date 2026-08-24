@@ -1,0 +1,80 @@
+# poweradminmoh — the 2010 Medal of Honor's teams, scrambler, match mode and reserved slots.
+#
+# Point at it from the main config (this plugin only loads on `server.game: moh`):
+#
+#   plugins:
+#     - name: poweradminmoh
+#       config: "@conf/plugin_poweradminmoh.yaml"
+#
+# What it adds, in groups:
+#
+#   the teams       !teams  !teambalance  !changeteam  !spect  !swap
+#   players         !kill
+#   the scrambler   !scramble  !scramblemode  !autoscramble
+#   the match       !match  !ready
+#   the round/map   !runnextround (nextrnd)  !restartround (restartrnd)  !setnextmap (snmap)
+#   reserved slots  !reserveslot (rslot)  !unreserveslot (uslot)
+#
+# Levels and aliases are the classic plugin's and are set in code; `!cmdlevel <command> <level>`
+# changes one at runtime and `!cmdalias` changes the short form.
+#
+# The classic's `!pb_sv_command` is `!punkbuster` in the admin plugin (aliased `!pbcmd`) — every
+# PunkBuster family has that verb, so it is not a per-game command.
+#
+# Two things about this title are worth knowing. It has **no centre-screen message**: there is no
+# `admin.yell` here, so everything this plugin says — including the match countdown — is chat, and
+# that is not a limitation of the bot. And **team 3 is the spectators**, which is why `!spect` works
+# and why the balancer never counts the people watching as a side.
+#
+# `!match on` asks everybody to type `!ready`, nags whoever has not every ten seconds, and when they
+# all have, counts down from ten and restarts the round. `!match off` calls it off. While a match is
+# on the automatic team check and the auto-scrambler both stand down — the people playing have agreed
+# the teams between themselves — and both come back afterwards, which in the classic the balancer
+# never did.
+
+settings:
+  # Move players across when the sides drift apart. Off as the classic shipped it.
+  #
+  # Two things trigger it: a player changing team (checked at once) and the timer below. Whoever gets
+  # moved is the player who joined the bigger team **most recently**, which is the fairest answer
+  # available — somebody who has been playing the whole round did not cause the imbalance.
+  teambalance: false
+
+  # Minutes between automatic checks. 0 turns the timer off and leaves the check on a team change and
+  # `!teams`. Capped at 59: an hour between checks is not a balancer.
+  check_interval: 1
+
+  # How many players one side may be ahead by before anybody is moved. The classic's bounds are kept:
+  # at least 1 (0 would move every arrival straight back) and at most 9.
+  max_difference: 1
+
+  # Players at or above this level are never moved by the balancer — the classic's `maxlevel`, at its
+  # own default of admin.
+  no_balance_level: admin
+
+  # An admin at or above this level is not level-checked when acting on another player. Below it, you
+  # may not act on your equals or your betters, and that one rule covers !kill, !changeteam, !spect
+  # and !swap. (The classic checked a level in the balancer only, so any moderator could !spect a
+  # senior admin out of the game.)
+  no_level_check_level: fulladmin
+
+  # Plugins switched off while a match is on, and back on when it ends — a comma-separated list, or a
+  # YAML list. Only the ones that were actually running are switched back on: the classic enabled
+  # everything on this list when a match ended, so a plugin you had deliberately switched off came
+  # back on because somebody had played a match.
+  match_plugins: "spree, tk, pingwatch, censor, spamcontrol"
+
+# The team scrambler, which deals everybody out again at a round or a map boundary. Spectators and
+# the server's own bots are left out of it.
+scrambler:
+  # off | round | map — when it runs by itself. `!autoscramble` changes this at runtime, and
+  # `!scramble` asks for one at the end of the current round whatever this says.
+  #
+  # Write it in quotes if you like; a bare `off` in YAML is the boolean false, which the bot
+  # translates back to the word for you.
+  mode: "off"
+
+  # random | score — how the teams are dealt. `score` uses the previous round's final scoreboard to
+  # spread the strongest players across both sides, so it does nothing useful until one round has
+  # finished; it falls back to random until then.
+  strategy: random

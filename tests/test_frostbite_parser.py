@@ -437,9 +437,9 @@ def test_the_titles_differ_in_nothing_but_the_map_list():
         assert replace(profile, **same_as_bf3) == BF3
 
     for profile in (BFBC2, MOH):
-        # Everything but the map list and the round control, which this generation genuinely does
-        # differently — and which are named here one by one rather than papered over, since the
-        # docstring above is about what asserting sameness cost the last time.
+        # Everything but the map list, the round control and the two things the 2010 Medal of Honor
+        # turned out not to share with anybody — named here one by one rather than papered over,
+        # since the docstring above is about what asserting sameness cost the last time.
         assert (
             replace(
                 profile,
@@ -449,6 +449,7 @@ def test_the_titles_differ_in_nothing_but_the_map_list():
                 saybig_template=BF3.saybig_template,
                 server_verbs=BF3.server_verbs,
                 player_verbs=BF3.player_verbs,
+                teams=BF3.teams,
             )
             == BF3
         )
@@ -458,6 +459,27 @@ def test_the_titles_differ_in_nothing_but_the_map_list():
         # Medal of Honor's for both is what `poweradminbfbc2` found.
         assert BFBC2.rotate_command == "admin.runNextLevel"
         assert MOH.rotate_command == "admin.runNextRound"
+
+
+def test_the_2010_medal_of_honor_shares_two_fewer_things_than_the_rest():
+    """Both found by `poweradminmoh`, and both invisible from the plugin's side.
+
+    Its `admin.movePlayer` takes **three** arguments where the other five titles take four — the
+    classic's own changelog calls fixing that "a major fix … this affected all team balancing
+    features", which is what a refused move costs. And its team 3 is the **spectators**, which its
+    own parser says and which is safe to state for this title alone: it has no four-sided gamemode
+    for teams 3 and 4 to be playing sides in, where Bad Company 2's Squad Deathmatch does.
+    """
+    assert MOH.player_verbs["move"] == 'admin.movePlayer "%(cid)s" %(team)s true'
+    assert BFBC2.player_verbs["move"] == 'admin.movePlayer "%(cid)s" %(team)s %(squad)s true'
+    assert MOH.teams["3"] == "spec"
+    assert BFBC2.teams["3"] == "green"
+    # And no centre-screen message at all: the classic's `moh.py` overrides `saybig` to call `say`.
+    assert MOH.saybig_template is None
+    assert MOH.server_verbs == {
+        "round_next": "admin.runNextRound",
+        "round_restart": "admin.restartRound",
+    }
 
 
 def test_the_centre_screen_message_is_the_engines_own_verb():

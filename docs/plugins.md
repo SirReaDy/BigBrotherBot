@@ -40,6 +40,7 @@ list, each with an optional config of its own (see `examples/`):
 | `poweradmincod7` | Black Ops's playlists, map exclusions, DLC packs and config files | `!pasetmap` `!paplaylist` `!pagetplaylists` `!pasetplaylist` `!paexcludemaps` `!paset` `!paget` `!pasetdlc` `!palistcfg` `!paload` `!pamaprestart` `!pafastrestart` `!pagametype` |
 | `poweradminbf3` | Battlefield 3's teams, scrambler, VIP list and preset server configs | `!roundnext` `!endround` `!kill` `!nuke` `!changeteam` `!swap` `!autoassign` `!autobalance` `!scramble` `!setnextmap` `!yell` `!vips` `!loadconfig` … |
 | `poweradminbfbc2` | Bad Company 2's teams, playlists, yells and ready-up match mode | `!pateams` `!pateambalance` `!pachangeteam` `!paspectate` `!pakill` `!pamatch` `!ready` `!pamaprestart` `!pasetnextmap` `!parush` `!payell` `!paset` `!paget` … |
+| `poweradminmoh` | the 2010 Medal of Honor's teams, scrambler, match mode and reserved slots | `!teams` `!teambalance` `!changeteam` `!spect` `!swap` `!kill` `!scramble` `!scramblemode` `!autoscramble` `!match` `!ready` `!runnextround` `!setnextmap` `!reserveslot` … |
 
 ### censor — bad language, and the escalating mute
 
@@ -557,6 +558,42 @@ one command that loads it. Its centre-screen message counts **milliseconds**, so
 profile asked for was ten milliseconds: every `say_big` on Bad Company 2 was a flash nobody could
 see. And neither Frostbite 1 title had a single round or yell verb declared, which is what this
 plugin was waiting on. Config: `examples/plugin_poweradminbfbc2.yaml`.
+
+### poweradminmoh — Medal of Honor, and a move the server always refused
+
+The twin of `poweradminbfbc2` — same engine generation, same ready-up match mode, a team balancer of
+the same shape — with a **scrambler** the other has not got, `!swap`, and the list of reserved
+spectator slots this title keeps. `!scramble` deals the teams out again when the round ends,
+`!scramblemode score` uses the previous round's scoreboard to spread the strongest players across
+both sides, and `!autoscramble round|map` runs it by itself.
+
+**Every feature that moved a player was refused by the server.** This title's `admin.movePlayer`
+takes **three** arguments where the rest of the family takes four, and the classic sent four — its own
+changelog records fixing that as "a major fix … this affected all team balancing features", which is
+exactly what it costs: `!changeteam`, `!swap`, `!spect`, the balancer and the scrambler all did
+nothing, and the plugin swallowed the refusal so nothing said so. The verb is on the title's profile
+here, where there is one place for it to be right.
+
+The rest reads like a plugin nobody had opened in fifteen years. `!swap` with no arguments crashed,
+because the guard was `if not input:` — the *builtin*, which is always truthy — so the check never ran
+and the next line indexed `None`; and a swap with one player spectating went ahead and moved the other
+to team 0, the guard being `and` where it meant `or`. The score scramble sorted the score *strings*, so
+`"9"` outranked `"100"`. The scrambler dealt out spectators and the server's own bots. `!setnextmap`
+for a map nobody has answered with the *letters* of what you typed, `", ".join(data)` over a string
+being a list of characters. `!reserveslot` compared the server's refusal — a string — to a
+one-element list, so "already has a slot" could never be said. `movedByBot` was set before the move
+and never cleared when it failed, so the player's next genuine team change was ignored — and this is
+the only plugin in the classic tree that reads that variable. A `matchmode_configs` section the code
+looked for assigned into an attribute that does not exist, and `AttributeError` was not in the tuple
+it caught, so an operator who wrote that section lost the whole plugin at load. And match mode cost
+the server its team balancer permanently, exactly as in Bad Company 2.
+
+Two facts about the title came out of it, both now on its profile. It has **no centre-screen
+message** — the classic's own parser overrides `saybig` to call `say`, which is a parser author saying
+there is no `admin.yell` here — so everything this plugin says is chat, and `say_big` falls back
+rather than being answered `UnknownCommand`. And **team 3 is the spectators**, which is why the
+balancer does not count the people watching as a side. Config:
+`examples/plugin_poweradminmoh.yaml`.
 
 ### poweradmincod7 — Black Ops, where you cannot just load a map
 

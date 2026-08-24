@@ -30,6 +30,13 @@ from b3.parsers.profile import GameProfile, VersionCheck
 #: screen — which must not be mistaken for a team, or everybody waiting to spawn looks like allies.
 FROSTBITE_TEAMS = {"0": "", "1": "red", "2": "blue", "3": "green", "4": "yellow"}
 
+#: The 2010 Medal of Honor's, where **team 3 is the spectators**. Its own parser in the classic says
+#: so (`getTeam` returns `TEAM_SPEC` for 3) and its `poweradminmoh` sends a player to team 3 for
+#: `!spect`; the title has no four-sided gamemode for 3 and 4 to be playing teams in, which is what
+#: makes this safe to state here and not for Bad Company 2 — whose Squad Deathmatch really does put
+#: four squads against each other, whatever that title's classic parser said about team 3.
+MOH_TEAMS = {"0": "", "1": "red", "2": "blue", "3": "spec"}
+
 #: The server rejects a longer reason, so this is a hard limit rather than good manners.
 MAX_REASON = 80
 
@@ -184,12 +191,37 @@ BFBC2 = replace(
     },
 )
 #: Medal of Honor 2010 is the one title with no build floor — the classic checked its name only.
+#:
+#: **And the one title here with no centre-screen message.** The classic's `moh.py` overrides
+#: `saybig` to call `say`, which is a parser author saying "this server has no `admin.yell`" as
+#: plainly as it can be said — and `poweradminmoh`, alone among the four `poweradmin*`, has no yell
+#: command and sends its match countdown as chat. So `saybig_template` is empty and `say_big` falls
+#: back to `say`, rather than every unmissable announcement on this title being answered
+#: `UnknownCommand`.
 MOH = replace(
     _FROSTBITE1,
     name="moh",
     map_names=maps.MOH_MAPS,
     version_check=VersionCheck("version", "MOH"),
+    teams=MOH_TEAMS,
     rotate_command="admin.runNextRound",
+    saybig_template=None,
+    server_verbs={
+        # This title's round control, in rounds rather than levels — the opposite spelling from Bad
+        # Company 2, which is the same generation.
+        "round_next": "admin.runNextRound",
+        "round_restart": "admin.restartRound",
+    },
+    player_verbs={
+        **_BASE.player_verbs,
+        # **Three arguments, not four: this title's `admin.movePlayer` takes no squad.** The classic's
+        # own changelog calls getting this wrong "a major fix … this affected all team balancing
+        # features", which is what a four-argument move on a three-argument verb costs: every move
+        # refused, so `!changeteam`, `!swap`, `!spect`, the balancer and the scrambler all did
+        # nothing. `%(squad)s` is still accepted from callers and ignored, because the callers are
+        # written against a family where five of the six titles have squads.
+        "move": 'admin.movePlayer "%(cid)s" %(team)s true',
+    },
 )
 
 #: Frostbite 2 — BF3, BF4, Hardline and MoH Warfighter.
@@ -274,4 +306,5 @@ __all__ = [
     "MAX_REASON",
     "MOH",
     "MOHW",
+    "MOH_TEAMS",
 ]
