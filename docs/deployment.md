@@ -221,7 +221,7 @@ server you have no shell on (the classic bot's `ftpytail` / `sftpytail` / `httpy
 | `ftp://user:pass@host[:port]/path/games_mp.log` | Resumes with `REST`, binary mode, passive (game hosts are behind NAT). |
 | `ftps://…` | Same, over implicit TLS, with the data connection encrypted too. |
 | `sftp://user:pass@host[:port]/path/games_mp.log` | Needs `paramiko`: `pip install b3ng[sftp]`. With no password in the URL it uses your agent and `~/.ssh` keys. An unknown host key is accepted with a warning. |
-| `http://…`, `https://…` | Polls `HEAD` for the size, then a ranged `GET`. Credentials in the URL become a basic-auth header. Servers that ignore `Range` still work. |
+| `http://…`, `https://…` | Polls `HEAD` for the size, then a ranged `GET`. Credentials in the URL become a basic-auth header. Servers that ignore `Range` still work. Asks for **no compression** — see below. |
 
 All of them tail by **byte offset**, so:
 
@@ -234,3 +234,13 @@ All of them tail by **byte offset**, so:
 - A wrong host, path or password fails loudly at startup instead of quietly tailing nothing.
 
 Percent-encode any `@` or `:` in a username or password (`p@ss` → `p%40ss`).
+
+**HTTP and compression.** Because the tail is by byte offset, the HTTP source sends
+`Accept-Encoding: identity` and means it. A compressed reply counts *compressed* bytes — in the
+`Content-Length`, in the `Range`, and in the offset kept between polls — while the text handed to the
+parser is the decompressed kind, and nothing about that mismatch fails loudly: it reads as a log that
+has gone strange. If a host compresses anyway, the bot handles what it actually sent. A whole file
+(the server ignored `Range` too) is decompressed and sliced, because then the offsets are against the
+complete file again. A **compressed partial** response is refused by name in the log, because its
+range is a position in a stream that cannot be mapped back to the file — serve the log uncompressed,
+or turn range requests off so the whole file is sent.

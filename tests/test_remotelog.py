@@ -8,6 +8,7 @@ servers, so what is asserted is the wire behaviour we depend on: resume with ``R
 
 from __future__ import annotations
 
+import logging
 import sys
 import types
 
@@ -493,23 +494,35 @@ def fake_http(monkeypatch):
     """Serve ``state['content']`` over a fake urlopen that honours Range like a real server."""
     import urllib.request
 
-    state = {"content": b"", "requests": [], "range_support": True}
+    # `gzip` makes the fake server compress whatever it sends and say so — the thing a host does
+    # when it has `gzip on` for everything and has never thought about ranges.
+    state = {"content": b"", "requests": [], "range_support": True, "gzip": False}
+
+    def encoded(body):
+        if not state["gzip"]:
+            return body, {}
+        import gzip as gziplib
+
+        return gziplib.compress(body), {"Content-Encoding": "gzip"}
 
     def fake_urlopen(req, timeout=None):
         state["requests"].append(req)
         content = state["content"]
         if req.get_method() == "HEAD":
-            return FakeResponse(headers={"Content-Length": str(len(content))})
+            body, extra = encoded(content)
+            return FakeResponse(headers={"Content-Length": str(len(body))} | extra)
         rng = req.headers.get("Range")
         if rng is None or not state["range_support"]:
-            return FakeResponse(content, status=200)
+            body, extra = encoded(content)
+            return FakeResponse(body, status=200, headers=extra)
         start, end = rng.removeprefix("bytes=").split("-")
         start, end = int(start), int(end)
         if start >= len(content):
             from urllib.error import HTTPError
 
             raise HTTPError(req.full_url, 416, "Range Not Satisfiable", {}, None)
-        return FakeResponse(content[start : end + 1], status=206)
+        body, extra = encoded(content[start : end + 1])
+        return FakeResponse(body, status=206, headers=extra)
 
     monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
     return state
@@ -537,6 +550,75 @@ def test_http_slices_locally_when_the_server_ignores_range(fake_http):
     assert src.read_lines() == ["one", "two"]
     fake_http["content"] += b"three\n"
     assert src.read_lines() == ["three"]  # not the whole file again
+
+
+def test_http_asks_for_no_compression_at_all(fake_http):
+    """Every position this class holds is a byte count into the file — the `Content-Length`, the
+    `Range`, the offset kept between polls. Compress the representation and all three count
+    something else, while the text handed to the parser is the decompressed kind. Nothing about
+    that fails loudly; it reads as a log that has gone strange."""
+    src = HttpLogSource("http://host/games_mp.log", from_start=True)
+    src.open()
+    fake_http["content"] = b"one\n"
+    src.read_lines()
+
+    assert all(r.headers.get("Accept-encoding") == "identity" for r in fake_http["requests"])
+
+
+def test_http_refuses_a_compressed_head_rather_than_counting_its_bytes(fake_http):
+    """The Content-Length would be the compressed size, and every offset taken from it would point
+    into the wrong place in the log."""
+    fake_http["content"] = b"one\ntwo\n"
+    fake_http["gzip"] = True
+
+    with pytest.raises(LogSourceError, match="compressed bytes"):
+        HttpLogSource("http://host/games_mp.log").open()
+
+
+def test_http_refuses_a_compressed_range_by_name(fake_http, caplog):
+    """A range taken over compressed bytes is a position in a stream we never asked for. Refusing
+    it is the honest outcome; the alternative is handing the parser bytes that are not text.
+
+    It lands as a failed poll rather than as a crash, which is this class's rule for every read
+    error — so what matters is that **no lines come out of it** and that the warning says why.
+    """
+    src = HttpLogSource("http://host/games_mp.log", from_start=True)
+    src.open()
+    fake_http["content"] = b"one\n"
+    assert src.read_lines() == ["one"]
+
+    # The server starts compressing mid-tail and answers the ranged GET with a compressed 206. Its
+    # HEAD is left uncompressed here, so the refusal under test is the one on the range itself.
+    fake_http["content"] += b"two\n"
+    original = HttpLogSource._remote_size
+    fake_http["gzip"] = True
+    HttpLogSource._remote_size = lambda self: len(fake_http["content"])  # type: ignore[method-assign]
+    try:
+        with caplog.at_level(logging.WARNING):
+            assert src.read_lines() == []
+    finally:
+        HttpLogSource._remote_size = original  # type: ignore[method-assign]
+
+    assert "byte offset" in caplog.text
+    assert src._offset == 4  # nothing was consumed, so the tail resumes where it was
+
+
+def test_http_decompresses_a_whole_file_because_then_it_can_place_it(fake_http):
+    """The one case that *is* recoverable: the server ignored `Range` too, so what arrived is the
+    entire file. Decompress it and the offsets are against the real thing again."""
+    fake_http["range_support"] = False
+    fake_http["gzip"] = True
+    original = HttpLogSource._remote_size
+    HttpLogSource._remote_size = lambda self: len(fake_http["content"])  # type: ignore[method-assign]
+    try:
+        src = HttpLogSource("http://host/games_mp.log", from_start=True)
+        src.open()
+        fake_http["content"] = b"one\ntwo\n"
+        assert src.read_lines() == ["one", "two"]
+        fake_http["content"] += b"three\n"
+        assert src.read_lines() == ["three"]  # placed by offset, not replayed
+    finally:
+        HttpLogSource._remote_size = original  # type: ignore[method-assign]
 
 
 def test_http_credentials_go_in_a_basic_auth_header_not_the_url(fake_http):

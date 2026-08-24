@@ -381,6 +381,38 @@ def test_no_ip_is_reported_and_none_is_invented():
     assert player.ip == ""
 
 
+def test_a_column_this_bot_does_not_read_is_ignored_rather_than_guessed_at():
+    """A newer title adding a column must not break the parse — and `type`, which is how BF4 and
+    Battlefield Hardline report a spectator, is exactly such a column. It is named in
+    `UNREAD_FIELDS` rather than silently absent, because that is the evidence against the classic
+    parsers' claim that team 3 means "spectator" on this family."""
+    from b3.parsers.frostbite.status import UNREAD_FIELDS
+
+    players = list(
+        parse_player_block(
+            # fmt: off
+            [
+                "5",
+                "name",
+                "guid",
+                "teamId",
+                "squadId",
+                "type",
+                "1",
+                "Watcher",
+                GUID,
+                "0",
+                "0",
+                "1",
+            ]
+            # fmt: on
+        )
+    )
+
+    assert [(p.name, p.team, p.squad) for p in players] == [("Watcher", "0", "0")]
+    assert "type" in UNREAD_FIELDS
+
+
 def test_reading_a_ban_list():
     bans = parse_ban_list(
         ["guid", GUID, "perm", "0", "cheating", "ip", "1.2.3.4", "rounds", "5", "x"]

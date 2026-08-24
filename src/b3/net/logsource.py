@@ -448,6 +448,26 @@ class HttpLogSource(RemoteLogSource):
     Stateless: each poll is a ``HEAD`` for the size and a ranged ``GET`` for the new bytes. Needs
     a server that honours ``Range`` requests; if one ignores the header and returns the whole file
     we slice locally rather than replaying it, so it still works, just wastefully.
+
+    **Compression and byte offsets do not mix, so this asks for none.** Every position this class
+    holds is a byte count into the file: the ``Content-Length`` from a ``HEAD``, the ``Range`` on the
+    next ``GET``, the offset kept between polls. Compress the representation and all three count
+    something else — compressed bytes — while the text handed to the parser is the decompressed
+    kind. Nothing about that fails loudly; it reads as a log that has gone strange.
+
+    So the request says ``Accept-Encoding: identity`` and means it, and a server that compresses
+    anyway is handled by what it actually sent rather than by hope:
+
+    * a **whole file** (the server ignored ``Range`` as well) can be decompressed and sliced, because
+      then we hold the entire identity representation and our arithmetic is against that;
+    * a **compressed range** cannot, because the range was taken over bytes we cannot map back to
+      positions in the file. That is refused by name, which is the honest outcome: the alternative
+      is feeding compressed bytes to the parser as if they were text.
+
+    The classic `cod7http` did ask for gzip — and could, because it did not use absolute offsets at
+    all: it fetched a **suffix** range (`bytes=-10000`) and found its place by searching the chunk
+    for the last line it had already read. Content-based resync survives compression; byte arithmetic
+    does not. Worth knowing before somebody reads that plugin and adds `Accept-Encoding: gzip` here.
     """
 
     @property
@@ -458,7 +478,9 @@ class HttpLogSource(RemoteLogSource):
         return self.parts._replace(netloc=netloc).geturl()
 
     def _headers(self) -> dict[str, str]:
-        headers = {"User-Agent": "b3ng"}
+        # `identity` explicitly rather than by omission: urllib sends no `Accept-Encoding` of its
+        # own, and a server is entitled to compress when it is not told otherwise.
+        headers = {"User-Agent": "b3ng", "Accept-Encoding": "identity"}
         if self.username is not None:
             token = b64encode(f"{self.username}:{self.password or ''}".encode()).decode("ascii")
             headers["Authorization"] = f"Basic {token}"
@@ -473,6 +495,15 @@ class HttpLogSource(RemoteLogSource):
         req = Request(self._request_url, headers=self._headers(), method="HEAD")
         with urlopen(req, timeout=self._timeout) as resp:  # noqa: S310 - scheme is validated
             length = resp.headers.get("Content-Length")
+            encoding = _content_encoding(resp)
+        if encoding:
+            # The length would be the *compressed* size, and every offset taken from it would point
+            # into the wrong place in the file. Said plainly, because the fix is on their side.
+            raise LogSourceError(
+                f"{self.safe_url} answers with Content-Encoding: {encoding} even though this asks "
+                f"for none; its Content-Length counts compressed bytes, which cannot be used as a "
+                f"position in the log"
+            )
         if length is None:
             raise LogSourceError(
                 f"{self.safe_url} reports no Content-Length; it cannot be tailed by byte offset"
@@ -489,10 +520,21 @@ class HttpLogSource(RemoteLogSource):
             with urlopen(req, timeout=self._timeout) as resp:  # noqa: S310 - scheme is validated
                 data = resp.read()
                 status = resp.status
+                encoding = _content_encoding(resp)
         except HTTPError as exc:
             if exc.code == 416:  # Range Not Satisfiable: the file shrank under us
                 return b""
             raise
+        if encoding and status == 206:
+            # A range taken over compressed bytes: those offsets are positions in a stream we never
+            # asked for and cannot map back to the file. Nothing good can be salvaged from it.
+            raise LogSourceError(
+                f"{self.safe_url} returned a partial response compressed with {encoding}, which "
+                f"cannot be located in the log by byte offset. Serve the log uncompressed, or "
+                f"disable range requests so the whole file is sent"
+            )
+        if encoding:
+            data = _decompress(data, encoding, self.safe_url)
         if status != 206:
             # Range ignored: we got the whole file, so take our slice of it.
             data = data[offset : offset + length]
@@ -500,6 +542,42 @@ class HttpLogSource(RemoteLogSource):
 
     def _disconnect(self) -> None:
         return None
+
+
+def _content_encoding(response: object) -> str:
+    """The response's content coding, or "" when it is the one we asked for.
+
+    `identity` is spelled out by some servers and means "not encoded", so it is not a coding to
+    react to — treating it as one would refuse a perfectly ordinary reply.
+    """
+    headers = getattr(response, "headers", None)
+    value = "" if headers is None else (headers.get("Content-Encoding") or "")
+    coding = value.strip().lower()
+    return "" if coding in ("", "identity") else coding
+
+
+def _decompress(data: bytes, encoding: str, safe_url: str) -> bytes:
+    """Undo a content coding the server applied without being asked.
+
+    Only the two every stack can produce. `br` and `zstd` would each need a dependency, and being
+    told which one is far better than a stream of bytes that is not text.
+    """
+    import gzip
+    import zlib
+
+    try:
+        if encoding == "gzip":
+            return gzip.decompress(data)
+        if encoding in ("deflate", "zlib"):
+            return zlib.decompress(data)
+    except (OSError, EOFError, zlib.error) as exc:
+        # Truncated, or not what the header claimed. `gzip` raises `BadGzipFile` (an `OSError`) and
+        # `EOFError` on a short read; `zlib` raises neither.
+        raise LogSourceError(f"{safe_url}: could not decompress a {encoding} reply: {exc}") from exc
+    raise LogSourceError(
+        f"{safe_url} answers with Content-Encoding: {encoding}, which this cannot read. Serve the "
+        f"log uncompressed — it is being tailed by byte offset"
+    )
 
 
 def create_log_source(

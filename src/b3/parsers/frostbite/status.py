@@ -33,8 +33,15 @@ FIELDS = {
     "deaths": "deaths",
     "score": "score",
     "ping": "ping",
-    "type": "type",
 }
+
+#: **Not read, and worth writing down rather than leaving as an omission.** BF4 and Battlefield
+#: Hardline report a spectator in a `type` column (`1`), not by giving them a team — which is the
+#: evidence against the classic parsers' claim that team 3 means "spectator" on this family, since
+#: the two titles that certainly *have* spectators do not say so that way. Nothing in this bot needs
+#: a spectator flag yet, and a field nothing reads is indistinguishable from one that is wrong, so it
+#: is named here instead of carried. Whoever needs it: add it to `PlayerInfo` and to `FIELDS`.
+UNREAD_FIELDS = ("type",)
 
 
 def parse_player_block(words: list[str]) -> Iterator[PlayerInfo]:
