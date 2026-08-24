@@ -26,7 +26,7 @@ list, each with an optional config of its own (see `examples/`):
 | `ipban` | kicks a connecting player whose address is behind an active ban | — |
 | `nickreg` | reserves nicknames, and warns whoever else is wearing one | `!registernick` `!deletenick` `!listnick` |
 | `makeroom` | frees a slot on a full server, and holds it for a member | `!makeroom` `!makeroomauto` |
-| `callvote` | decides who may call a vote, and records the ones that finish | `!veto` `!lastvote` |
+| `callvote` | decides who may call a vote, protects your admins from kick votes, and records the ones that finish | `!veto` `!lastvote` |
 | `spree` | announces killing and losing streaks | `!spree [player]` |
 | `firstkill` | announces first blood, first headshot and the first team kill | `!firstkill` `!firsttk` `!firsths` |
 | `netblocker` | refuses players connecting from a listed network | — |
@@ -276,7 +276,20 @@ voter has already passed by the time the log line reporting it is read — and b
 **cancelling a vote is engine-specific**: Urban Terror 4.2/4.3 have the verb, Homefront and Altitude
 announce a vote and take no instruction about it. On those two the plugin says so once at startup and
 then only records and announces, rather than telling a player they may not do what is about to happen
-anyway. Config: `examples/plugin_callvote.yaml`.
+anyway.
+
+**The `protect:` section stops players voting your admins off the server** — the vote protector from
+the classic's `poweradminhf`, which is here rather than in a per-game plugin for the same reason
+`censorurt` became a `mute:` section on `censor`: it is a policy about votes, and this is the plugin
+that already holds the running vote, the level table and the veto. It works wherever the engine says
+who a vote is *about*: Homefront names the player in the vote line, and on the Quake 3 engines the
+vote's own argument (`kick bob`, `clientkick 3`) is looked up. Where a vote can be cancelled it is
+cancelled outright — which the Homefront plugin could not do — and where it cannot, the caller is
+warned and a **ban** that passes is lifted again; a kick leaves nothing to undo. The rule is the
+classic's: the target has to reach the level *and* outrank the caller, so two admins of equal rank are
+left to disagree. **It is off until you set `protect.level`**, because this plugin runs on every family
+with votes while the plugin it comes from ran on one title, and an upgrade should not start punishing
+players for votes an operator has allowed for years. Config: `examples/plugin_callvote.yaml`.
 
 ### spree — the server saying a player's name
 

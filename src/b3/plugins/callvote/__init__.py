@@ -11,6 +11,16 @@ empty a server), announcing the next map when a `cyclemap`/`g_nextmap` vote star
 `!lastvote`, and doing nothing at all when too few players are present to vote — that last one is not
 laziness, it is that a vote with one voter passes before the log line reporting it has been read.
 
+**The `protect:` section is the vote protector from `poweradminhf`**, and it is here rather than in a
+per-game plugin for the same reason `censorurt` became a `mute:` section on `censor`: it is a policy
+about votes, and this is the plugin that already holds the running vote, the level table and the veto.
+What it does is stop the oldest abuse on any server with votes — `callvote kick` on the admin who just
+warned you. Where the engine can cancel a vote (Urban Terror) it is cancelled outright, which the
+Homefront plugin could not do; where it cannot, the caller is warned and a **ban** that passes against
+a protected player is lifted again. It is off by default: a plugin that starts punishing players for
+votes an operator has allowed for years, because they upgraded, is exactly the kind of surprise this
+project exists to avoid — `examples/plugin_callvote.yaml` says what to set for what the classic did.
+
 Changed, and the first three are faults:
 
 * **An unknown vote type no longer kills the handler.** `lv = self.callvoteminlevel[tp]` sat *outside*
@@ -75,6 +85,15 @@ MAP_VOTE_TYPES = ("map", "g_nextmap", "nextmap")
 #: cyclemap vote appears is "to what?".
 NEXT_MAP_VOTE_TYPES = ("cyclemap", "g_nextmap", "nextmap")
 
+#: Vote types whose argument is a *player*, which is what the `protect:` section is about. Both
+#: spellings of the Quake 3 one are here (`kick <name>` and `clientkick <slot>`) along with the two
+#: Homefront reports.
+PLAYER_VOTE_TYPES = ("kick", "clientkick", "ban", "kickban", "tempban", "mute")
+
+#: Of those, the ones that leave something behind to undo. A kick cannot be taken back — the player
+#: is already gone and can reconnect — so a passed kick vote is warned about and no more.
+BAN_VOTE_TYPES = ("ban", "kickban", "tempban")
+
 DEFAULTS: dict[str, object] = {
     # Level for `!veto` and `!lastvote`. The classic's default is mod for both.
     "min_level": 20,
@@ -92,6 +111,21 @@ DEFAULTS: dict[str, object] = {
     "record": True,
 }
 
+PROTECT_DEFAULTS: dict[str, object] = {
+    # Level at and above which a player may not be vote-kicked or vote-banned by somebody who does
+    # not outrank them. **0 turns the whole section off, and that is the default** — the classic's
+    # `poweradminhf` shipped this at `mod` on Homefront, but that plugin ran on one title and this one
+    # runs on every family that reports a vote. Turning it on for everybody at an upgrade would start
+    # punishing players for votes their operator has been allowing for years.
+    "level": 0,
+    # Warn whoever called the vote. The classic's own penalty, and its own two days: long enough that
+    # a second attempt reaches the admin plugin's escalation ladder.
+    "warn": True,
+    "warn_minutes": 2880,
+    # Lift a ban that passed against a protected player. Nothing to undo for a kick.
+    "undo": True,
+}
+
 MESSAGES = {
     "callvote_denied": "you may not call a {type} vote — that needs {group}",
     "callvote_next_map": "next map: {map}",
@@ -102,6 +136,8 @@ MESSAGES = {
     "callvote_last_result": "it {outcome} {yes}:{no} with {voters} players on the server",
     "callvote_last_result_unknown": "it {outcome}; this game does not report the counts",
     "callvote_last_none": "no vote has been recorded on this server yet",
+    "callvote_protected": "{name} is not somebody you may call a {type} vote against",
+    "callvote_protected_undone": "the vote against {name} has been undone",
 }
 
 
@@ -148,6 +184,12 @@ class Callvote:
     started: float
     #: Humans who could vote when it started — the figure `min_voters` is compared against.
     voters: int
+    #: Who the vote is *about*, where it is about somebody. Homefront names them in the vote line;
+    #: on the Quake 3 engines the vote's own argument is the name or the slot, so it is resolved.
+    target: Client | None = None
+    #: Whether `protect:` judged this vote one that should not have been called. Kept on the vote
+    #: rather than recomputed at the end, because by then the target may have been banned and gone.
+    protected: bool = False
 
 
 def parse_vote(event: Event) -> tuple[str, str]:
@@ -193,6 +235,7 @@ class CallvotePlugin(Plugin):
     def __init__(self, console: Console, config: object | None = None) -> None:
         super().__init__(console, config)
         self.settings = dict(DEFAULTS)
+        self.protect_settings: dict[str, object] = dict(PROTECT_DEFAULTS)
         #: Vote type -> the level needed to call it.
         self.levels: dict[str, int] = {}
         #: Map name -> the level needed to vote for it, whatever the level for `map` itself is.
@@ -206,6 +249,16 @@ class CallvotePlugin(Plugin):
     def on_load_config(self) -> None:
         config = self.config if isinstance(self.config, dict) else {}
         self.settings = {**DEFAULTS, **(config.get("settings") or {})}
+        self.protect_settings = {**PROTECT_DEFAULTS, **(config.get("protect") or {})}
+        level = level_for(self.protect_settings.get("level"))
+        if level is None:
+            log.error(
+                "callvote: protect.level is %r, which is neither a group keyword nor a level 0-100; "
+                "nobody is protected from a vote",
+                self.protect_settings.get("level"),
+            )
+            level = 0
+        self.protect_settings["level"] = level
         self.levels = self._level_table(config.get("levels"), "levels")
         self.map_levels = self._level_table(config.get("maps"), "maps")
         for name in ("veto", "lastvote"):
@@ -280,7 +333,10 @@ class CallvotePlugin(Plugin):
             args=args,
             started=self.console.clock.now(),
             voters=voters,
+            target=self.vote_target(event, vote_type, args),
         )
+        if self.protect(self.current):
+            return
         if voters < as_int(self.settings.get("min_voters"), 2):
             # The classic's reasoning, and it is sound: with one voter the server has already acted
             # on the vote by the time its line reaches us, so a cancellation would arrive after the
@@ -293,6 +349,84 @@ class CallvotePlugin(Plugin):
             following = self.console.get_next_map()
             if following:
                 self.console.say(self.message("callvote_next_map", map=following))
+
+    def vote_target(self, event: Event, vote_type: str, args: str) -> Client | None:
+        """Who a vote is about, where it is about somebody.
+
+        Homefront resolves the player itself and puts them on the event. The Quake 3 engines put the
+        argument in the vote line — `clientkick 3`, `kick bob` — so it is looked up here, and an
+        argument matching more than one player resolves to nobody: acting on a guess is worse than
+        not acting, and the level policy above still applies either way.
+        """
+        target = event.target
+        if isinstance(target, Client):
+            return target
+        if vote_type not in PLAYER_VOTE_TYPES or not args:
+            return None
+        found = self.console.find_clients(args.split()[0])
+        return found[0] if len(found) == 1 else None
+
+    def protect(self, vote: Callvote) -> bool:
+        """Deal with a vote called against somebody who should not be voted against.
+
+        True when the vote was cancelled outright, which is the best answer and needs an engine that
+        can cancel one. Where it cannot — Homefront, where this feature comes from — the caller is
+        warned now and a **ban** that passes is lifted when it does, which is the classic's own
+        two-part answer to a problem it could not prevent.
+
+        The rule is the classic's: the target has to be at or above `protect.level` **and** outrank
+        the caller. An admin vote-kicking another admin of the same rank is a disagreement between
+        two people who both have `!kick`, and not this plugin's business.
+        """
+        level = as_int(self.protect_settings.get("level"), 0)
+        target = vote.target
+        if not level or target is None or vote.type not in PLAYER_VOTE_TYPES:
+            return False
+        if target.max_level() < level or target.max_level() <= vote.client.max_level():
+            return False
+        vote.protected = True
+        log.info(
+            "callvote: %s called a %s vote against %s, who is protected (level %d)",
+            vote.client.name,
+            vote.type,
+            target.name,
+            target.max_level(),
+        )
+        self.console.tell(
+            vote.client, self.message("callvote_protected", name=target.name, type=vote.type)
+        )
+        if self.protect_settings.get("warn"):
+            self.console.warn(
+                vote.client,
+                reason=self.message("callvote_protected", name=target.name, type=vote.type),
+                minutes=as_int(self.protect_settings.get("warn_minutes"), 2880),
+            )
+        if not self._can_veto:
+            return False
+        self.console.cancel_vote()
+        self.current = None
+        return True
+
+    def undo_protected(self, vote: Callvote) -> None:
+        """Lift a ban a protected player was voted into. A kick leaves nothing to undo."""
+        target = vote.target
+        if target is None or not self.protect_settings.get("undo"):
+            return
+        if vote.type not in BAN_VOTE_TYPES:
+            log.info(
+                "callvote: %s's %s vote against %s passed; a kick cannot be undone",
+                vote.client.name,
+                vote.type,
+                target.name,
+            )
+            return
+        log.warning(
+            "callvote: lifting the ban %s was voted into by %s", target.name, vote.client.name
+        )
+        self.console.unban(
+            target, reason=self.message("callvote_protected_undone", name=target.name)
+        )
+        self.console.say(self.message("callvote_protected_undone", name=target.name))
 
     def refuse(self, client: Client, vote_type: str, args: str) -> bool:
         """Cancel this vote if the player is not allowed it. True when it was refused."""
@@ -375,7 +509,10 @@ class CallvotePlugin(Plugin):
                 started=vote.started,
                 voters=vote.voters,
             )
-        self.record(vote, yes=yes, no=no, passed=event.type is EventType.VOTE_PASSED)
+        passed = event.type is EventType.VOTE_PASSED
+        if passed and vote.protected:
+            self.undo_protected(vote)
+        self.record(vote, yes=yes, no=no, passed=passed)
 
     @staticmethod
     def _finished_vote(event: Event) -> tuple[str, str]:
@@ -524,10 +661,13 @@ def format_duration(seconds: int) -> str:
 
 
 __all__ = [
+    "BAN_VOTE_TYPES",
     "DEFAULTS",
     "MAP_VOTE_TYPES",
     "MESSAGES",
     "NEXT_MAP_VOTE_TYPES",
+    "PLAYER_VOTE_TYPES",
+    "PROTECT_DEFAULTS",
     "Callvote",
     "CallvotePlugin",
     "CallvoteRecord",

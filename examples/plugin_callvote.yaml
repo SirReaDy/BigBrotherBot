@@ -80,6 +80,35 @@ levels:
   g_bombexplodetime: guest
   g_capturescoretime: guest
 
+# Stop players calling kick and ban votes against your admins. **Off until you set a level.**
+#
+# This is the vote protector from the classic's `poweradminhf`, which ran on Homefront only; here it
+# works on any engine that reports who a vote is about — Homefront names the player in the vote line,
+# and on the Quake 3 engines the vote's own argument (`kick bob`, `clientkick 3`) is looked up. It is
+# off by default because this plugin runs on every family that has votes, and an upgrade should not
+# start punishing players for votes you have been allowing for years. `level: mod` is what the classic
+# shipped.
+#
+# What happens depends on what the engine can do. Where a vote can be cancelled (Urban Terror) it is
+# cancelled outright, which is the better answer and one the Homefront plugin could not give. Where it
+# cannot, the caller is warned and a **ban** that passes is lifted again — a kick cannot be undone,
+# since the player is already gone and free to reconnect.
+protect:
+  # Players at or above this level may not be vote-kicked or vote-banned by somebody who does not
+  # outrank them. 0 protects nobody. Two admins of the same rank are left to disagree: they both have
+  # `!kick` already.
+  level: 0
+
+  # Warn whoever called it. The warning goes through the admin plugin's ladder like any other, so a
+  # second attempt escalates on its own.
+  warn: true
+
+  # How long that warning counts for. The classic's two days.
+  warn_minutes: 2880
+
+  # Lift a ban that passed against a protected player.
+  undo: true
+
 # A level per map, for `map` and `g_nextmap` votes. This *replaces* the level for the vote type, in
 # both directions — lock `map` down to admins and still leave open the two maps that fill the server,
 # or leave `map` open and keep the one nobody stays for behind a level.
@@ -98,3 +127,5 @@ maps:
 #   callvote_last_result         !lastvote, second line ({outcome}, {yes}, {no}, {voters})
 #   callvote_last_result_unknown ...where the engine does not report the counts ({outcome})
 #   callvote_last_none           nothing recorded yet on this server
+#   callvote_protected           to the caller of a vote against a protected player ({name}, {type})
+#   callvote_protected_undone    said to the server when such a ban is lifted ({name})

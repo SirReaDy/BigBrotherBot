@@ -28,11 +28,13 @@ from b3.plugins.callvote import (
 )
 
 
-def _plugin(console, *, levels=None, maps=None, **settings):  # noqa: ANN001, ANN202
+def _plugin(console, *, levels=None, maps=None, protect=None, **settings):  # noqa: ANN001, ANN202
     admin = AdminPlugin(console, None)
     admin.start()
     console.plugins = {"admin": admin}
     config = {"settings": settings, "levels": levels or {}, "maps": maps or {}}
+    if protect is not None:
+        config["protect"] = protect
     plugin = CallvotePlugin(console, config)
     plugin.start()
     return plugin
@@ -633,3 +635,188 @@ async def test_urban_terror_log_lines_drive_the_whole_thing(tmp_path):
 
     assert any(c.strip() == "veto" for c in rcon.commands), rcon.commands
     bot.storage.close()
+
+
+# -- protect: the vote protector, from poweradminhf ----------------------------------------------
+
+
+async def _finish(console, passed=True, what=None):  # noqa: ANN001, ANN202
+    """A vote ending. Urban Terror repeats the vote and counts; Homefront states neither."""
+    data = {"yes": 4, "no": 1, "what": what} if what else {}
+    await console.bus.publish(
+        Event(EventType.VOTE_PASSED if passed else EventType.VOTE_FAILED, data=data)
+    )
+
+
+@pytest.mark.asyncio
+async def test_nobody_is_protected_until_an_operator_says_so(console):
+    """Off by default, deliberately: this plugin runs on every family that reports a vote, and the
+    Homefront plugin it comes from ran on one title. An upgrade must not start punishing players."""
+    plugin = _plugin(console)
+    caller = _join(console, "Joe")
+    boss = _join(console, "Boss", bits=128)
+    _join(console, "Jack")
+
+    await _call(console, caller, f"kick {boss.name}")
+
+    assert console.vote_cancels == 0
+    assert console.warned == []
+    assert plugin.current is not None and plugin.current.protected is False
+
+
+@pytest.mark.asyncio
+async def test_a_vote_against_an_admin_is_cancelled_where_the_engine_can(console):
+    """The classic could only warn and then undo: Homefront has no verb for cancelling a vote. On
+    Urban Terror there is one, and stopping the vote is a better answer than mending it."""
+    _plugin(console, protect={"level": "mod"})
+    caller = _join(console, "Joe")
+    boss = _join(console, "Boss", bits=128)
+    _join(console, "Jack")
+
+    await _call(console, caller, f"kick {boss.name}")
+
+    assert console.vote_cancels == 1
+    assert "Boss" in _told(console, caller)[-1]
+    assert [c.name for c, _, _ in console.warned] == ["Joe"]
+
+
+@pytest.mark.asyncio
+async def test_a_vote_against_an_ordinary_player_is_not_touched(console):
+    _plugin(console, protect={"level": "mod"})
+    caller = _join(console, "Joe")
+    _join(console, "Jack")
+    _join(console, "Bob")
+
+    await _call(console, caller, "kick Bob")
+
+    assert console.vote_cancels == 0
+    assert console.warned == []
+
+
+@pytest.mark.asyncio
+async def test_an_admin_may_still_be_voted_against_by_a_senior_one(console):
+    """The rule is the classic's: the target has to outrank the caller as well as reach the level. Two
+    admins of the same rank disagreeing is not this plugin's business — they both have `!kick`."""
+    _plugin(console, protect={"level": "mod"})
+    caller = _join(console, "Senior", bits=64)
+    _join(console, "Mod", bits=8, cid="2")
+    _join(console, "Jack", cid="3")
+
+    await _call(console, caller, "kick Mod")
+
+    assert console.vote_cancels == 0
+    assert console.warned == []
+
+
+@pytest.mark.asyncio
+async def test_a_vote_that_names_two_players_protects_neither(console):
+    """Acting on a guess is worse than not acting, and the level policy still applies either way."""
+    _plugin(console, protect={"level": "mod"})
+    caller = _join(console, "Joe")
+    _join(console, "Boss", bits=128)
+    console.register_clients("bo", [_join(console, "Bob"), _join(console, "Bobby")])
+
+    await _call(console, caller, "kick bo")
+
+    assert console.vote_cancels == 0
+
+
+@pytest.mark.asyncio
+async def test_a_ban_vote_that_passes_is_undone_where_it_could_not_be_stopped(console):
+    """Homefront's case: no veto verb, so the caller is warned when the vote starts and the ban is
+    lifted when it passes. The classic did both and this keeps both."""
+    console.votes_can_be_cancelled = False
+    _plugin(console, protect={"level": "mod"})
+    caller = _join(console, "Joe")
+    boss = _join(console, "Boss", bits=128)
+    _join(console, "Jack")
+
+    await _call(console, caller, f"ban {boss.name}")
+    assert console.vote_cancels == 0
+    assert [c.name for c, _, _ in console.warned] == ["Joe"]
+
+    await _finish(console, passed=True)
+
+    assert [c.name for c, _, _ in console.unbanned] == ["Boss"]
+    assert "Boss" in console.said[-1]
+
+
+@pytest.mark.asyncio
+async def test_a_kick_vote_that_passes_has_nothing_to_undo(console):
+    """A kicked player is already gone and can reconnect; there is no ban to lift, and pretending
+    otherwise would tell an admin something had been mended."""
+    console.votes_can_be_cancelled = False
+    _plugin(console, protect={"level": "mod"})
+    caller = _join(console, "Joe")
+    boss = _join(console, "Boss", bits=128)
+    _join(console, "Jack")
+
+    await _call(console, caller, f"kick {boss.name}")
+    await _finish(console, passed=True)
+
+    assert console.unbanned == []
+
+
+@pytest.mark.asyncio
+async def test_a_protected_vote_that_fails_is_left_alone(console):
+    console.votes_can_be_cancelled = False
+    _plugin(console, protect={"level": "mod"})
+    caller = _join(console, "Joe")
+    boss = _join(console, "Boss", bits=128)
+    _join(console, "Jack")
+
+    await _call(console, caller, f"ban {boss.name}")
+    await _finish(console, passed=False)
+
+    assert console.unbanned == []
+
+
+@pytest.mark.asyncio
+async def test_the_warning_can_be_switched_off_without_losing_the_undo(console):
+    console.votes_can_be_cancelled = False
+    _plugin(console, protect={"level": "mod", "warn": False})
+    caller = _join(console, "Joe")
+    boss = _join(console, "Boss", bits=128)
+    _join(console, "Jack")
+
+    await _call(console, caller, f"ban {boss.name}")
+    await _finish(console, passed=True)
+
+    assert console.warned == []
+    assert [c.name for c, _, _ in console.unbanned] == ["Boss"]
+
+
+@pytest.mark.asyncio
+async def test_a_homefront_vote_names_its_target_on_the_event(console):
+    """That engine resolves the player itself, so there is nothing to look up — and the vote line
+    carries a Steam id, which no name lookup would find."""
+    _plugin(console, protect={"level": "mod"})
+    caller = _join(console, "Joe")
+    boss = _join(console, "Boss", bits=128)
+    _join(console, "Jack")
+
+    await console.bus.publish(
+        Event(
+            EventType.CLIENT_CALLVOTE,
+            data="kick",
+            client=caller,
+            target=boss,
+            extra={"arguments": ["kick", boss.guid]},
+        )
+    )
+
+    assert console.vote_cancels == 1
+
+
+@pytest.mark.asyncio
+async def test_a_protect_level_that_is_not_one_is_reported_and_protects_nobody(console, caplog):
+    with caplog.at_level("ERROR"):
+        _plugin(console, protect={"level": "moderator"})
+    caller = _join(console, "Joe")
+    _join(console, "Boss", bits=128)
+    _join(console, "Jack")
+
+    await _call(console, caller, "kick Boss")
+
+    assert console.vote_cancels == 0
+    assert "protect.level" in caplog.text
