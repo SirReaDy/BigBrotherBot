@@ -305,7 +305,10 @@ vote's own argument (`kick bob`, `clientkick 3`) is looked up. Where a vote can 
 cancelled outright — which the Homefront plugin could not do — and where it cannot, the caller is
 warned and a **ban** that passes is lifted again; a kick leaves nothing to undo. The rule is the
 classic's: the target has to reach the level *and* outrank the caller, so two admins of equal rank are
-left to disagree. **It is off until you set `protect.level`**, because this plugin runs on every family
+left to disagree. On **Altitude** it does one more thing, because that game bans a player it kicks by
+vote for two minutes of its own accord: a protected player's engine ban is lifted when they are
+kicked, with the engine's own verb rather than the bot's `!unban` — which would also drop whatever ban
+the bot holds on them. **It is off until you set `protect.level`**, because this plugin runs on every family
 with votes while the plugin it comes from ran on one title, and an upgrade should not start punishing
 players for votes an operator has allowed for years. Config: `examples/plugin_callvote.yaml`.
 

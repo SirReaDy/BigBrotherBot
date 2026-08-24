@@ -107,6 +107,11 @@ protect:
   warn_minutes: 2880
 
   # Lift a ban that passed against a protected player.
+  #
+  # On **Altitude** this also covers the ban the *game* applies by itself: a vote-kick there is a
+  # two-minute ban the engine imposes, which an admin who loses a vote cannot come back and undo. It
+  # is lifted with the engine's own verb, not with the bot's `!unban` — that would also drop whatever
+  # ban the bot holds on them, which on a vote-kicked admin is exactly the record you want kept.
   undo: true
 
 # A level per map, for `map` and `g_nextmap` votes. This *replaces* the level for the vote type, in

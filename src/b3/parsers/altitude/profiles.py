@@ -64,6 +64,12 @@ ALTITUDE = GameProfile(
     tempban_template="addBan %(guid)s %(minutes)s minute %(reason)s\nkick %(name)s",
     tempban_max_minutes=0,  # no known ceiling
     unban_template="removeBan %(guid)s",
+    # The same verb, offered a second way and for a different job: **this game bans a player it
+    # kicks by vote for two minutes of its own accord**, and `callvote`'s `protect:` section lifts
+    # that for somebody it would have defended. It cannot use `Console.unban` for it — that would
+    # also lift whatever ban the *bot* holds on them, which on a vote-kicked admin is precisely the
+    # record nobody wants dropped — so the engine verb is offered on its own.
+    player_verbs={"lift_ban": "removeBan %(guid)s"},
     # Nothing can be asked of this engine. Empty is load-bearing -- see the module docstring.
     status_commands=(),
     status_patterns=(),

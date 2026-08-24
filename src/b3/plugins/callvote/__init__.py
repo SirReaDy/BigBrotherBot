@@ -290,6 +290,9 @@ class CallvotePlugin(Plugin):
         if self.settings.get("record"):
             self._engine = self._open_storage()
         self.subscribe(EventType.CLIENT_CALLVOTE, self.on_callvote)
+        # Altitude bans a player it kicks by vote for two minutes, by itself and without being asked.
+        # Lifting that for a protected player is the other half of `protect:` — see `on_disconnect`.
+        self.subscribe(EventType.CLIENT_DISCONNECT, self.on_disconnect)
         self.subscribe(EventType.VOTE_PASSED, self.on_vote_finished)
         self.subscribe(EventType.VOTE_FAILED, self.on_vote_finished)
         # Asked once, at startup, because it decides whether half this plugin can work at all — and
@@ -349,6 +352,31 @@ class CallvotePlugin(Plugin):
             following = self.console.get_next_map()
             if following:
                 self.console.say(self.message("callvote_next_map", map=following))
+
+    def on_disconnect(self, event: Event) -> None:
+        """Lift the game's own ban on a protected player who was kicked by a vote.
+
+        Altitude is the case: a vote-kick there is a two-minute ban the *engine* applies, so an admin
+        who loses a vote cannot come back and undo it. The classic bot did this from inside its
+        parser, keyed on the game's exact wording of the reason; here the parser states
+        `vote_kick` as a fact and the policy lives with the rest of the vote policy.
+
+        **Not `Console.unban`**, deliberately: that lifts the bot's own penalties too, and on a
+        vote-kicked admin those are precisely the records nobody wants dropped. The engine's verb is
+        asked for by name, and on a title that has none this does nothing.
+        """
+        client = event.client
+        level = as_int(self.protect_settings.get("level"), 0)
+        if client is None or not level or not event.extra.get("vote_kick"):
+            return
+        if client.max_level() < level or not self.console.supports_verb("lift_ban"):
+            return
+        if self.console.apply_verb("lift_ban", client):
+            log.info(
+                "callvote: lifted the game's own vote-kick ban on %s (level %d)",
+                client.name,
+                client.max_level(),
+            )
 
     def vote_target(self, event: Event, vote_type: str, args: str) -> Client | None:
         """Who a vote is about, where it is about somebody.

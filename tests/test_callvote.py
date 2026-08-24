@@ -820,3 +820,83 @@ async def test_a_protect_level_that_is_not_one_is_reported_and_protects_nobody(c
 
     assert console.vote_cancels == 0
     assert "protect.level" in caplog.text
+
+
+# -- the game's own ban, on a game that applies one ------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_a_protected_player_vote_kicked_gets_the_games_own_ban_lifted(console):
+    """Altitude bans a player it kicks by vote for two minutes, by itself. An admin who loses a vote
+    cannot come back and undo that, which is why the classic did it from inside its parser."""
+    _plugin(console, protect={"level": "mod"})
+    console.player_verbs = {"lift_ban"}
+    boss = _join(console, "Boss", bits=128)
+
+    await console.bus.publish(
+        Event(EventType.CLIENT_DISCONNECT, client=boss, extra={"vote_kick": True})
+    )
+
+    assert [(name, c.name) for name, c, _ in console.verbs_applied] == [("lift_ban", "Boss")]
+
+
+@pytest.mark.asyncio
+async def test_an_ordinary_players_vote_kick_ban_stands(console):
+    _plugin(console, protect={"level": "mod"})
+    console.player_verbs = {"lift_ban"}
+    joe = _join(console, "Joe")
+
+    await console.bus.publish(
+        Event(EventType.CLIENT_DISCONNECT, client=joe, extra={"vote_kick": True})
+    )
+
+    assert console.verbs_applied == []
+
+
+@pytest.mark.asyncio
+async def test_leaving_of_your_own_accord_lifts_nothing(console):
+    _plugin(console, protect={"level": "mod"})
+    console.player_verbs = {"lift_ban"}
+    boss = _join(console, "Boss", bits=128)
+
+    await console.bus.publish(
+        Event(EventType.CLIENT_DISCONNECT, client=boss, extra={"vote_kick": False})
+    )
+
+    assert console.verbs_applied == []
+
+
+@pytest.mark.asyncio
+async def test_a_title_that_does_not_ban_on_a_vote_kick_is_not_sent_a_verb(console):
+    """Every game but Altitude, where a kick is a kick and there is nothing to lift."""
+    _plugin(console, protect={"level": "mod"})
+    console.player_verbs = set()
+    boss = _join(console, "Boss", bits=128)
+
+    await console.bus.publish(
+        Event(EventType.CLIENT_DISCONNECT, client=boss, extra={"vote_kick": True})
+    )
+
+    assert console.verbs_applied == []
+
+
+@pytest.mark.asyncio
+async def test_with_protection_off_the_ban_is_left_alone(console):
+    """Off is off: this is the same setting that decides who may be voted against at all."""
+    _plugin(console)
+    console.player_verbs = {"lift_ban"}
+    boss = _join(console, "Boss", bits=128)
+
+    await console.bus.publish(
+        Event(EventType.CLIENT_DISCONNECT, client=boss, extra={"vote_kick": True})
+    )
+
+    assert console.verbs_applied == []
+
+
+def test_altitude_declares_the_verb_that_lifts_its_own_ban():
+    """And it is *not* `Console.unban`, which would also lift whatever ban the bot holds on them —
+    on a vote-kicked admin, precisely the record nobody wants dropped."""
+    from b3.parsers.altitude.profiles import ALTITUDE
+
+    assert ALTITUDE.player_verbs["lift_ban"] == "removeBan %(guid)s"
