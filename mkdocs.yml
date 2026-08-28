@@ -1,0 +1,114 @@
+# The documentation site: https://sirready.github.io/BigBrotherBot/
+#
+# Built from `docs/` and nothing else, which is what keeps two rules of this project true without
+# anybody having to remember them:
+#
+#   * `README.md` is the single source for everything it covers. It is not copied into `docs/` by
+#     hand — `tools/build_docs_index.py` writes `docs/index.md` from it at build time, rewriting the
+#     `docs/x.md` links that only resolve on GitHub. Edit the README; never edit `docs/index.md`.
+#   * `DESIGN.md`, `PARITY.md` and `TODO.md` are **not published**. They are internal planning
+#     documents, they are gitignored, and they catalogue absences; the site says what the bot does.
+#     They live at the repository root, so `docs_dir: docs` cannot reach them even by accident —
+#     which is the point of building from a subdirectory rather than from the root.
+#
+# Two tables in these pages are generated from the source (`tools/gen_docs_tables.py`): the
+# supported-titles grid and the admin command reference. Both are facts the code already holds, and
+# both had drifted while being maintained by hand.
+#
+# Run locally with:  python tools/build_docs_index.py && mkdocs serve
+
+site_name: Big Brother Bot 2.0
+site_description: >-
+  A modern, typed, asyncio rewrite of Big Brother Bot — the game-server admin bot. 38 game titles
+  across thirteen parser families, one YAML file, no threads.
+site_url: https://sirready.github.io/BigBrotherBot/
+repo_url: https://github.com/SirReaDy/BigBrotherBot
+repo_name: SirReaDy/BigBrotherBot
+edit_uri: edit/main/docs/
+copyright: Released under the GNU GPL v2, as the original is.
+
+docs_dir: docs
+
+# Rewrites each page's `../README.md` link to `index.md` as it is rendered. The files on disk keep the
+# link that works on GitHub, which is where most people meet them first; see tools/mkdocs_hooks.py.
+hooks:
+  - tools/mkdocs_hooks.py
+
+# A broken internal link fails the build rather than shipping. This is the site-side counterpart of
+# `tools/check_links.py`, which checks the same files as they read on GitHub — two targets, because a
+# link can be right in one and wrong in the other, and both are somebody's way in.
+strict: true
+
+theme:
+  name: material
+  language: en
+  icon:
+    repo: fontawesome/brands/github
+  features:
+    - navigation.instant
+    - navigation.tracking
+    - navigation.top
+    - navigation.sections
+    - content.code.copy
+    # Every page links back to the file that produced it, which for a project documented this
+    # carefully is worth more than a contact form.
+    - content.action.edit
+    - toc.follow
+    - search.suggest
+    - search.highlight
+  palette:
+    # The site follows the reader's system setting first, and lets them override it. Both schemes are
+    # defined: a page that only looks right in one of them is a page half its readers see broken.
+    - media: "(prefers-color-scheme)"
+      toggle:
+        icon: material/brightness-auto
+        name: Follow my system theme
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light
+
+# The README's own order, rather than one invented for the site. It was written to be read top to
+# bottom by somebody deciding whether to run this, and that is the same order a new reader wants.
+nav:
+  - Overview: index.md
+  - CLI: cli.md
+  - Plugins: plugins.md
+  - Deployment: deployment.md
+  - Commands: commands.md
+  - Configuration: configuration.md
+  - Games: games.md
+  - Development: development.md
+
+markdown_extensions:
+  # The tables and fenced blocks these pages already use, plus the admonitions and tabs Material
+  # renders properly. Nothing here changes what the files mean when read on GitHub.
+  - tables
+  - attr_list
+  - md_in_html
+  - admonition
+  - toc:
+      permalink: true
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.superfences
+  - pymdownx.inlinehilite
+  - pymdownx.details
+  - pymdownx.tabbed:
+      alternate_style: true
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/SirReaDy/BigBrotherBot
+      name: The repository

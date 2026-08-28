@@ -346,7 +346,7 @@ class AdminPlugin(Plugin):
 
     @command(level=60, alias="b")
     def cmd_ban(self, ctx: CommandContext) -> None:
-        """ban <player> [reason] - ban a player (permanent unless ban_duration is configured)"""
+        """ban <player> [reason] - ban a player for ban_duration (14 days by default)"""
         target, reason = self._target_and_reason(ctx)
         if target is None or not self._may_act_on(ctx, target):
             return

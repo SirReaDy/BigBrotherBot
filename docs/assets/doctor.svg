@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1119" height="339" viewBox="0 0 1119 339" role="img" aria-label="b3 doctor">
+<title>b3 doctor</title>
+<desc>$ b3 doctor
+[  ok  ] game                cod4, server 127.0.0.1:28960
+[  ok  ] time zone           UTC
+[  ok  ] database            sqlite:///opt/b3/b3.sqlite: 0 client(s), writable
+[  ok  ] schema              at 0003 (current)
+[  ok  ] game log            games_mp.log (451 bytes)
+[ FAIL ] rcon                no reply from 127.0.0.1:28960 (command 'status' failed after 2 attempt(s))
+                             -&gt; check the port is the game's, that the server is running, and that a firewall is not dropping UDP
+[  ok  ] plugin admin        imports cleanly
+[  ok  ] plugin censor       imports cleanly
+[  ok  ] plugin spamcontrol  imports cleanly
+
+1 problem(s) to fix before this bot will work properly.</desc>
+<style>text{font-family:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,"DejaVu Sans Mono",monospace;font-size:14px}</style>
+<rect width="1119" height="339" rx="8" fill="#12161c"/>
+<rect width="1119" height="30" rx="8" fill="#1b212a"/>
+<rect y="22" width="1119" height="8" fill="#1b212a"/>
+<circle cx="18" cy="15.0" r="5" fill="#ff5f57"/>
+<circle cx="36" cy="15.0" r="5" fill="#febc2e"/>
+<circle cx="54" cy="15.0" r="5" fill="#28c840"/>
+<text x="18" y="48" xml:space="preserve" opacity="1"><tspan fill="#7aa2f7">$ </tspan><tspan fill="#e6edf5">b3 doctor</tspan><animate attributeName="opacity" values="0;0;1;1" keyTimes="0;0.0650;0.0650;1" dur="6.15s" repeatCount="indefinite"/></text>
+<text x="18" y="69" xml:space="preserve" opacity="1"><tspan fill="#3fb950">[  ok  ]</tspan><tspan fill="#c8d2de"> game                cod4, server 127.0.0.1:28960</tspan><animate attributeName="opacity" values="0;0;1;1" keyTimes="0;0.2348;0.2348;1" dur="6.15s" repeatCount="indefinite"/></text>
+<text x="18" y="90" xml:space="preserve" opacity="1"><tspan fill="#3fb950">[  ok  ]</tspan><tspan fill="#c8d2de"> time zone           UTC</tspan><animate attributeName="opacity" values="0;0;1;1" keyTimes="0;0.2526;0.2526;1" dur="6.15s" repeatCount="indefinite"/></text>
+<text x="18" y="111" xml:space="preserve" opacity="1"><tspan fill="#3fb950">[  ok  ]</tspan><tspan fill="#c8d2de"> database            sqlite:///opt/b3/b3.sqlite: 0 client(s), writable</tspan><animate attributeName="opacity" values="0;0;1;1" keyTimes="0;0.2705;0.2705;1" dur="6.15s" repeatCount="indefinite"/></text>
+<text x="18" y="132" xml:space="preserve" opacity="1"><tspan fill="#3fb950">[  ok  ]</tspan><tspan fill="#c8d2de"> schema              at 0003 (current)</tspan><animate attributeName="opacity" values="0;0;1;1" keyTimes="0;0.2884;0.2884;1" dur="6.15s" repeatCount="indefinite"/></text>
+<text x="18" y="153" xml:space="preserve" opacity="1"><tspan fill="#3fb950">[  ok  ]</tspan><tspan fill="#c8d2de"> game log            games_mp.log (451 bytes)</tspan><animate attributeName="opacity" values="0;0;1;1" keyTimes="0;0.3063;0.3063;1" dur="6.15s" repeatCount="indefinite"/></text>
+<text x="18" y="174" xml:space="preserve" opacity="1"><tspan fill="#f85149">[ FAIL ]</tspan><tspan fill="#c8d2de"> rcon                no reply from 127.0.0.1:28960 (command 'status' failed after 2 attempt(s))</tspan><animate attributeName="opacity" values="0;0;1;1" keyTimes="0;0.3241;0.3241;1" dur="6.15s" repeatCount="indefinite"/></text>
+<text x="18" y="195" xml:space="preserve" opacity="1"><tspan fill="#d29922">                             -&gt; check the port is the game's, that the server is running, and that a firewall is not dropping UDP</tspan><animate attributeName="opacity" values="0;0;1;1" keyTimes="0;0.3420;0.3420;1" dur="6.15s" repeatCount="indefinite"/></text>
+<text x="18" y="216" xml:space="preserve" opacity="1"><tspan fill="#3fb950">[  ok  ]</tspan><tspan fill="#c8d2de"> plugin admin        imports cleanly</tspan><animate attributeName="opacity" values="0;0;1;1" keyTimes="0;0.3599;0.3599;1" dur="6.15s" repeatCount="indefinite"/></text>
+<text x="18" y="237" xml:space="preserve" opacity="1"><tspan fill="#3fb950">[  ok  ]</tspan><tspan fill="#c8d2de"> plugin censor       imports cleanly</tspan><animate attributeName="opacity" values="0;0;1;1" keyTimes="0;0.3777;0.3777;1" dur="6.15s" repeatCount="indefinite"/></text>
+<text x="18" y="258" xml:space="preserve" opacity="1"><tspan fill="#3fb950">[  ok  ]</tspan><tspan fill="#c8d2de"> plugin spamcontrol  imports cleanly</tspan><animate attributeName="opacity" values="0;0;1;1" keyTimes="0;0.3956;0.3956;1" dur="6.15s" repeatCount="indefinite"/></text>
+<text x="18" y="279" xml:space="preserve" opacity="1"><tspan fill="#c8d2de"></tspan><animate attributeName="opacity" values="0;0;1;1" keyTimes="0;0.4135;0.4135;1" dur="6.15s" repeatCount="indefinite"/></text>
+<text x="18" y="300" xml:space="preserve" opacity="1"><tspan fill="#f85149">1 problem(s) to fix before this bot will work properly.</tspan><animate attributeName="opacity" values="0;0;1;1" keyTimes="0;0.4314;0.4314;1" dur="6.15s" repeatCount="indefinite"/></text>
+<rect x="18" y="310" width="8.4" height="14" fill="#c8d2de"><animate attributeName="opacity" values="1;1;0;0;1" keyTimes="0;0.25;0.26;0.75;1" dur="1.1s" repeatCount="indefinite"/></rect>
+</svg>

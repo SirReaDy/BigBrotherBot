@@ -61,6 +61,19 @@ dev = [
     "types-PyYAML>=6.0",
     "types-paramiko>=3.4",
 ]
+# Building the documentation site. An extra rather than a dev dependency: `pytest`, `ruff` and `mypy`
+# are what you need to *change* this project, and the site is what you need to publish it — a
+# contributor fixing a parser should not have to install a theme. The docs workflow installs this
+# one; `ci.yml` installs `dev`.
+#
+# Capped for the same reason everything above is: a theme release changes what a page looks like, and
+# `mkdocs build --strict` fails on things a new version starts warning about. Both are pure Python,
+# so there is no Node anywhere in this project — which is also why the terminal demo on the home page
+# is rendered by `tools/termsvg.py` rather than by `svg-term` or `agg`.
+docs = [
+    "mkdocs>=1.6,<2.0",
+    "mkdocs-material>=9.5,<10.0",
+]
 
 [project.scripts]
 b3 = "b3.cli:main"

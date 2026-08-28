@@ -36,7 +36,7 @@ migrations instead of manual `ALTER TABLE`, plugins that install by name and pin
 straight answers when something is misconfigured.
 
 **Where it stands today.** All 59 classic admin commands at the classic levels, 38 game titles across
-ten engine families — 34 of the classic bot's 37, plus four it never had — and every core service the
+thirteen parser families — 34 of the classic bot's 37, plus four it never had — and every core service the
 old bot offered, plus remote log tailing, PunkBuster, per-server deployment and pre-flight checks it
 never had. 3,020 tests, `mypy --strict` clean.
 
@@ -111,6 +111,16 @@ cd examples && python -m b3.cli -c b3.yaml replay games_mp.log   # offline repla
 The replay demo boots the bot against a recorded CoD4 log: a player claims superadmin with
 `!iamgod`, then bans another player — issuing RCON and recording the penalty in SQLite.
 
+Before it runs against a real server, `b3 doctor` checks the things that go wrong on a first install
+and says which one it was — the difference between "wrong password" and "wrong port" is the whole
+point of it:
+
+<img src="docs/assets/doctor.svg" alt="b3 doctor checking an install: game, time zone, database, schema and game log pass; rcon fails with 'no reply from 127.0.0.1:28960' and advice to check the port, the server and the firewall" width="820">
+
+`b3 probe` is the other half: it shows what a server actually *says* — its raw reply, which pattern
+matched it, the rows that parsed, and the log lines no handler reads. Every unverified claim in this
+project is that same question, and answering it used to need somebody who could read regexes.
+
 ---
 
 ## Documentation
@@ -129,24 +139,26 @@ The replay demo boots the bot against a recorded CoD4 log: a player claims super
 
 ## Supported games
 
-Ten engine families, thirty-eight titles — `b3 games` prints the list on any install. Set `server.game`
-to one of them:
+Thirteen parser families, thirty-eight titles — `b3 games` prints the list on any install. Set
+`server.game` to one of them:
 
-| Family | `server.game` |
-|---|---|
-| **Call of Duty** | `cod` `cod2` `cod4` `cod4x` `cod4gr` `cod5` `cod6` `cod7` `cod8` |
-| **Call of Duty — Plutonium** | `plutoiw5` (MW3) `plutot6` (Black Ops 2) |
-| **BattlEye** | `arma2` `arma3` |
-| **Frostbite** | `bfbc2` `moh` `bf3` `bf4` `bfh` `mohw` |
-| **Quake 3** | `q3` (also accepted as `q3a`) `oa081` `smg` `smg11` `wop` `wop15` |
-| **Quake 3 — Urban Terror** | `iourt41` `iourt42` `iourt43` |
-| **Quake 3 — Enemy Territory** | `et` `etpro` |
-| **Quake 3 — Soldier of Fortune 2** | `sof2` `sof2pm` |
-| **Altitude** | `altitude` |
-| **Homefront** | `homefront` |
-| **Ravaged** | `ravaged` |
-| **Frontlines: Fuel of War** | `frontline` |
-| **Source** | `insurgency` `cs2` |
+<!-- generated:titles -->
+| Family | How events arrive | `server.game` |
+|---|---|---|
+| **Altitude** | log + a command file | `altitude` |
+| **BattlEye** | events over rcon | `arma2` `arma3` |
+| **Call of Duty** | reads a game log | `cod` `cod2` `cod4` `cod4gr` `cod4x` `cod5` `cod6` `cod7` `cod8` `plutoiw5` <small>(MW3)</small> `plutot6` <small>(Black Ops 2)</small> |
+| **Enemy Territory**<br><small>Quake 3 + its own lines</small> | reads a game log | `et` `etpro` |
+| **Frontlines: Fuel of War** | events over rcon | `frontline` |
+| **Frostbite** | events over rcon | `bf3` `bf4` `bfbc2` `bfh` `moh` `mohw` |
+| **Homefront** | events over rcon | `homefront` |
+| **Quake 3** | reads a game log | `oa081` `q3` <small>(also `q3a`)</small> `smg` `smg11` `wop` |
+| **Ravaged** | events over rcon | `ravaged` |
+| **Soldier of Fortune 2**<br><small>Quake 3 + its own lines</small> | reads a game log | `sof2` `sof2pm` |
+| **Source** | reads a game log | `cs2` `insurgency` |
+| **Urban Terror**<br><small>Quake 3 + its own lines</small> | reads a game log | `iourt41` `iourt42` `iourt43` |
+| **World of Padman 1.5**<br><small>Quake 3 + its own lines</small> | reads a game log | `wop15` |
+<!-- /generated:titles -->
 
 A family is one parser; the titles in it are data — GUID length, ban verbs, the shape of the status
 table. Adding a title to a family is a few lines; adding a family is a parser.

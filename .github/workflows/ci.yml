@@ -132,3 +132,9 @@ jobs:
       - name: Counts
         if: ${{ !cancelled() }}
         run: python tools/check_counts.py
+      # The two tables that are read out of the code rather than written beside it. Checked here as
+      # well as in the docs workflow, because this is the job that runs on every change: a title
+      # added to a profile table should fail the commit that added it, not a later docs build.
+      - name: Generated tables
+        if: ${{ !cancelled() }}
+        run: python tools/gen_docs_tables.py --check

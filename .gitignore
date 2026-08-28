@@ -26,3 +26,10 @@ htmlcov/
 /DESIGN.md
 /PARITY.md
 /TODO.md
+# --- generated documentation ---
+# `docs/index.md` is README.md with its links rewritten for the site (tools/build_docs_index.py).
+# Not committed: it would double every README diff, and a copy that can drift is the exact thing the
+# generator exists to prevent. The docs workflow writes it before `mkdocs build`; run the tool
+# yourself before `mkdocs serve`.
+/docs/index.md
+/site/

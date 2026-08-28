@@ -1,0 +1,97 @@
+# Build the documentation site and publish it to GitHub Pages.
+#
+# Artifact-based rather than a `gh-pages` branch: the built HTML never enters this repository's
+# history, so `git log` stays a record of the source and not of every rebuild of it. That needs
+# **Settings -> Pages -> Source: GitHub Actions** set once on the repository; with it set to a
+# branch instead, this workflow succeeds and nothing is served, which is a confusing way to fail.
+#
+# The site is built on every pull request too, and *not* deployed there. The point is to fail a
+# change that breaks a link or leaves a generated table stale at the moment somebody can still fix
+# it cheaply, rather than after it is merged.
+
+name: Docs
+
+on:
+  push:
+    branches: [main]
+    # A docs build has nothing to say about a change to the parsers — except through the generated
+    # tables, which is why `src/` is here. `tools/` and `README.md` are the other two sources of a
+    # page's content.
+    paths:
+      - "docs/**"
+      - "src/**"
+      - "tools/**"
+      - "README.md"
+      - "mkdocs.yml"
+      - ".github/workflows/docs.yml"
+  pull_request:
+    paths:
+      - "docs/**"
+      - "src/**"
+      - "tools/**"
+      - "README.md"
+      - "mkdocs.yml"
+      - ".github/workflows/docs.yml"
+  # So the site can be rebuilt without a commit — after changing a repository setting, say.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  # One deployment at a time, and a superseded run is cancelled rather than queued: two pushes a
+  # minute apart should publish the second, not race.
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      # The project itself, because the generated tables are read out of the code: the supported
+      # titles come from `b3.parsers.games` and the command reference from the admin plugin's own
+      # declarations. A docs build that could not import the package would have to be given those
+      # by hand, which is the arrangement this replaced.
+      - run: python -m pip install -e ".[docs]"
+
+      - name: Generated tables are current
+        # `--check` rather than a regeneration: if a title was added and the documents were not
+        # rebuilt, the fix belongs in the commit that added it, with the diff visible. Silently
+        # regenerating here would publish a page that no reviewer ever saw.
+        run: python tools/gen_docs_tables.py --check
+
+      - name: Build the home page from README.md
+        run: python tools/build_docs_index.py
+
+      - name: Build the site
+        # `strict: true` in mkdocs.yml, so a broken internal link fails here.
+        run: python -m mkdocs build
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    name: deploy
+    # Only from main. A pull request gets the build above — which is where a broken link is caught —
+    # and publishes nothing.
+    if: github.event_name != 'pull_request'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

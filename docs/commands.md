@@ -7,6 +7,7 @@ Chat prefixes: `!cmd` replies privately, `@cmd` and `&cmd` broadcast the reply, 
 Broadcasting needs level 9 (`bot.loud_level`) and the silent prefix level 80 (`bot.silent_level`) —
 a fresh player should not be able to make the bot shout at the whole server.
 
+<!-- generated:commands -->
 | Command | Alias | Level | What it does |
 |---|---|---|---|
 | `!help` | `!h` | 0 | List the commands you can use |
@@ -43,8 +44,8 @@ a fresh player should not be able to make the bot shout at the whole server.
 | `!notice <player> <note>` |  | 40 | Record a note about a player |
 | `!scream <message>` |  | 40 | Announce something in the engine's largest text |
 | `!tempban <player> <duration> [reason]` | `!tb` | 40 | Ban for a limited time (e.g. 30m, 2h, 1d) |
-| `!ban <player> [reason]` | `!b` | 60 | Ban a player for `ban_duration` (14 days by default) |
-| `!pbss <player>` |  | 60 | Ask PunkBuster for a screenshot of what a player is seeing |
+| `!ban <player> [reason]` | `!b` | 60 | Ban a player for ban_duration (14 days by default) |
+| `!pbss <player>` |  | 60 | Ask PunkBuster for a screenshot of what this player is seeing |
 | `!spank <player> [reason]` | `!sp` | 60 | Kick a player, loudly |
 | `!unban <player> [reason]` |  | 60 | Lift every active ban on a player (works offline, by @id) |
 | `!banall <pattern> [reason]` | `!ball` | 80 | Ban every player whose name matches |
@@ -53,7 +54,7 @@ a fresh player should not be able to make the bot shout at the whole server.
 | `!kickall <pattern> [reason]` | `!kall` | 80 | Kick every player whose name matches |
 | `!lookup <player>` | `!l` | 80 | Find a player in the database, connected or not |
 | `!makereg <player>` | `!mr` | 80 | Make a player a regular |
-| `!map <name>` |  | 80 | Change to another map — a partial name will do. Some engines take more; see below |
+| `!map <name>` |  | 80 | Change to another map (a partial name will do) |
 | `!maprotate` |  | 80 | Advance to the next map in the rotation |
 | `!pause <duration>` |  | 80 | Stop acting on the game for a while (0 to resume) |
 | `!permban <player> [reason]` | `!pb` | 80 | Ban a player permanently, whatever ban_duration says |
@@ -65,12 +66,13 @@ a fresh player should not be able to make the bot shout at the whole server.
 | `!warnclear <player>` | `!wc` | 80 | Clear a player's active warnings |
 | `!die` |  | 100 | Shut the bot down |
 | `!mask <group> [player]` |  | 100 | Appear to be in a lower group than you are |
+| `!plugin <list\|enable\|disable\|info> [name]` |  | 100 | Turn a plugin on or off while the bot runs |
+| `!punkbuster <command>` | `!pbcmd` | 100 | Hand a line to PunkBuster and show what it says |
 | `!reconfig` |  | 100 | Re-read the configuration file |
 | `!restart` |  | 100 | Stop with a restart code, for whatever supervises the bot |
-| `!plugin` |  | 100 | `list`, `info <name>`, `enable <name>`, `disable <name>` — turn a plugin on or off without restarting |
-| `!punkbuster <command>` | `!pbcmd` | 100 | Hand a line to PunkBuster and show what it says |
 | `!runas <player> <command>` | `!su` | 100 | Run a command as someone else |
 | `!unmask [player]` |  | 100 | Stop hiding a level |
+<!-- /generated:commands -->
 
 That is **all 59 of the classic bot's admin commands**, at its `plugin_admin.ini` default levels
 (guest 0, user 1, reg 2, mod 20, admin 40, fulladmin 60, senioradmin 80, superadmin 100) — plus
