@@ -118,7 +118,19 @@ def _parse_map(text: str) -> str:
 
 
 def _parse_rows(text: str, row_re: re.Pattern[str], identity: str) -> list[PlayerInfo]:
-    players: list[PlayerInfo] = []
+    # Keyed by slot, because a slot holds one player and some engines print them **twice**. An
+    # Arma server prints a second row for a player who is also in the lobby, carrying the lobby
+    # connection's address and port rather than the game one's:
+    #
+    #     0   76.108.91.78:2304     63   80a5…(OK) Bravo17
+    #     0   192.168.0.100:2316    0    80a5…(OK) Bravo17 (Lobby)
+    #
+    # Appending both left the *last* row to win at every call site that reads a roster by slot,
+    # so the address the bot recorded, banned on and matched shared ban lists against was the
+    # lobby one — a private address, for a player whose real address was in the reply all along.
+    # The in-game row wins; a lobby-only player still has their row, because they are connected
+    # and kickable like anybody else.
+    players: dict[str, PlayerInfo] = {}
     for raw in text.splitlines():
         line = raw.strip()
         if not line:
@@ -143,24 +155,28 @@ def _parse_rows(text: str, row_re: re.Pattern[str], identity: str) -> list[Playe
             # the bot's guid straight back, and every AI that ever played would end up sharing one
             # database row, with a single level and ban history between them.
             chosen = ""
-        players.append(
-            PlayerInfo(
-                cid=match["slot"],
-                name=match["name"].strip(),
-                guid=chosen,
-                steam_id=steam if steam not in ("", "0") else "",
-                ip=groups.get("ip") or "",
-                # Every one of these is read defensively, because a row can legitimately omit them:
-                # a Plutonium table prints `localhost` with no port for a listen server, and an
-                # empty ping column for a bot. `int("")` would raise, and one such row would take
-                # down the whole player list — including the ninety-nine players who parsed.
-                port=_as_int(groups.get("port")),
-                ping=_ping(groups.get("ping")),
-                # Not every engine reports a score: BattlEye's player table has no such column.
-                score=_as_int(groups.get("score")),
-            )
+        lobby = bool(groups.get("lobby"))
+        seen = players.get(match["slot"])
+        if seen is not None and (lobby or not seen.lobby):
+            # Already have this slot, and this row is not a better view of it.
+            continue
+        players[match["slot"]] = PlayerInfo(
+            cid=match["slot"],
+            name=match["name"].strip(),
+            guid=chosen,
+            steam_id=steam if steam not in ("", "0") else "",
+            ip=groups.get("ip") or "",
+            # Every one of these is read defensively, because a row can legitimately omit them:
+            # a Plutonium table prints `localhost` with no port for a listen server, and an
+            # empty ping column for a bot. `int("")` would raise, and one such row would take
+            # down the whole player list — including the ninety-nine players who parsed.
+            port=_as_int(groups.get("port")),
+            ping=_ping(groups.get("ping")),
+            # Not every engine reports a score: BattlEye's player table has no such column.
+            score=_as_int(groups.get("score")),
+            lobby=lobby,
         )
-    return players
+    return list(players.values())
 
 
 def _as_int(value: str | None, default: int = 0) -> int:

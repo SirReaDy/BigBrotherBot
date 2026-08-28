@@ -63,6 +63,11 @@ class FakeBattleyeServer:
         #: agree with each other — including the renumbering that makes removing by index awkward.
         self.guid_bans = list(guid_bans or [])
         self.ip_bans = list(ip_bans or [])
+        #: What `writeBans` last saved to `bans.txt`. The real server keeps its ban list in memory
+        #: and only this verb persists it, so a restart reverts to whatever was saved last — which
+        #: is modelled by :meth:`restart` rather than assumed, because "the bot forgot to save"
+        #: and "the bot saved" look identical until something restarts.
+        self.saved_guid_bans: list[tuple[str, str, str]] = list(self.guid_bans)
         #: command -> reply text. A command with no entry gets an empty reply, as the real server
         #: does for `say`.
         self.replies = {"players": DEFAULT_PLAYERS, **(replies or {})}
@@ -187,6 +192,11 @@ class FakeBattleyeServer:
             reply = self._remove_ban(rest.strip())
         elif verb == "ban" and "ban" not in self.replies:
             reply = self._add_ban(rest.strip())
+        elif verb == "addBan":
+            reply = self._add_ban_by_id(rest.strip())
+        elif verb == "writeBans":
+            self.saved_guid_bans = list(self.guid_bans)
+            reply = "Bans written to bans.txt"
         else:
             reply = self.replies.get(verb, self.replies.get(cmd, ""))
         body = reply.encode("utf-8")
@@ -230,6 +240,28 @@ class FakeBattleyeServer:
         guid = self.slot_guids.get(slot, f"{slot:0>32}")
         self.guid_bans.append((guid, "perm" if minutes == "0" else minutes, reason))
         return f"Player #{slot} banned"
+
+    def _add_ban_by_id(self, argument: str) -> str:
+        """`addBan <guid|ip> <minutes> <reason>` — the verb for a player who is **not** connected.
+
+        The real difference from `ban`, and the reason both exist: this one writes the list and
+        nothing else. It does not remove whoever is standing on the server, so a bot that sends only
+        this has banned a player who is still playing.
+        """
+        parts = argument.split(" ", 2)
+        if not parts or not parts[0]:
+            return "Invalid arguments"
+        target, minutes = parts[0], (parts[1] if len(parts) > 1 else "0")
+        reason = parts[2] if len(parts) > 2 else ""
+        row = (target, "perm" if minutes == "0" else minutes, reason)
+        # A dotted-quad goes on the IP list, which is numbered separately — the distinction
+        # `removeBan` makes an index mean two different things.
+        (self.ip_bans if target.count(".") == 3 else self.guid_bans).append(row)
+        return f"Ban added for {target}"
+
+    def restart(self) -> None:
+        """Model a server restart: the ban list reverts to what `writeBans` last saved."""
+        self.guid_bans = list(self.saved_guid_bans)
 
     def _resend_unacked(self) -> None:
         """A real BattlEye server keeps sending a message until it is acknowledged."""

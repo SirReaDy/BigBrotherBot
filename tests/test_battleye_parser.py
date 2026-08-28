@@ -221,6 +221,67 @@ def test_a_player_still_in_the_lobby_is_not_lost():
     assert (lobby.cid, lobby.guid, lobby.ping) == ("3", "", -1)
 
 
+def test_a_player_listed_twice_keeps_their_real_address():
+    """Captured: `tests/core/parsers/test_arma2.py:322` (`test_getPlayerList`).
+
+    An Arma server prints a player who is also in the lobby **twice on the same slot**, and the
+    second row carries the lobby connection's address and port, not the player's. Both rows were
+    kept, so the last one won everywhere a roster is read by slot: the address this bot recorded,
+    saved to the database, wrote alias history for and matched shared ban lists against was
+    `192.168.0.100` — a private address — while the player's real one was in the same reply.
+    """
+    reply = (
+        "Players on server:\n"
+        "[#] [IP Address]:[Port] [Ping] [GUID] [Name]\n"
+        "--------------------------------------------------\n"
+        f"0   76.108.91.78:2304     63   {GUID}(OK) Bravo17\n"
+        f"0   192.168.0.100:2316    0    {GUID}(OK) Bravo17 (Lobby)\n"
+        "(1 players in total)"
+    )
+
+    _map, players = parse_status(reply, PATTERNS, ARMA2.identity_field)
+
+    assert len(players) == 1  # one slot, one player
+    assert (players[0].ip, players[0].port) == ("76.108.91.78", 2304)
+    assert players[0].ping == 63  # the lobby row's 0 is not a measurement of anything
+    assert players[0].lobby is False
+
+
+def test_the_in_game_row_wins_whichever_order_the_server_prints_them():
+    """The capture happens to print the game row first; nothing promises it always will."""
+    rows = (
+        f"0   192.168.0.100:2316    0    {GUID}(OK) Bravo17 (Lobby)\n",
+        f"0   76.108.91.78:2304     63   {GUID}(OK) Bravo17\n",
+    )
+    reply = "Players on server:\n[#] [IP Address]:[Port] [Ping] [GUID] [Name]\n" + "".join(rows)
+
+    _map, players = parse_status(reply, PATTERNS, ARMA2.identity_field)
+
+    assert len(players) == 1
+    assert players[0].ip == "76.108.91.78"
+
+
+def test_a_lobby_only_player_is_still_reported_as_being_in_the_lobby():
+    """Captured: `tests/core/parsers/test_arma3.py:176`. Their only row is the lobby one.
+
+    They are connected and kickable, so the row must survive — and the flag has to be readable
+    rather than stripped off the name, which is what hid the duplicate-row fault above.
+    """
+    reply = (
+        "Players on server:\n"
+        "[#] [IP Address]:[Port] [Ping] [GUID] [Name]\n"
+        f"8   111.222.200.50:2304   -1   {GUID}(?)  Max (Lobby)\n"
+        "(14 players in total)"
+    )
+
+    _map, players = parse_status(reply, PATTERNS, ARMA2.identity_field)
+
+    assert len(players) == 1
+    assert players[0].name == "Max"  # the marker is not part of it
+    assert players[0].lobby is True
+    assert players[0].ip == "111.222.200.50"
+
+
 def test_a_table_with_no_score_column_does_not_break_the_shared_reader():
     _map, players = parse_status(PLAYERS_REPLY, PATTERNS, ARMA2.identity_field)
     assert all(p.score == 0 for p in players)
@@ -255,9 +316,38 @@ def test_the_two_titles_differ_in_nothing_the_bot_cares_about():
 
 def test_the_ban_verbs_use_a_native_duration():
     """BattlEye takes minutes, 0 being permanent — so a tempban is enforced by the server."""
-    assert ARMA2.ban_template == "ban %(cid)s 0 %(reason)s"
-    assert ARMA2.tempban_template == "ban %(cid)s %(minutes)s %(reason)s"
+    assert ARMA2.ban_template.startswith("addBan %(guid)s 0 %(reason)s")
+    assert ARMA2.tempban_template.startswith("addBan %(guid)s %(minutes)s %(reason)s")
     assert ARMA2.tempban_max_minutes == 0  # no engine ceiling to work around
+
+
+def test_a_ban_keys_on_the_guid_so_an_offline_player_can_be_banned():
+    """Captured: `tests/core/parsers/test_arma2.py:377` (`test_ban__by_guid`).
+
+    The classic bot had two ban verbs and picked between them on whether the player held a slot:
+    `ban <slot>` for someone standing there, `addBan <guid>` for someone who is not. We had only
+    the first, and `Bot._send_penalty` skips any line naming a slot the player has not got — so
+    banning an offline Arma player sent the server **nothing**, silently.
+    """
+    lines = ARMA2.ban_template.splitlines()
+
+    assert lines[0] == "addBan %(guid)s 0 %(reason)s"  # works with no slot
+    assert "%(cid)s" not in lines[0]
+    # `addBan` writes the list without removing the player, so the kick is a separate line — which
+    # is also what lets it be dropped for a player who is not connected.
+    assert lines[1] == "kick %(cid)s %(reason)s"
+
+
+def test_every_ban_saves_the_ban_list_to_disk():
+    """Captured: `tests/core/parsers/test_arma2.py:370-408` — every ban asserts a `writeBans`.
+
+    BattlEye keeps its ban list in memory. Without this verb the list on disk never changes, so a
+    ban does not survive a server restart — and neither does an *unban*, which is the worse half:
+    the player comes back banned by a list this bot's database says nothing about, so nothing will
+    ever look at it again.
+    """
+    assert ARMA2.ban_template.splitlines()[-1] == "writeBans"
+    assert ARMA2.tempban_template.splitlines()[-1] == "writeBans"
 
 
 def test_unban_is_declared_inexpressible():

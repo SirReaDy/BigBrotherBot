@@ -32,8 +32,22 @@ _BASE = GameProfile(
     kick_template="kick %(cid)s %(reason)s",
     # Duration in minutes, 0 being permanent — so one verb covers both, and a tempban is enforced by
     # the server rather than re-applied by the bot on reconnect.
-    ban_template="ban %(cid)s 0 %(reason)s",
-    tempban_template="ban %(cid)s %(minutes)s %(reason)s",
+    #
+    # Three lines rather than the classic's one `ban <slot>`, and each is here for a reason its
+    # captured tests show:
+    #
+    # * `addBan` keys on the **GUID**, so it works on a player who is not connected. `ban` takes a
+    #   slot number, and a slot is exactly what an offline player has not got — so an offline ban
+    #   was skipped entirely (see `Bot._send_penalty`) and never reached the server at all. The
+    #   classic had a second verb for this case (`banByGUID`) and we had no equivalent.
+    # * `kick` because `addBan` only writes the list; unlike `ban` it does not remove the player who
+    #   is standing there. Skipped by itself when they are offline, which is the whole point.
+    # * `writeBans` because BattlEye holds its ban list in memory and this is what saves it to
+    #   `bans.txt`. Without it every ban and every *un*ban is lost when the server restarts — and a
+    #   lost unban is the worse half: the player is banned again by a list the bot's database says
+    #   nothing about, so nothing will ever lift it.
+    ban_template="addBan %(guid)s 0 %(reason)s\nkick %(cid)s %(reason)s\nwriteBans",
+    tempban_template="addBan %(guid)s %(minutes)s %(reason)s\nkick %(cid)s %(reason)s\nwriteBans",
     tempban_max_minutes=0,  # no engine ceiling
     # BattlEye's `removeBan` takes a ban list index, not a player id, so an unban has to read the
     # list first and cannot be expressed as a template; `BattleyeClient.remove_ban` does it instead.

@@ -402,6 +402,11 @@ class BattleyeClient:
         # Highest index first: removing a row renumbers the ones after it.
         for ban in sorted(matches, key=lambda b: b.index, reverse=True):
             self.command(f"removeBan {ban.index}")
+        # `removeBan` edits the list in memory only. Without this the ban is back the next time the
+        # server starts, and this bot will never lift it again: its own database records the penalty
+        # as already lifted, so nothing looks. The classic sent it after every ban list change and
+        # its captured tests assert it; we sent it after none.
+        self.command("writeBans")
 
         still_there = [
             ban

@@ -39,6 +39,11 @@ class PlayerInfo:
     #: engines whose status table does not report them, which is all of them but Frostbite.
     team: str = ""
     squad: str = ""
+    #: The server says this connection is still in the lobby rather than in the game. Only BattlEye
+    #: reports it, and it matters because that engine prints a lobby player on a **second row for
+    #: the same slot**, with the lobby connection's address rather than the player's — see
+    #: :func:`b3.parsers.status.parse_status`.
+    lobby: bool = False
 
 
 @dataclass(slots=True)

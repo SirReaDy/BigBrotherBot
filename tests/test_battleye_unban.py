@@ -184,10 +184,20 @@ def test_a_ban_and_then_an_unban_round_trip(server, tmp_path):  # noqa: ANN001
         bob = Client(guid=GUID, name="Bravo17", cid="0")
         bot.clients.add(bob)
         bot.ban(bob, "cheating")
-        assert server.wait_for_command("ban 0 0 cheating")
+        assert server.wait_for_command(f"addBan {GUID} 0 cheating")
+        assert server.wait_for_command("kick 0 cheating")
+        assert [t for t, _m, _r in server.guid_bans] == [GUID]
+
+        # And it survives the server being restarted, which is the whole job of `writeBans`.
+        assert server.wait_for_command("writeBans")
+        server.restart()
         assert [t for t, _m, _r in server.guid_bans] == [GUID]
 
         bot.unban(bob, "appeal granted")
+        assert server.guid_bans == []
+        # The unban has to be saved too, or the restart brings the ban back and nothing lifts it
+        # a second time: the bot's own database now records the penalty as already gone.
+        server.restart()
         assert server.guid_bans == []
         assert bot.storage.get_active_penalties(bob.require_id(), PenaltyType.BAN) == []
         bot.storage.close()

@@ -18,6 +18,16 @@ Three differences from a Quake3-style table, all of which the row pattern has to
 * a player still in the lobby has no GUID at all (a bare ``-``) and a ping of ``-1``. They are real,
   connected, kickable players, so their row must still parse.
 
+**A player can appear twice.** One in the game and one in the lobby, same slot and same id, with
+*different addresses* — the second row is the lobby connection, not the player::
+
+    0   76.108.91.78:2304     63   80a5885ebe2420bab5e1581234567890(OK) Bravo17
+    0   192.168.0.100:2316    0    80a5885ebe2420bab5e1581234567890(OK) Bravo17 (Lobby)
+
+So the ``(Lobby)`` marker is *captured*, and :func:`b3.parsers.status.parse_status` keeps one row per
+slot with the in-game one winning. Stripping the marker and appending both rows, which is what this
+did before, meant the lobby address was the one the bot recorded and banned on.
+
 That last point is why this is **one pattern with an optional GUID** rather than two candidates.
 ``parse_status`` keeps the first pattern that matches *any* row — the right rule when a mod changes a
 table's shape, which is what it was built for — but here both shapes appear in the *same* reply, so
@@ -37,7 +47,9 @@ PLAYER_LINE_RE = re.compile(
     # Either an id with its verification state, or a bare `-` for a player still in the lobby.
     r"(?:(?P<guid>[0-9a-f]+)\((?P<verified>[A-Z?]+)\)|-)\s+"
     r"(?P<name>.*?)"
-    r"(?:\s+\(Lobby\))?\s*$",
+    # Captured rather than discarded: this marker is the only thing telling the two rows of a
+    # doubly-listed player apart, and the lobby one carries the lobby connection's address.
+    r"(?:\s+\((?P<lobby>Lobby)\))?\s*$",
     re.IGNORECASE,
 )
 
