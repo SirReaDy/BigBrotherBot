@@ -23,7 +23,25 @@ from typing import Any
 #: only a link target moves.
 README_LINK_RE = re.compile(r"\]\(\.\./README\.md(?P<anchor>#[^)]*)?\)")
 
+#: The hand-written navigation row every page opens with — eight cells linking to the other seven
+#: pages, with this one in bold — and its separator line.
+#:
+#: **Dropped from the site, and it is not only a tidy-up.** Eight columns do not fit the content
+#: width, so the table scrolls sideways, and being the first thing on the page that puts a horizontal
+#: scrollbar across the top of all eight of them. On the site it is redundant as well as ugly:
+#: Material already carries the same navigation in the sidebar, the header and the table of contents.
+#:
+#: It stays in the files, because on GitHub it is the *only* navigation there is — a reader who opens
+#: `docs/games.md` in the repository has no sidebar and no way to reach the rest. Which is the same
+#: reason the README link above is rewritten rather than edited: one source, read in two places that
+#: offer different things around it.
+NAV_ROW_RE = re.compile(
+    r"^\|\s*(?:\[Overview\]\([^)]*\)|\*\*Overview\*\*)\s*\|.*\n\|(?:\s*-+\s*\|)+\s*\n",
+    re.MULTILINE,
+)
+
 
 def on_page_markdown(markdown: str, **_kwargs: Any) -> str:
-    """Point every link back to the overview at the page the overview became."""
-    return README_LINK_RE.sub(lambda m: f"](index.md{m['anchor'] or ''})", markdown)
+    """Make one markdown file read correctly in the two places it is published."""
+    markdown = README_LINK_RE.sub(lambda m: f"](index.md{m['anchor'] or ''})", markdown)
+    return NAV_ROW_RE.sub("", markdown, count=1)
