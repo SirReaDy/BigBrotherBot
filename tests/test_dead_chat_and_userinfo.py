@@ -274,3 +274,78 @@ def test_the_slot_is_asked_about_again_once_somebody_else_is_in_it() -> None:
     bot._identify([PlayerInfo(cid="3", name="Newcomer", guid="", ip="")])
 
     assert rcon.sent.count("dumpuser 3") == 2
+
+
+# -- the Frozen Sand account name ------------------------------------------------------------
+
+
+#: Captured verbatim from `test_iourt42.py:535` (`test_ioclient_with_authl_token`), a real 4.2
+#: `ClientUserinfo` line. The one field that matters here is `authl`.
+AUTHL_USERINFO = (
+    r"2 \ip\11.22.33.44:27961\challenge\-284496317\qport\13492\protocol\68"
+    r"\name\laCourge\racered\2\raceblue\2\rate\16000\ut_timenudge\0\cg_rgb\128 128 128"
+    r"\cg_predictitems\0\cg_physics\1\cl_anonymous\0\sex\male\handicap\100\color2\5\color1\4"
+    r"\team_headmodel\*james\team_model\james\headmodel\sarge\model\sarge\snaps\20"
+    r"\cg_autoPickup\-1\gear\GLAORWA\authl\lacourge\authc\0\teamtask\0"
+    r"\cl_guid\00000000011111111122222223333333\weapmodes\00000110220000020002"
+)
+
+
+def test_the_frozen_sand_account_name_is_read_off_the_userinfo() -> None:
+    """Urban Terror puts the player's account name in `authl`, and we were discarding it.
+
+    An account survives a new `cl_guid`, which is what makes it worth more than the id a ban is
+    keyed on today — so it goes on `pbid`, the second-identity field PunkBuster already fills. This
+    is the half of TODO §1.3's open Frozen Sand item that needs **no network at all**: the account
+    *service* is still unported because nothing here can confirm it still answers, but the account
+    *name* was arriving in every one of these lines. The classic reads it here too, and skips its
+    own auth query when it is present.
+    """
+    parser = Q3Parser(IOURT42)
+
+    parser.parse_line("777:16 ClientUserinfo: " + AUTHL_USERINFO)
+
+    client = parser.clients.get_by_cid("2")
+    assert client is not None
+    assert client.pbid == "lacourge"
+    assert client.guid == "00000000011111111122222223333333"  # the guid is still the guid
+    assert client.name == "laCourge"
+
+
+def test_a_userinfo_without_an_account_leaves_the_second_identity_alone() -> None:
+    """Captured: `test_iourt42.py:522` — the same line without `authl`, which is the common case.
+
+    A field that is absent must not blank one already known: PunkBuster fills the same field, and
+    the two sources arrive at different moments.
+    """
+    parser = Q3Parser(IOURT42)
+    parser.parse_line("777:16 ClientUserinfo: " + AUTHL_USERINFO)
+    parser.parse_line(
+        r"777:17 ClientUserinfo: 2 \ip\11.22.33.44:27961\name\laCourge"
+        r"\cl_guid\00000000011111111122222223333333"
+    )
+
+    client = parser.clients.get_by_cid("2")
+    assert client is not None
+    assert client.pbid == "lacourge"
+
+
+def test_a_password_in_the_userinfo_is_not_the_players_b3_password() -> None:
+    """Captured: `test_iourt42.py:573` (`test_client_with_password_gamepassword`).
+
+    A player who saves the server's join password in their UrT config sends a `password` field in
+    every `ClientUserinfo`. In the classic that overwrote `Client.password` — the *bot's* login
+    password — so the `login` plugin's credential was replaced by the server's. Nothing here reads
+    the field, and authentication reloads the password from the stored record, so it cannot happen;
+    this pins both halves of that.
+    """
+    parser = Q3Parser(IOURT42)
+
+    parser.parse_line(
+        r"777:16 ClientUserinfo: 15 \ip\1.2.3.4:27960\name\Zesco\password\some_password_here"
+        r"\cl_guid\58D4069246865BB5A85F20FB60ED6F65"
+    )
+
+    client = parser.clients.get_by_cid("15")
+    assert client is not None
+    assert client.password is None  # not `some_password_here`

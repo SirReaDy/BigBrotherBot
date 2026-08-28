@@ -168,6 +168,18 @@ class Q3Parser(Parser):
             client.ip = info["ip"].split(":")[0]
         if info.get("gear"):
             client.gear = info["gear"]
+        # `authl` is the player's **Frozen Sand account name**, and Urban Terror 4.2/4.3 put it in
+        # the userinfo the server already sends. Recorded on `pbid` — the second-identity field, the
+        # same one PunkBuster fills — because that is exactly what it is: an account survives a new
+        # `cl_guid`, which is what makes it worth more than the id a ban is keyed on today.
+        #
+        # This is the half of §1.3's open Frozen Sand item that needs **no** network at all. The
+        # account *service* is still unported, because nothing here can confirm Frozen Sand's
+        # servers still answer; the account *name* was arriving in every one of these lines and
+        # being thrown away. The classic reads it here too, and skips its own auth query when it is
+        # present — which is the evidence that this field is the authoritative spelling.
+        if info.get("authl"):
+            client.pbid = info["authl"]
         team = info.get("team") or info.get("t")
         moved = False
         if team is not None:
@@ -328,14 +340,50 @@ class Q3Parser(Parser):
     # with no identity. Urban Terror and World of Padman put the slot in front of the name; both
     # forms are handled here rather than in a subclass, since they share one verb.
 
-    @handles(r"^(?P<action>say|sayteam):\s*(?:(?P<cid>\d+)\s+)?(?P<name>.+?):\s?(?P<text>.*)$")
+    @handles(r"^(?P<action>say|sayteam):\s*(?:(?P<cid>\d+)\s+)?(?P<rest>.+)$")
     def on_say(self, m: "re.Match[str]") -> Event | None:
-        """``say: Bob: hello``, or ``say: 6 ^5Marcel^2[^6CZARMY^2]: !help`` where a slot is given."""
-        client = self._chat_client(m["cid"], m["name"])
-        if client is None:
+        """``say: Bob: hello``, or ``say: 6 ^5Marcel^2[^6CZARMY^2]: !help`` where a slot is given.
+
+        The speaker and the text are split by :meth:`_split_chat` rather than by the pattern. A
+        name is free text on this engine and **a colon is legal in one**, so no regex can tell the
+        colon that ends the name from one inside it.
+        """
+        found = self._split_chat(m["cid"], m["rest"])
+        if found is None:
             return None
+        client, text = found
         etype = EventType.CLIENT_TEAM_SAY if m["action"] == "sayteam" else EventType.CLIENT_SAY
-        return Event(etype, data=chat_text(m["text"]), client=client)
+        return Event(etype, data=chat_text(text), client=client)
+
+    def _split_chat(self, cid: str | None, rest: str) -> tuple[Client, str] | None:
+        """Split ``<name>: <text>`` when the name may itself contain a colon.
+
+        The names the bot already knows are tried first, **longest first**, which is the same rule
+        the BattlEye parser follows and for the same reason: the engine names the speaker rather
+        than numbering them, so the only reliable place to end the name is where a name it knows
+        ends. A pattern splitting at the first colon read `joe:foo: !help` as *joe* saying
+        `foo: !help`, which meant **a player with a colon in their name could not use a single
+        command** — the prefix was no longer at the front of what the command processor was handed.
+        The captured tests are a list of the spellings that broke: `joe:`, `jo:e`, `j:oe`,
+        `joe:foo`, each of them with and without a colon in the message too.
+
+        Matching by name before slot is deliberate and pre-dates this: Urban Terror sometimes
+        reports a chat line against the *wrong* slot, and commands run with the speaker's permission
+        level, so attributing a line to whoever happens to occupy that slot is worth guarding
+        against. The slot is the fallback for a name the bot has not seen.
+        """
+        for client in sorted(self.clients.connected(), key=lambda c: len(c.name), reverse=True):
+            if client.name and rest.startswith(f"{client.name}:"):
+                return client, rest[len(client.name) + 1 :].lstrip(" ")
+        # A name we do not know. The slot is all that is left, and it is only worth trusting when
+        # the server gave one — otherwise this is chat from somebody who never connected.
+        by_cid = self.clients.get_by_cid(cid) if cid is not None else None
+        if by_cid is None:
+            return None
+        _name, sep, text = rest.partition(":")
+        if not sep:
+            return None
+        return by_cid, text.lstrip(" ")
 
     @handles(r"^tell:\s*(?P<name>.+?)\s+to\s+(?P<tname>.+?):\s?(?P<text>.*)$")
     def on_tell(self, m: "re.Match[str]") -> Event | None:

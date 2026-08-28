@@ -97,6 +97,38 @@ def test_a_wrong_slot_falls_back_to_the_name(urt):
     assert ev.client.cid == "6"  # the name wins, not slot 8
 
 
+@pytest.mark.parametrize("name", ["joe", "joe:", "jo:e", "j:oe", ":joe", "joe:foo"])
+@pytest.mark.parametrize(
+    "text", ["!help", "what does the fox say: Ring-ding-ding-ding-dingeringeding!"]
+)
+def test_a_colon_in_a_name_does_not_eat_the_start_of_the_message(name, text):  # noqa: ANN001
+    """Captured: `test_iourt42.py:379` (`test_say_after_player_changed_name`), all twelve spellings.
+
+    A name is free text on this engine and a colon is legal in one, so no pattern can tell the colon
+    that *ends* the name from one inside it. Splitting at the first colon read `joe:foo: !help` as
+    *joe* saying `foo: !help` — which means **a player with a colon in their name could not use a
+    single command**, because the prefix was no longer at the front of what the command processor
+    was handed. Eight of these twelve failed before the speaker was found by matching the names the
+    bot already knows, longest first.
+    """
+    p = UrtParser(IOURT42)
+    p.clients.add(Client(cid="2", name=name, guid="A" * 32))
+
+    ev = one(p, f"777:18 say: 2 {name}: {text}")
+
+    assert ev.client.cid == "2"
+    assert ev.data == text
+
+
+def test_a_message_that_is_only_a_colon_still_belongs_to_the_speaker():
+    """The same capture's last four cases, where the *text* is punctuation and nothing else."""
+    p = UrtParser(IOURT42)
+    p.clients.add(Client(cid="2", name="j:oe", guid="A" * 32))
+
+    assert one(p, "777:18 say: 2 j:oe: :").data == ":"
+    assert one(p, "777:18 say: 2 j:oe:  :").data == ":"
+
+
 def test_a_leading_control_character_is_stripped(urt):
     """Some clients prefix chat with 0x15; left in place, `\\x15!help` is not read as a command."""
     ev = one(urt, "say: 8 denzel: \x15!help")
