@@ -73,11 +73,34 @@ class FbParser(Parser):
             "player.onSquadChange": self._on_squad_change,
             "player.onKicked": self._on_kicked,
             "server.onLevelLoaded": self._on_level_loaded,
+            # **Frostbite 1's spelling of the same two moments, and it is not the one above.** Bad
+            # Company 2 and the 2010 Medal of Honor announce a map with `server.onLoadingLevel` and
+            # start the round with `server.onLevelStarted`; Frostbite 2 replaced both with the
+            # single `server.onLevelLoaded`. The classic wrote a parser per generation and each
+            # handled its own pair, so nothing there had to notice — here one parser served both
+            # and carried only Frostbite 2's, which meant those two titles produced **no map change
+            # and no round start at all**. Every per-round reset in the bot — the scoreboard, sprees,
+            # the team balancer, match mode, vote delay — was waiting for an event that never came.
+            "server.onLoadingLevel": self._on_loading_level,
+            "server.onLevelStarted": self._on_level_started,
             "server.onRoundOver": self._on_round_over,
             "server.onRoundOverPlayers": self._on_round_over_players,
             "server.onRoundOverTeamScores": self._on_round_over_team_scores,
             "punkBuster.onMessage": self._on_punkbuster,
         }
+
+    #: Events this engine sends that nothing here reads — named rather than left as an omission, so
+    #: the next person finds a decision instead of a gap.
+    #:
+    #: ``player.onDisconnect <name> <reason>`` is BF4's and Hardline's, and it arrives *alongside*
+    #: `player.onLeave` for one departure. What it adds is the engine's own word for why —
+    #: ``PLAYER_CONN_LOST``, or the text of the kick or ban that ended the session — and empty when
+    #: the player simply left. Carrying it would mean a `CLIENT_DISCONNECT_REASON` event type that
+    #: nothing subscribes to, which this project has declined before for the same reason (see the
+    #: freeze-tag lines in TODO.md §1.3): an event nobody reads is indistinguishable from one that
+    #: is wrong. Whoever wants it: add the type, publish it here, and do **not** remove the client —
+    #: `player.onLeave` already does, and doing it twice drops whoever has taken the slot since.
+    UNREAD_EVENTS = ("player.onDisconnect",)
 
     # -- dispatch ----------------------------------------------------------
 
@@ -286,6 +309,43 @@ class FbParser(Parser):
         if len(words) > 3:
             data["roundsTotal"] = words[3]
         return Event(EventType.GAME_ROUND_START, data=data)
+
+    def _on_loading_level(self, words: Sequence[str]) -> Event | None:
+        """``server.onLoadingLevel <map> <rounds played> <rounds total>`` — Frostbite 1's map change.
+
+        Three fields where the other generation sends four: this one has no gamemode column,
+        because its map list keeps bare level names and nothing else (see the profiles module).
+        The level arrives as a path — ``levels/mp_004`` — which the map tables already match by
+        longest prefix.
+
+        Published as a round start, the same as `server.onLevelLoaded` on Frostbite 2, so that a
+        plugin does not have to know which generation it is running on. That both generations name
+        the *load* rather than the start is a shared inaccuracy rather than a new one: the classic
+        deferred its round start to the first spawn afterwards, and the difference is discussed with
+        `_on_level_started` below.
+        """
+        data = {"mapname": words[0] if words else ""}
+        if len(words) > 1:
+            data["roundsPlayed"] = words[1]
+        if len(words) > 2:
+            data["roundsTotal"] = words[2]
+        return Event(EventType.GAME_ROUND_START, data=data)
+
+    def _on_level_started(self, _words: Sequence[str]) -> Event | None:
+        """``server.onLevelStarted`` — Frostbite 1 only, and deliberately silent.
+
+        This is the moment the round actually begins, after the warmup the load event announces, and
+        it takes no arguments. It is *not* published, because `_on_loading_level` has already raised
+        the round start for this map and a second one would run every per-round reset twice — the
+        scoreboard cleared after it had been filled, a spree cancelled seconds after it started.
+
+        Which of the two should carry the event is a real question and this is the conservative
+        answer: the load event is the only one of the pair that names the map, and on Frostbite 2
+        there is no `onLevelStarted` to move it to (the classic synthesised one from the first
+        `player.onSpawn`). Handled by name rather than left to fall through so that it is a decision
+        on the record instead of an event nobody noticed.
+        """
+        return None
 
     def _on_round_over(self, words: Sequence[str]) -> Event | None:
         """``server.onRoundOver <winning team>``."""

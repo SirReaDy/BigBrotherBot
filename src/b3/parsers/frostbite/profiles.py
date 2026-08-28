@@ -233,6 +233,19 @@ MOH = replace(
 _FROSTBITE2 = replace(
     _BASE,
     rotate_command="mapList.runNextRound",
+    # **`banList.add` and `banList.remove` change the list in memory; `banList.save` is what writes
+    # it to `banList.txt`.** Without it a ban does not survive the server being restarted — and
+    # neither does an *unban*, which is the half that hurts: the player comes back banned by a list
+    # this bot's database has already marked lifted, so nothing will ever look at it again. The
+    # classic sends it after every one of these three, at eight call sites; we sent it at none.
+    #
+    # Frostbite **1** deliberately does not get this. The classic never sends it on that generation
+    # either, and no capture here shows Bad Company 2 or the 2010 Medal of Honor answering the verb,
+    # so whether they have it is unknown rather than known-absent — see TODO.md §4b. Sending a
+    # command on a guess would be answered `UnknownCommand`, which is harmless and still wrong.
+    ban_template=f"{_BASE.ban_template}\nbanList.save",
+    tempban_template=f"{_BASE.tempban_template}\nbanList.save",
+    unban_template=f"{_BASE.unban_template}\nbanList.save",
     saybig_template=f'admin.yell "%s" {BIG_MESSAGE_SECONDS}',
     server_verbs={
         # Round control. `round_next` advances without ending the current round properly;

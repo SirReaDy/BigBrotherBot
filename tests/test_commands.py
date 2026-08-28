@@ -23,6 +23,28 @@ def test_parse_recognizes_prefixes():
     assert CommandProcessor.parse("!") is None  # prefix only
 
 
+def test_a_slash_in_front_of_a_prefix_is_the_battlefield_habit_not_a_command_name():
+    """Captured: `tests/core/parsers/frostbite2/test_abstractParser.py:433` (`test_slash_prefix`).
+
+    Battlefield players type `/!help`, because `/` is how that engine's own console is addressed
+    and the habit carries into chat. The classic's Frostbite and BattlEye parsers both rewrote it.
+    Here `/` is already a prefix of its own — the silent one — so `/!help` parsed as the *silent*
+    command named `!help`, which exists nowhere, and the player was told so.
+    """
+    assert CommandProcessor.parse("/!help") == ("!", "help", "")
+    assert CommandProcessor.parse("/@map") == ("@", "map", "")
+    assert CommandProcessor.parse("/&kick foo") == ("&", "kick", "foo")
+
+
+def test_a_plain_slash_is_still_the_silent_prefix():
+    """Only the doubled form is rewritten. `/` on its own is a prefix here, which the classic's
+    admin plugin also had (`hidecmd_level`) — so turning `/kick` into `!kick` would delete a
+    feature to fix a typo.
+    """
+    assert CommandProcessor.parse("/kick foo") == ("/", "kick", "foo")
+    assert CommandProcessor.parse("/") is None  # prefix only, as with the other three
+
+
 def test_registry_alias_and_usable_by(console):
     calls = []
     console.command_registry.register(

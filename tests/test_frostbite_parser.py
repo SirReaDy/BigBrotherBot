@@ -306,6 +306,39 @@ def test_a_new_level_reads_like_a_round_start(parser):  # noqa: ANN001
     assert ev.data["g_gametype"] == "ConquestLarge0"
 
 
+def test_frostbite_1_announces_a_map_with_its_own_event():
+    """Captured: the classic's `frostbite/abstractParser.py` handles a pair this one does not.
+
+    Bad Company 2 and the 2010 Medal of Honor send `server.onLoadingLevel` and
+    `server.onLevelStarted`; Frostbite 2 replaced both with `server.onLevelLoaded`. The classic
+    wrote a parser per generation so each carried its own, and one parser serving both here carried
+    only Frostbite 2's — which meant those two titles produced **no map change and no round start
+    at all**, and every per-round reset in the bot sat waiting for an event that never arrived.
+
+    Three fields, not four: this generation's map list has no gamemode column, so nor does this.
+    """
+    for profile in (BFBC2, MOH):
+        p = FbParser(profile)
+        ev = one(p, ["server.onLoadingLevel", "levels/mp_004", "0", "2"])
+
+        assert ev.type is EventType.GAME_ROUND_START
+        assert ev.data["mapname"] == "levels/mp_004"
+        assert ev.data["roundsPlayed"] == "0"
+        assert ev.data["roundsTotal"] == "2"
+        assert "g_gametype" not in ev.data
+
+
+def test_frostbite_1s_level_start_does_not_raise_a_second_round_start():
+    """It is the real start of the round, and it is handled by being deliberately silent.
+
+    `server.onLoadingLevel` has already raised the round start for this map — it is the only one of
+    the pair that names it — so publishing here too would run every per-round reset twice: the
+    scoreboard cleared after being filled, a spree cancelled seconds after it began.
+    """
+    p = FbParser(BFBC2)
+    assert p.parse_line(json.dumps(["server.onLevelStarted"])) == []
+
+
 def test_the_end_of_a_round(parser):  # noqa: ANN001
     ev = one(parser, ["server.onRoundOver", "1"])
     assert ev.type is EventType.GAME_ROUND_END
@@ -469,9 +502,10 @@ def test_the_titles_differ_in_nothing_but_the_map_list():
         assert replace(profile, **same_as_bf3) == BF3
 
     for profile in (BFBC2, MOH):
-        # Everything but the map list, the round control and the two things the 2010 Medal of Honor
-        # turned out not to share with anybody — named here one by one rather than papered over,
-        # since the docstring above is about what asserting sameness cost the last time.
+        # Everything but the map list, the round control, the ban-list persistence and the two
+        # things the 2010 Medal of Honor turned out not to share with anybody — named here one by
+        # one rather than papered over, since the docstring above is about what asserting sameness
+        # cost the last time.
         assert (
             replace(
                 profile,
@@ -482,6 +516,9 @@ def test_the_titles_differ_in_nothing_but_the_map_list():
                 server_verbs=BF3.server_verbs,
                 player_verbs=BF3.player_verbs,
                 teams=BF3.teams,
+                ban_template=BF3.ban_template,
+                tempban_template=BF3.tempban_template,
+                unban_template=BF3.unban_template,
             )
             == BF3
         )
@@ -583,7 +620,33 @@ def test_bans_are_native_and_by_guid():
     """So they hold across a name change, and across the bot not running."""
     assert "banList.add guid" in BF3.ban_template
     assert "seconds" in BF3.tempban_template
-    assert BF3.unban_template == 'banList.remove guid "%(guid)s"'
+    assert BF3.unban_template.startswith('banList.remove guid "%(guid)s"')
+
+
+def test_frostbite2_saves_the_ban_list_after_changing_it():
+    """Captured: `tests/core/parsers/frostbite2/abstractParser.py` sends it at eight call sites.
+
+    `banList.add` and `banList.remove` change the list in memory only; `banList.save` writes it to
+    `banList.txt`. Without it a ban does not survive a server restart, and neither does an unban —
+    and a lost unban is the worse half, because this bot's database has already recorded the
+    penalty as lifted, so nothing will ever look at that list again.
+    """
+    for profile in (BF3, BF4, BFH, MOHW):
+        assert profile.ban_template.splitlines()[-1] == "banList.save"
+        assert profile.tempban_template.splitlines()[-1] == "banList.save"
+        assert profile.unban_template.splitlines()[-1] == "banList.save"
+
+
+def test_frostbite1_is_not_given_a_verb_nobody_has_seen_it_answer():
+    """The classic sends `banList.save` on Frostbite 2 only, and never on Bad Company 2 or MoH.
+
+    So whether this generation has the verb is *unknown*, not known-absent, and there is no capture
+    either way. Guessing would cost an `UnknownCommand` per ban — harmless, and still a claim the
+    evidence does not support. Recorded in TODO.md §4b for anyone who gets a server to ask.
+    """
+    for profile in (BFBC2, MOH):
+        assert "banList.save" not in profile.ban_template
+        assert "banList.save" not in profile.unban_template
 
 
 def test_the_reason_cap_is_the_engines_not_ours():

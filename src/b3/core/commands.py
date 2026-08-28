@@ -261,9 +261,21 @@ class CommandProcessor:
 
     @staticmethod
     def parse(text: str) -> tuple[str, str, str] | None:
-        """Return (prefix, name, args) if ``text`` is a command, else None."""
+        """Return (prefix, name, args) if ``text`` is a command, else None.
+
+        A leading ``/`` in front of *another* prefix is dropped. Battlefield players type `/!help`,
+        because on that engine `/` is how the game's own console is addressed and the habit carries
+        into chat — the classic bot's Frostbite and BattlEye parsers both rewrote it, and their
+        captured tests are a list of the spellings people actually use. Here `/` is a prefix in its
+        own right (silent), so `/!help` parsed as the silent command *named* `!help`, which exists
+        nowhere: the player was told `!help` is an unknown command. Only the doubled form is
+        touched, so a plain `/help` is still a silent command and not a second spelling of a loud
+        one.
+        """
         if not text:
             return None
+        if len(text) > 1 and text[0] == "/" and text[1] in PREFIXES:
+            text = text[1:]
         prefix = text[0]
         if prefix not in PREFIXES:
             return None
