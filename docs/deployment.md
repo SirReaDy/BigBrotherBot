@@ -1,5 +1,5 @@
-| [Overview](../README.md) | [CLI](cli.md) | [Plugins](plugins.md) | **Deployment** | [Commands](commands.md) | [Configuration](configuration.md) | [Games](games.md) | [Development](development.md) |
-|---|---|---|---|---|---|---|---|
+| [Overview](../README.md) | [CLI](cli.md) | [Plugins](plugins.md) | **Deployment** | [Commands](commands.md) | [Configuration](configuration.md) | [Games](games.md) | [Development](development.md) | [Migrating](migrating.md) |
+|---|---|---|---|---|---|---|---|---|
 
 # Running B3: one bot per game server
 

@@ -1,5 +1,5 @@
-| [Overview](../README.md) | [CLI](cli.md) | [Plugins](plugins.md) | [Deployment](deployment.md) | [Commands](commands.md) | [Configuration](configuration.md) | **Games** | [Development](development.md) |
-|---|---|---|---|---|---|---|---|
+| [Overview](../README.md) | [CLI](cli.md) | [Plugins](plugins.md) | [Deployment](deployment.md) | [Commands](commands.md) | [Configuration](configuration.md) | **Games** | [Development](development.md) | [Migrating](migrating.md) |
+|---|---|---|---|---|---|---|---|---|
 
 # Games, engine by engine
 

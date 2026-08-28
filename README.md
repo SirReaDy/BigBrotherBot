@@ -4,8 +4,8 @@ A modern, typed, `asyncio`-based rewrite of [Big Brother Bot](https://github.com
 the game-server admin bot: it watches a game server, keeps a database of who played and what they did,
 and gives your admins commands to act on it.
 
-| **Overview** | [CLI](docs/cli.md) | [Plugins](docs/plugins.md) | [Deployment](docs/deployment.md) | [Commands](docs/commands.md) | [Configuration](docs/configuration.md) | [Games](docs/games.md) | [Development](docs/development.md) |
-|---|---|---|---|---|---|---|---|
+| **Overview** | [CLI](docs/cli.md) | [Plugins](docs/plugins.md) | [Deployment](docs/deployment.md) | [Commands](docs/commands.md) | [Configuration](docs/configuration.md) | [Games](docs/games.md) | [Migrating](docs/migrating.md) | [Development](docs/development.md) |
+|---|---|---|---|---|---|---|---|---|
 
 ## What 2.0 is
 
@@ -133,6 +133,7 @@ project is that same question, and answering it used to need somebody who could 
 | [Commands](docs/commands.md) | All 59 in-game commands, groups and reach, warnings, spam |
 | [Configuration](docs/configuration.md) | `b3.yaml` in full, how plugins load, message overrides, scheduling |
 | [Games](docs/games.md) | What each engine needs: Frostbite, BattlEye, Source, Altitude, Homefront, Ravaged, Frontline, the CoD variants |
+| [Migrating from B3 1.x](docs/migrating.md) | Bringing a classic install across: the database importer, the config mapping, and what happened to each plugin |
 | [Development](docs/development.md) | The data model inherited from the classic bot, and how to work on this one |
 
 ---

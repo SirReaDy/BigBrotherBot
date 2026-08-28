@@ -1,5 +1,5 @@
-| [Overview](../README.md) | [CLI](cli.md) | **Plugins** | [Deployment](deployment.md) | [Commands](commands.md) | [Configuration](configuration.md) | [Games](games.md) | [Development](development.md) |
-|---|---|---|---|---|---|---|---|
+| [Overview](../README.md) | [CLI](cli.md) | **Plugins** | [Deployment](deployment.md) | [Commands](commands.md) | [Configuration](configuration.md) | [Games](games.md) | [Development](development.md) | [Migrating](migrating.md) |
+|---|---|---|---|---|---|---|---|---|
 
 # Plugins
 
