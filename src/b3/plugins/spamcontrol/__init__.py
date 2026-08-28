@@ -34,7 +34,7 @@ from b3.core.events import Event, EventType
 from b3.core.console import Console
 from b3.core.plugin import Plugin
 from b3.domain.client import Client
-from b3.core.util import as_float, as_int
+from b3.core.util import as_float, as_level
 
 log = logging.getLogger(__name__)
 
@@ -152,7 +152,7 @@ class SpamcontrolPlugin(Plugin):
         client = event.client
         if client is None or not event.data:
             return
-        if client.max_level() >= as_int(self.settings.get("mod_level"), 20):
+        if client.max_level() >= as_level(self.settings.get("mod_level"), 20):
             return  # admins are trusted to know when to stop
 
         text = self.scored_text(event)
@@ -213,7 +213,7 @@ class SpamcontrolPlugin(Plugin):
         client = event.client
         if client is None or not event.data:
             return
-        if client.max_level() >= as_int(self.settings.get("mod_level"), 20):
+        if client.max_level() >= as_level(self.settings.get("mod_level"), 20):
             return
         if self.console.muted_until(client) > self.console.clock.now():
             # Already silenced. The classic kept a second deadline of its own for this, computed

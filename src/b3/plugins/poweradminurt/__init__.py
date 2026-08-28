@@ -227,7 +227,7 @@ from b3.core.commands import Command, CommandContext, command
 from b3.core.console import Console
 from b3.core.events import Event, EventType
 from b3.core.plugin import Plugin
-from b3.core.util import as_float, as_int, as_word, normalise_name
+from b3.core.util import as_float, as_int, as_level, as_word, normalise_name
 from b3.domain.client import Client
 from b3.plugins.firstkill import is_headshot
 
@@ -825,8 +825,8 @@ class PoweradminurtPlugin(Plugin):
     def on_load_config(self) -> None:
         config = self.config if isinstance(self.config, dict) else {}
         self.settings = {**DEFAULTS, **(config.get("settings") or {})}
-        player_level = as_int(self.settings.get("player_command_level"), 40)
-        server_level = as_int(self.settings.get("server_command_level"), 60)
+        player_level = as_level(self.settings.get("player_command_level"), 40)
+        server_level = as_level(self.settings.get("server_command_level"), 60)
         for name in ("paslap", "panuke", "pakill", "pamute", "paunmute", "paforce", "paswap"):
             self._set_level(name, player_level)
         for name in (
@@ -852,7 +852,7 @@ class PoweradminurtPlugin(Plugin):
             "pasetnextmap",
         ):
             self._set_level(name, server_level)
-        self._set_level("pateams", as_int(self.settings.get("teams_command_level"), 2))
+        self._set_level("pateams", as_level(self.settings.get("teams_command_level"), 2))
 
     def register_commands(self) -> None:
         """The decorated commands, then the twenty-one table-driven ones."""
@@ -866,7 +866,7 @@ class PoweradminurtPlugin(Plugin):
         `!painstagib` validated its argument and `!pafraglimit` two hundred lines away did not, so
         `!pafraglimit banana` set `fraglimit` to `banana` and told the admin it had worked.
         """
-        level = as_int(self.settings.get("server_command_level"), 60)
+        level = as_level(self.settings.get("server_command_level"), 60)
         for name, (number, what) in GAMETYPES.items():
             self._add(name, level, self._gametype_handler(number, what), f"{name} - {what}")
         for name in TOGGLES:
@@ -1357,7 +1357,7 @@ class PoweradminurtPlugin(Plugin):
         """Whether the balancer is allowed to pick this player up."""
         if self.locked_to(client) is not None:
             return False
-        return client.max_level() < as_int(self.settings.get("teambalance_max_level"), 60)
+        return client.max_level() < as_level(self.settings.get("teambalance_max_level"), 60)
 
     def _joined_team_at(self, client: Client) -> float:
         """When this player last joined the team they are on.
@@ -1854,7 +1854,7 @@ class PoweradminurtPlugin(Plugin):
         # classic warned every one of them, on every sweep, for duplicating each other.
         if client.is_bot:
             return True
-        return client.max_level() >= as_int(self.settings.get("namecheck_max_level"), 20)
+        return client.max_level() >= as_level(self.settings.get("namecheck_max_level"), 20)
 
     def namecheck(self) -> None:
         """Warn players wearing a name nobody should be wearing.
@@ -1978,7 +1978,7 @@ class PoweradminurtPlugin(Plugin):
         # eventually kicked one — whereupon `botsupport` added it straight back.
         if len(connected) < self._spec_min_players():
             return
-        max_level = as_int(self.settings.get("speccheck_max_level"), 20)
+        max_level = as_level(self.settings.get("speccheck_max_level"), 20)
         allowed = as_int(self.settings.get("speccheck_max_spec_minutes"), 5) * 60
         minutes = as_int(self.settings.get("speccheck_warn_minutes"), 5)
         now = self.console.clock.now()

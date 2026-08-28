@@ -73,7 +73,7 @@ from b3.core.commands import CommandContext, command
 from b3.core.console import Console
 from b3.core.events import Event, EventType
 from b3.core.plugin import Plugin
-from b3.core.util import as_int, match_names
+from b3.core.util import as_int, as_level, match_names
 from b3.domain.client import Client
 from b3.domain.permissions import level_for
 
@@ -794,7 +794,7 @@ class JumperPlugin(Plugin):
         jumps = as_int(entry.get("njump"), 0)
         if ways or jumps:
             ctx.reply(self.message("jumper_info_ways", ways=ways, jumps=jumps))
-        level = as_int(entry.get("level"), 0)
+        level = as_level(entry.get("level"), 0)
         if level > 0:
             ctx.reply(self.message("jumper_info_level", level=level))
 

@@ -66,7 +66,7 @@ from b3.core.commands import CommandContext, command
 from b3.core.console import Console
 from b3.core.events import Event, EventType
 from b3.core.plugin import Plugin
-from b3.core.util import as_float, as_int
+from b3.core.util import as_float, as_int, as_level
 from b3.domain.client import Client
 
 log = logging.getLogger(__name__)
@@ -423,7 +423,7 @@ class MakeroomPlugin(Plugin):
         kicked by somebody junior. And the **admin who asked** is never the answer to their own
         request, which the classic allowed once `non_member_level` was set above the command's own.
         """
-        limit = as_int(self.settings.get("non_member_level"), 2)
+        limit = as_level(self.settings.get("non_member_level"), 2)
         candidates = [
             client
             for client in self.console.clients.connected()
@@ -436,7 +436,7 @@ class MakeroomPlugin(Plugin):
 
     def is_member(self, client: Client) -> bool:
         """Whether this player's slot is safe from this plugin."""
-        return client.max_level() > as_int(self.settings.get("non_member_level"), 2)
+        return client.max_level() > as_level(self.settings.get("non_member_level"), 2)
 
     def population(self) -> int:
         """How many slots are taken.

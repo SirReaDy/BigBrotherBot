@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import os
 
 import pytest
@@ -114,3 +115,55 @@ def test_a_conf_token_in_the_database_url_resolves(tmp_path):
     resolved = load_config(str(tmp_path / "b3.yaml")).bot.database
     assert resolved.endswith("data/b3.sqlite")
     assert "@conf" not in resolved
+
+
+# -- levels written as group keywords -----------------------------------------------------------
+
+
+def test_a_level_setting_accepts_the_group_keyword_fifteen_years_of_configs_use() -> None:
+    """`mod_level: senioradmin` is what the classic bot's own shipped `.ini` files wrote.
+
+    Read through `as_int` a word is not a number, so the setting fell back to its default: an
+    operator writing `senioradmin` got 20 where they meant 80, with one line in a log to say so.
+    `level_for` already knew how to read "a keyword or a number 0-100"; the plugins simply never
+    reached it. This is the case that made a config converter dangerous — a value copied across
+    verbatim looks right and grants the wrong level.
+    """
+    from b3.core.util import as_level
+
+    assert as_level("senioradmin", 20) == 80
+    assert as_level("mod", 100) == 20
+    assert as_level("guest", 100) == 0
+
+
+def test_a_level_setting_still_takes_a_number_written_either_way() -> None:
+    from b3.core.util import as_level
+
+    assert as_level(60, 20) == 60
+    assert as_level("60", 20) == 60
+
+
+def test_an_unreadable_level_falls_back_and_says_which_words_it_knows(caplog) -> None:  # noqa: ANN001
+    """A typo must not take the bot down, and must not be silent either."""
+    from b3.core.util import as_level
+
+    with caplog.at_level(logging.WARNING):
+        assert as_level("moderator", 40) == 40  # `mod` is the word; `moderator` is not
+
+    assert "moderator" in caplog.text
+    assert "senioradmin" in caplog.text  # the message lists what it would have accepted
+
+
+def test_a_level_out_of_range_is_refused_rather_than_clamped() -> None:
+    """101 is not "superadmin, roughly": it is a mistake, and a silent clamp hides it."""
+    from b3.core.util import as_level
+
+    assert as_level(101, 40) == 40
+    assert as_level(-1, 40) == 40
+
+
+def test_yes_is_not_a_level() -> None:
+    """YAML reads a bare `yes` as True, and True is not level 1."""
+    from b3.core.util import as_level
+
+    assert as_level(True, 40) == 40

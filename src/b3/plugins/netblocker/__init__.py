@@ -37,7 +37,7 @@ import logging
 from b3.core.console import Console
 from b3.core.events import Event, EventType
 from b3.core.plugin import Plugin
-from b3.core.util import as_int
+from b3.core.util import as_level
 from b3.domain.client import Client
 
 log = logging.getLogger(__name__)
@@ -142,7 +142,7 @@ class NetblockerPlugin(Plugin):
         """Kick this player if they are connecting from a listed network. True if they were."""
         if not self.blocks or not client.ip:
             return False
-        if client.max_level() > as_int(self.settings.get("max_level"), 1):
+        if client.max_level() > as_level(self.settings.get("max_level"), 1):
             return False
         try:
             address = ipaddress.ip_address(client.ip.strip())

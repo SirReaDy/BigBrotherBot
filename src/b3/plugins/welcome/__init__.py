@@ -43,7 +43,7 @@ from b3.core.commands import CommandContext, command
 from b3.core.console import Console
 from b3.core.events import Event, EventType
 from b3.core.plugin import Plugin
-from b3.core.util import as_int
+from b3.core.util import as_int, as_level
 from b3.domain.client import Client
 from b3.domain.permissions import max_group
 
@@ -162,7 +162,7 @@ class WelcomePlugin(Plugin):
         self.schedule(self._greet_due, second="*", name="WelcomePlugin.greetings")
         registered = self.console.command_registry.get("greeting")
         if registered is not None:  # pragma: no branch - registration is the framework's job
-            registered.min_level = as_int(self.settings.get("greeting_level"), 20)
+            registered.min_level = as_level(self.settings.get("greeting_level"), 20)
 
     # -- arrivals ------------------------------------------------------------
 

@@ -38,7 +38,7 @@ from b3.core.commands import CommandContext, command
 from b3.core.console import Console
 from b3.core.events import Event, EventType
 from b3.core.plugin import Plugin
-from b3.core.util import as_int, duration_text
+from b3.core.util import as_level, duration_text
 from b3.domain.client import Client
 from b3.domain.permissions import find_group
 
@@ -155,14 +155,14 @@ class LoginPlugin(Plugin):
         self.settings = {**DEFAULTS, **(config.get("settings") or {})}
         registered = self.console.command_registry.get("setpassword")
         if registered is not None:  # pragma: no branch - registered by the framework
-            registered.min_level = as_int(self.settings.get("password_level"), 40)
+            registered.min_level = as_level(self.settings.get("password_level"), 40)
 
     def on_startup(self) -> None:
         self.register_messages(MESSAGES)
         self.subscribe(EventType.CLIENT_AUTH, self.on_auth)
         registered = self.console.command_registry.get("setpassword")
         if registered is not None:  # pragma: no branch
-            registered.min_level = as_int(self.settings.get("password_level"), 40)
+            registered.min_level = as_level(self.settings.get("password_level"), 40)
 
     # -- the demotion --------------------------------------------------------
 
@@ -184,7 +184,7 @@ class LoginPlugin(Plugin):
         client = event.client
         if client is None or client.id is None:
             return
-        threshold = as_int(self.settings.get("threshold_level"), 40)
+        threshold = as_level(self.settings.get("threshold_level"), 40)
         if client.max_level() <= threshold:
             return
         state = self.session(client)

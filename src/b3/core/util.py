@@ -125,6 +125,33 @@ def as_int(value: object, default: int) -> int:
     return default
 
 
+def as_level(value: object, default: int) -> int:
+    """Read a config value that is a **permission level**, which may be written as a group keyword.
+
+    Fifteen years of B3 configuration wrote levels as words — ``mod_level: senioradmin``,
+    ``immunity_level: fulladmin`` — because that is what the classic bot's own shipped `.ini` files
+    did and what every guide copied. Read through :func:`as_int` a word is not a number, so the
+    setting falls back to its default: ``senioradmin`` becomes 20 where the operator meant 80, and
+    the only sign is one line in a log nobody is reading during a migration.
+
+    `b3.domain.permissions.level_for` already knows how to read "a keyword or a number 0-100"; it was
+    simply never reached from the plugins, all of which asked :func:`as_int` for a level. This is the
+    same fallback-and-say-so contract as `as_int`, over that reader.
+    """
+    from b3.domain.permissions import level_for
+
+    level = level_for(value)
+    if level is not None:
+        return level
+    log.warning(
+        "config value %r is not a level — expected a number 0-100 or a group keyword "
+        "(guest, user, reg, mod, admin, fulladmin, senioradmin, superadmin); using %r",
+        value,
+        default,
+    )
+    return default
+
+
 def as_float(value: object, default: float) -> float:
     """Read a config value as a float. See :func:`as_int`."""
     if isinstance(value, (int, float)) and not isinstance(value, bool):

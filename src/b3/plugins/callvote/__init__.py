@@ -68,7 +68,7 @@ from b3.core.commands import CommandContext, command
 from b3.core.console import Console
 from b3.core.events import Event, EventType
 from b3.core.plugin import Plugin
-from b3.core.util import as_int
+from b3.core.util import as_int, as_level
 from b3.domain.client import Client
 from b3.domain.permissions import DEFAULT_GROUPS, level_for
 
@@ -264,7 +264,7 @@ class CallvotePlugin(Plugin):
         for name in ("veto", "lastvote"):
             registered = self.console.command_registry.get(name)
             if registered is not None:
-                registered.min_level = as_int(self.settings.get("min_level"), 20)
+                registered.min_level = as_level(self.settings.get("min_level"), 20)
 
     def _level_table(self, section: object, where: str) -> dict[str, int]:
         """Read a `name: group-or-number` mapping, refusing entries rather than guessing at them."""
@@ -366,7 +366,7 @@ class CallvotePlugin(Plugin):
         asked for by name, and on a title that has none this does nothing.
         """
         client = event.client
-        level = as_int(self.protect_settings.get("level"), 0)
+        level = as_level(self.protect_settings.get("level"), 0)
         if client is None or not level or not event.extra.get("vote_kick"):
             return
         if client.max_level() < level or not self.console.supports_verb("lift_ban"):
@@ -406,7 +406,7 @@ class CallvotePlugin(Plugin):
         the caller. An admin vote-kicking another admin of the same rank is a disagreement between
         two people who both have `!kick`, and not this plugin's business.
         """
-        level = as_int(self.protect_settings.get("level"), 0)
+        level = as_level(self.protect_settings.get("level"), 0)
         target = vote.target
         if not level or target is None or vote.type not in PLAYER_VOTE_TYPES:
             return False
@@ -497,7 +497,7 @@ class CallvotePlugin(Plugin):
             named = self.map_levels.get(args.strip().lower())
             if named is not None:
                 return named
-        return self.levels.get(vote_type, as_int(self.settings.get("default_level"), 0))
+        return self.levels.get(vote_type, as_level(self.settings.get("default_level"), 0))
 
     def voters(self) -> int:
         """Humans who could vote. Bots cannot, and counting them is how one player becomes eight."""

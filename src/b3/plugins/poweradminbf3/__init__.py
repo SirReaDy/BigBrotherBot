@@ -86,7 +86,7 @@ from b3.core.console import Console
 from b3.core.events import Event, EventType
 from b3.core.game import PlayerInfo
 from b3.core.plugin import Plugin
-from b3.core.util import as_int, as_word, match_names, sanitize_rcon_value
+from b3.core.util import as_int, as_level, as_word, match_names, sanitize_rcon_value
 from b3.domain.client import Client
 
 log = logging.getLogger(__name__)
@@ -611,7 +611,7 @@ class Poweradminbf3Plugin(Plugin):
         """Whether `admin` may act on `target`, without saying anything about it."""
         if target is admin or (target.id is not None and target.id == admin.id):
             return False
-        if admin.max_level() >= as_int(self.settings.get("no_level_check_level"), 60):
+        if admin.max_level() >= as_level(self.settings.get("no_level_check_level"), 60):
             return True
         return target.max_level() < admin.max_level()
 
@@ -789,7 +789,7 @@ class Poweradminbf3Plugin(Plugin):
         """Move an arriving player to the smaller team, if they landed on the bigger one."""
         if not self.settings.get("autoassign") or not self._round_finished or not self._settled:
             return False
-        if client.max_level() >= as_int(self.settings.get("no_autoassign_level"), 20):
+        if client.max_level() >= as_level(self.settings.get("no_autoassign_level"), 20):
             return False
         counts = self.team_counts()
         if sum(counts.values()) < MIN_SCRAMBLE_PLAYERS:
@@ -816,7 +816,7 @@ class Poweradminbf3Plugin(Plugin):
         if excess < threshold:
             return False
         self.console.say(self.message("pab3_balancing"))
-        exempt = as_int(self.settings.get("no_autoassign_level"), 20)
+        exempt = as_level(self.settings.get("no_autoassign_level"), 20)
         moved = 0
         # Most recent first, which is the fairest answer available: somebody who has been playing
         # the whole round did not cause the imbalance.

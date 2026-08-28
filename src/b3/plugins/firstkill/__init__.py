@@ -42,7 +42,7 @@ from b3.core.commands import CommandContext, command
 from b3.core.console import Console
 from b3.core.events import Event, EventType
 from b3.core.plugin import Plugin
-from b3.core.util import as_int
+from b3.core.util import as_level
 from b3.domain.client import Client
 
 log = logging.getLogger(__name__)
@@ -126,7 +126,7 @@ class FirstkillPlugin(Plugin):
             log.warning("firstkill: reset_on %r is not map, round or never; using map", reset)
             reset = "map"
         self.settings["reset_on"] = reset
-        level = as_int(self.settings.get("min_level"), 100)
+        level = as_level(self.settings.get("min_level"), 100)
         for name in SWITCHES:
             registered = self.console.command_registry.get(name)
             if registered is not None:

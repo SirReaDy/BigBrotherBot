@@ -42,7 +42,7 @@ from b3.core.console import Console
 from b3.core.events import Event, EventType, damage_points
 from b3.core.plugin import Plugin
 from b3.domain.client import Client, PenaltyType
-from b3.core.util import as_float, as_int, parse_duration
+from b3.core.util import as_float, as_int, as_level, parse_duration
 
 log = logging.getLogger(__name__)
 
@@ -264,7 +264,7 @@ class TkPlugin(Plugin):
         registered = self.console.command_registry.get("grudge")
         if registered is None:  # pragma: no cover - registration is the framework's job
             return
-        registered.min_level = as_int(self.settings.get("grudge_level"), 0)
+        registered.min_level = as_level(self.settings.get("grudge_level"), 0)
 
     # -- the record ----------------------------------------------------------
 
@@ -392,7 +392,7 @@ class TkPlugin(Plugin):
             return
         if points <= as_int(self.settings.get("damage_threshold"), 100):
             return
-        if attacker.max_level() >= as_int(self.settings.get("warn_level"), 2):
+        if attacker.max_level() >= as_level(self.settings.get("warn_level"), 2):
             return  # scored and bannable, but not lectured
         if record.last_warned + TK_WARN_INTERVAL > now:
             return

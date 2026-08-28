@@ -39,7 +39,7 @@ from b3.core.commands import CommandContext, command
 from b3.core.console import Console
 from b3.core.events import Event, EventType
 from b3.core.plugin import Plugin
-from b3.core.util import as_int, normalise_name
+from b3.core.util import as_int, as_level, normalise_name
 from b3.domain.client import Client
 
 if TYPE_CHECKING:
@@ -321,7 +321,7 @@ class NickregPlugin(Plugin):
         Two conditions, both the classic's: they need `manage_level`, and they cannot act on somebody
         *above* them. The second is what stops a senior admin quietly freeing a superadmin's name.
         """
-        level = as_int(self.settings.get("manage_level"), 100)
+        level = as_level(self.settings.get("manage_level"), 100)
         name = owner.name if owner is not None else f"@{owner_id}"
         if ctx.client.max_level() < level:
             ctx.reply(self.message("nick_not_yours", name=name))

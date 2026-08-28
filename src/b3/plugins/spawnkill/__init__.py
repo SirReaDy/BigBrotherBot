@@ -40,7 +40,7 @@ from dataclasses import dataclass
 from b3.core.console import Console
 from b3.core.events import Event, EventType
 from b3.core.plugin import Plugin
-from b3.core.util import as_int
+from b3.core.util import as_int, as_level
 from b3.domain.client import Client
 
 log = logging.getLogger(__name__)
@@ -145,7 +145,7 @@ class SpawnkillPlugin(Plugin):
             delay = 0
         return Window(
             name=name,
-            max_level=as_int(values.get("max_level"), as_int(defaults["max_level"], 40)),
+            max_level=as_level(values.get("max_level"), as_int(defaults["max_level"], 40)),
             delay=delay,
             penalty=penalty,
             duration=max(0, as_int(values.get("duration"), as_int(defaults["duration"], 3))),

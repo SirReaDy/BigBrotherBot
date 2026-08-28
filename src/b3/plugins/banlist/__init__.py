@@ -48,7 +48,7 @@ from b3.core.commands import CommandContext, command
 from b3.core.console import Console
 from b3.core.events import Event, EventType
 from b3.core.plugin import Plugin
-from b3.core.util import as_int
+from b3.core.util import as_level
 from b3.domain.client import Client
 
 log = logging.getLogger(__name__)
@@ -403,7 +403,7 @@ class BanlistPlugin(Plugin):
             matched = self.matches(entry, client)
             if matched is None:
                 continue
-            immunity = as_int(self.settings.get("immunity_level"), 100)
+            immunity = as_level(self.settings.get("immunity_level"), 100)
             level = client.max_level()
             if level >= immunity:
                 # Recorded rather than acted on, and recorded where an admin can find it: somebody

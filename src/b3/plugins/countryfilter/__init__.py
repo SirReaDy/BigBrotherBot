@@ -46,7 +46,7 @@ import logging
 from b3.core.console import Console
 from b3.core.events import Event, EventType
 from b3.core.plugin import Plugin
-from b3.core.util import as_int, strip_colors
+from b3.core.util import as_int, as_level, strip_colors
 from b3.domain.client import Client
 from b3.plugins.geolocation import Location
 
@@ -210,7 +210,7 @@ class CountryfilterPlugin(Plugin):
         Level first, then the two exemption lists, then the address blocklist, then the country
         lists — the classic's order, which is the useful one: an exemption should beat a block.
         """
-        if client.max_level() > as_int(self.settings.get("max_level"), 1):
+        if client.max_level() > as_level(self.settings.get("max_level"), 1):
             return True
         name = strip_colors(client.name).strip().lower()
         if name and name in {

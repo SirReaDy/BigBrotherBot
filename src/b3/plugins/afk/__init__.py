@@ -34,7 +34,7 @@ from dataclasses import dataclass
 from b3.core.console import Console
 from b3.core.events import Event, EventType
 from b3.core.plugin import Plugin
-from b3.core.util import as_int
+from b3.core.util import as_int, as_level
 from b3.domain.client import Client
 
 log = logging.getLogger(__name__)
@@ -295,7 +295,7 @@ class AfkPlugin(Plugin):
             return False
         if (client.team or "") == "spec":
             return False
-        if client.max_level() >= as_int(self.settings.get("immunity_level"), 100):
+        if client.max_level() >= as_level(self.settings.get("immunity_level"), 100):
             return False
         record = self.activity(client)
         if record.last_seen is None:

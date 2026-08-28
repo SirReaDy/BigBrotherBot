@@ -34,7 +34,7 @@ from b3.core.commands import CommandContext, command
 from b3.core.console import Console
 from b3.core.events import Event, EventType
 from b3.core.plugin import Plugin
-from b3.core.util import as_int
+from b3.core.util import as_int, as_level
 from b3.domain.client import Client
 
 log = logging.getLogger(__name__)
@@ -131,7 +131,7 @@ class DuelPlugin(Plugin):
     def on_load_config(self) -> None:
         config = self.config if isinstance(self.config, dict) else {}
         self.settings = {**DEFAULTS, **(config.get("settings") or {})}
-        level = as_int(self.settings.get("min_level"), 1)
+        level = as_level(self.settings.get("min_level"), 1)
         for name in ("duel", "duelcancel", "duelreset"):
             registered = self.console.command_registry.get(name)
             if registered is not None:

@@ -30,7 +30,7 @@ import logging
 from b3.core.console import Console
 from b3.core.events import Event, EventType
 from b3.core.plugin import Plugin
-from b3.core.util import as_int
+from b3.core.util import as_level
 from b3.domain.client import Client
 
 log = logging.getLogger(__name__)
@@ -112,7 +112,7 @@ class IpbanPlugin(Plugin):
         """
         if not client.ip:
             return False
-        if client.max_level() > as_int(self.settings.get("max_level"), 1):
+        if client.max_level() > as_level(self.settings.get("max_level"), 1):
             return False
         if client.ip not in self.banned_addresses():
             return False

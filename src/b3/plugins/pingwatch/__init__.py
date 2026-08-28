@@ -22,7 +22,7 @@ from b3.core.commands import CommandContext, command
 from b3.core.events import EventType
 from b3.core.console import Console
 from b3.core.plugin import Plugin
-from b3.core.util import as_int
+from b3.core.util import as_int, as_level
 
 log = logging.getLogger(__name__)
 
@@ -93,7 +93,7 @@ class PingwatchPlugin(Plugin):
 
         limit = as_int(self.settings.get("max_ping"), 500)
         endurance = as_int(self.settings.get("max_ping_duration"), 90)
-        kick_level = as_int(self.settings.get("kick_level"), 20)
+        kick_level = as_level(self.settings.get("kick_level"), 20)
         now = self.console.clock.now()
 
         for info in players:
