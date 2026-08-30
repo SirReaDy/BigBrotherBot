@@ -4,7 +4,8 @@
 # Migrating from B3 1.x
 
 For anyone with a working classic B3 install. The short version: **your database comes across whole,
-your config is rewritten by hand, and your admins keep their levels.**
+your config is converted for you with a report of what it could not convert, and your admins keep
+their levels.**
 
 Nothing here is destructive. The importer reads your old database and never writes to it, and 2.0
 uses a different config file with a different name, so a half-finished migration leaves the old bot
@@ -21,8 +22,8 @@ exactly as it was. Run them side by side until you are satisfied.
 | ✅ **Aliases and IP history** | Both tables |
 | ✅ **Custom groups** | Upserted rather than overwritten, so a renamed or re-levelled group survives |
 | ✅ **Commands and their levels** | All 59, at the same levels the classic's `plugin_admin.ini` gave them |
-| ⚠️ **The config** | Rewritten by hand. XML + a dozen INI files became one YAML file, and there is no converter — see below for why |
-| ⚠️ **Plugin configs** | Same: one YAML per plugin, hand-written from the INI |
+| ⚠️ **The config** | Converted by `b3 import-config`, then read. XML + a dozen INI files became one YAML file, and the settings that changed meaning are **reported rather than written**, because a config that looks complete and is quietly wrong is worse than one you know is unfinished |
+| ⚠️ **Plugin configs** | Same: one YAML per plugin, converted key by key against what that plugin still accepts. Your own writing — rules, warning reasons, custom commands — comes across whole |
 | ❌ **Some plugins** | Seven became core services and four are gone. [Full table below](#what-happened-to-each-plugin) |
 | ❌ **`b3/extplugins` drop-ins** | Third-party plugins are installed from git now (`b3 plugin install owner/repo`) and use a different plugin API |
 
@@ -35,33 +36,63 @@ python -m pip install b3ng
 b3 --version
 ```
 
-## 2. Write the config
+## 2. Bring the config across
 
 Do this **before** the database import, not after: `b3 import-db` reads `bot.database` from the
-config to know where to import *to*, so there has to be a config first. Only `b3 init`, `b3 games`,
-`b3 completion` and `b3 version` run without one.
-
-There is deliberately **no XML-to-YAML converter**. The formats do not correspond: the classic spread
-one bot's settings over `b3.xml` plus a `plugin_*.ini` per plugin, with a `MainConfig` proxy
-reconciling them, and several of its settings no longer exist because the thing they configured is
-gone. A converter would produce a file full of dead keys and quietly drop the ones that changed
-meaning. It is a fifteen-minute job by hand, and `b3 init` asks you the questions:
+config to know where to import *to*, so there has to be a config first. Only `b3 init`,
+`b3 import-config`, `b3 games`, `b3 completion` and `b3 version` run without one.
 
 ```bash
-b3 init --game cod4
+b3 import-config /path/to/classic/b3/conf --dry-run   # read the report, write nothing
+b3 import-config /path/to/classic/b3/conf --out .     # then write it
 ```
 
-Point `bot.database` at where you want the imported data to live. The mapping, for the settings most
-installs actually set:
+It reads `b3.xml` and every `plugin_*.ini` (or `.xml`) beside it, writes `b3.yaml` and a
+`plugin_*.yaml` for each plugin that is still a plugin, and **prints everything it would not convert,
+with what to do about each one**. The classic ships 43 of those files and 2,991 lines of them, which
+is why "just retype it" is an afternoon and a transposed digit nobody notices for a month.
+
+**It converts what is provably safe and reports the rest rather than guessing at it.** That refusal
+is the feature, not a limitation. A converter that copied every line across would produce a file that
+looks complete and is quietly wrong wherever the same word now means something else — and a
+plausible-looking config is worse than an obviously incomplete one, because you stop reading it. The
+clearest case is `tk`'s `levels`: the classic listed which groups get penalised, and here every level
+carries its own kill, damage and ban multipliers. Written through verbatim it is a key the plugin
+ignores, so the setting you spent an evening tuning sits silently at its default. Reported, it is one
+line of work.
+
+So the report is the part to read. Three kinds of thing land in it:
+
+* **A setting the plugin no longer has.** Checked against the plugin's own defaults rather than a
+  list kept inside the converter, so this stays true as the plugins change. `[warn]`'s
+  `alert_kick_num` is `alert_at` now, and three of its neighbours were renamed too.
+* **A section that moved somewhere else.** `[commands]` set a plugin's command levels in the classic;
+  here that is the `cmdmanager` plugin, deliberately, so that an override lives in one file instead
+  of in whichever plugin happens to own the command. `[messages]` is the `messages:` block of
+  `b3.yaml`.
+* **A plugin that is not a plugin any more,** or one whose *config file* is gone though the plugin
+  is not — `cmdmanager` keeps what it is told in its own tables now. The report names what took
+  over. [Full table below](#what-happened-to-each-plugin).
+
+Your own writing is not checked against anything. `[spamages]`, your warning reasons, your bad-word
+and bad-name lists, your spree messages and your custom commands are your words rather than a
+schema — an entry called `rule7` is neither known nor unknown, it is yours — so they come across
+whole, including the ones whose section was renamed. Where the placeholders changed with the name
+they are translated too: a spree message keeps its meaning, because `%player%` carried across
+unchanged would not be a placeholder here, just the literal text the server prints.
+
+Starting fresh instead of migrating? `b3 init --game cod4` asks you the questions.
+
+What it does with `b3.xml`, for the settings most installs actually set:
 
 | `b3.xml` | `b3.yaml` | Note |
 |---|---|---|
 | `b3/parser` | `server.game` | Now validated — an unknown value refuses to start instead of silently falling back to the CoD4 parser |
-| `b3/database` | `bot.database` | Any SQLAlchemy URL; add the driver (see the MySQL note below) |
+| `b3/database` | `bot.database` | Any SQLAlchemy URL, which needs the driver named: a `mysql://` URL is rewritten to `mysql+pymysql://` for you, and the report says so, because it changed your connection string |
 | `b3/bot_name` | `bot.name` | |
 | `b3/bot_prefix` | `bot.prefix` | |
-| `b3/time_zone` | `bot.time_zone` | An IANA name (`Europe/Berlin`), not `CST` |
-| `b3/log_level` | `bot.log_level` | A word (`INFO`, `DEBUG`), not a number |
+| `b3/time_zone` | `bot.time_zone` | An IANA name (`Europe/Berlin`), not `CST`. An abbreviation is copied across **and reported**, never guessed at: `CST` is US Central and China Standard, six hours apart, and every timestamp the bot writes depends on which you meant |
+| `b3/log_level` | `bot.log_level` | A word (`INFO`, `DEBUG`), not a number on the classic's own scale. Converted to the nearest, and reported so you can pick another |
 | `b3/logfile` | — | Logs go to stdout; your service manager decides where. See [Deployment](deployment.md) |
 | `server/rcon_password` | `server.rcon_password` | |
 | `server/port` | `server.port` | |
@@ -74,9 +105,10 @@ installs actually set:
 | `autodoc/*` | — | Gone. The command reference is generated from the code — you are reading it at [Commands](commands.md) |
 | `messages/*` | `messages:` | Same keys, same `$variable` placeholders |
 
-Each plugin's `plugin_x.ini` becomes a `plugin_x.yaml`, listed against the plugin in `plugins:`.
-`examples/` in the repository has an annotated one for every bundled plugin, which is the fastest way
-to see what a section is called now.
+Each plugin's `plugin_x.ini` becomes a `plugin_x.yaml` written beside `b3.yaml`, and listed against
+that plugin in `plugins:`. Read what came out against `examples/`, which has an annotated config for
+every bundled plugin and is the fastest way to see what a section is called now — then run
+`b3 doctor`, which checks the file, the database, the log and the RCON connection before you start.
 
 ## 3. Bring the database across
 

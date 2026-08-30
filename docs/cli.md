@@ -11,6 +11,7 @@ Installed as `b3`; equivalently `python -m b3.cli`.
 | Command | What it does |
 |---|---|
 | `b3 init <dir>` | Create a bot instance for one game server — config, plugin config, `plugins/`, optional systemd unit. See [Running B3](deployment.md) |
+| `b3 import-config <conf-dir>` | Convert a classic B3 `conf/` directory into this one's YAML, reporting everything it would not convert. Needs no config — it is how you get one. [Below](#converting-a-classic-installs-config) |
 | `b3 -c b3.yaml doctor` | Check this install before starting it: RCON, game log, database, schema, plugins, updates |
 | `b3 update --check` | Is there a newer version? (exits 1 if so) |
 | `b3 -c b3.yaml probe` | Show what this server actually says — the raw `status` reply, which row pattern matched it, the parsed players, and **which log lines this bot does not understand**. Read-only; `--redact` masks addresses and ids for pasting somewhere public |
@@ -113,6 +114,27 @@ a server being reachable, and the gap between those two is where a first evening
 
 A scripted `b3 init` — in a Dockerfile, in a provisioning script — never stops to ask: with `--game`
 given, or with nothing attached to a terminal, it takes the flags and their defaults.
+
+### Converting a classic install's config
+
+```
+b3 import-config <classic conf/ directory> [-o DIR] [--dry-run]
+```
+
+`b3 init` is for a server you are setting up; this is for one that has been running for years.
+It reads the classic `b3.xml` and every `plugin_*.ini` (or `.xml`) beside it, writes `b3.yaml` and a
+`plugin_*.yaml` per plugin, and **prints what it would not convert with what to do about each item**.
+Needs no config — it is what you run to produce one. `--dry-run` prints the report and writes nothing.
+
+The report is the feature. Settings are checked key by key against the plugin's own defaults, so
+anything renamed, restructured or dropped is named rather than written through as a key the plugin
+would ignore — which would leave a value you had tuned sitting silently at its default. Sections that
+moved (`[commands]` is the `cmdmanager` plugin now, `[messages]` is `b3.yaml`) and plugins that are
+core services here are reported with their destination. Free text — your rules, warning reasons,
+bad-word lists and custom commands — is copied whole, because it is your writing and there is nothing
+to check it against.
+
+[Migrating](migrating.md) is the full walkthrough, database included.
 
 ## Tab completion
 

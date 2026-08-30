@@ -592,6 +592,19 @@ def build_parser() -> argparse.ArgumentParser:
     imp = sub.add_parser("import-db", help="import a legacy B3 database into this one")
     imp.add_argument("source_url", help="SQLAlchemy URL of the legacy DB (e.g. sqlite:///old.db)")
 
+    icfg = sub.add_parser(
+        "import-config", help="convert a classic B3 config directory into this one's YAML"
+    )
+    icfg.add_argument("source_dir", help="the classic install's conf/ directory (holds b3.xml)")
+    icfg.add_argument(
+        "-o", "--out", default=".", help="where to write the YAML (default: this directory)"
+    )
+    icfg.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="report what would be converted, and write nothing",
+    )
+
     plug = sub.add_parser("plugin", help="install and manage plugins from git")
     plug_sub = plug.add_subparsers(dest="plugin_cmd", required=True)
 
@@ -681,6 +694,10 @@ def _dispatch(args: argparse.Namespace) -> int:
         return _run_games()
     if args.cmd == "completion":
         return _run_completion(args.shell or "")
+    # Converting a classic config is what you do *before* there is one to load, so it joins `init`
+    # here rather than below. Requiring the file it exists to produce would be a fine joke.
+    if args.cmd == "import-config":
+        return _run_import_config(args)
     # `version` joins them: "which version am I running" is a question asked *about* an install that
     # is not working, which is the moment its config is least likely to load.
     if args.cmd == "version":
@@ -1195,6 +1212,30 @@ def _confirm(question: str) -> bool:
         return input(f"{question} [y/N] ").strip().lower() in ("y", "yes")
     except EOFError:  # non-interactive shell
         return False
+
+
+def _run_import_config(args: argparse.Namespace) -> int:
+    """`b3 import-config` — a classic conf/ directory into this one's YAML, plus what it could not do.
+
+    The report is the feature. Anything unconvertible is named with what to do instead, so the part
+    a person still has to do is a finite list rather than an unknown.
+    """
+    from b3.legacy.config import convert_config_tree
+
+    source = Path(args.source_dir)
+    if not source.is_dir():
+        logging.error(
+            "%s is not a directory; point this at the classic install's conf/ folder", source
+        )
+        return 1
+    report = convert_config_tree(source, Path(args.out), write=not args.dry_run)
+    if not report.files:
+        logging.error("no b3.xml or plugin_*.ini/.xml found in %s", source)
+        return 1
+    print(report.render())
+    if args.dry_run:
+        print("\n(--dry-run: nothing was written)")
+    return 0
 
 
 def _run_import(config: Config, source_url: str) -> None:
