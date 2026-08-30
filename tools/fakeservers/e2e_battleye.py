@@ -99,9 +99,20 @@ async def main() -> int:
                 "the ban records which server issued it",
             )
 
+        # Three verbs, not the classic's one `ban <slot>`: `addBan` keys on the GUID so an offline
+        # player can be banned at all, `kick` removes the one who is standing there (which `addBan`
+        # does not), and `writeBans` saves a list BattlEye otherwise holds only in memory.
         check(
-            server.wait_for_command("ban 2 0 cheating"),
-            "the ban reached the server as `ban <slot> 0 <reason>`",
+            server.wait_for_command(f"addBan {BOB_GUID} 0 cheating"),
+            "the ban reached the server as `addBan <guid> 0 <reason>`",
+        )
+        check(
+            server.wait_for_command("kick 2 cheating"),
+            "...and kicked the player it just banned, who is still connected",
+        )
+        check(
+            server.wait_for_command("writeBans"),
+            "...and saved the ban list, so the ban outlives a server restart",
         )
         check(
             any(c.startswith("say ") for c in server.received),
@@ -118,15 +129,19 @@ async def main() -> int:
 
         # Paced chat: the reply to `!permban` is still queued, because an Arma server drops rapid
         # `say`s. Prove it is queued and not lost — the failure mode that pacing could introduce.
+        # Wait for the thing being checked — a second `say` — rather than for a command that
+        # happens to sit next to it. Watching for "cheating" anywhere in the tail made this a race
+        # the moment a ban became three verbs: `kick 2 cheating` matches on the first pass, so the
+        # loop finished before the 0.8s pacing interval it was supposed to be waiting out.
+        def says() -> int:
+            return len([c for c in server.received if c.startswith("say ")])
+
         for _ in range(30):
             client.read_lines()
-            if any("banned" in c or "cheating" in c for c in server.received[2:]):
+            if says() >= 2:
                 break
             await asyncio.sleep(0.1)
-        check(
-            len([c for c in server.received if c.startswith("say ")]) >= 2,
-            "chat held back by pacing is released, not dropped",
-        )
+        check(says() >= 2, "chat held back by pacing is released, not dropped")
 
         # And prove the connection survives a quiet spell rather than being dropped.
         client.read_lines()

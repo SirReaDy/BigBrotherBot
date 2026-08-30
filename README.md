@@ -200,6 +200,28 @@ family of its own:
 - `git` on `PATH` (only for `b3 plugin install/update`)
 - No system time-zone database needed; `tzdata` is installed as a dependency
 
+## Sponsors
+
+If this bot runs your server, [sponsoring it](https://github.com/sponsors/SirReaDy) is what keeps it
+maintained. It is a rewrite carrying fifteen years of other people's bug reports, and the work that
+takes is unglamorous: reading a captured test from 2011 to find out why a title numbers its weapons
+differently, or driving a real bot against a fake server to discover a feature that never worked.
+
+Where it goes, in the order it gets spent:
+
+- **Titles nobody can test without owning them.** Most faults found here were found by running the
+  bot against a real server, not by reading the code. Some engines nobody has spare.
+- **What is not built yet.** A web API and dashboard over several servers, a Discord relay, and
+  Prometheus metrics. None of the three has a counterpart in the classic bot.
+- **Keeping 38 titles working.** A game updates its log format and the bot goes quiet about it; that
+  is the recurring cost of supporting engines their publishers stopped touching years ago.
+
+No feature here is paywalled and none will be: it is GPL, and sponsoring buys time rather than
+access. Issues and pull requests are worth as much — see [Contributing](CONTRIBUTING.md).
+
 ## License
 
-GPL-2.0-or-later, inherited from the original B3 project.
+[GPL-2.0-or-later](LICENSE), inherited from the original B3 project — the classic bot is GPL-2.0, and
+a rewrite that transplants its log grammars, RCON protocols and domain model is a derived work, so it
+carries the same licence. In practice: use it, run it, change it, ship it, but a distributed fork
+carries its source under the same terms.
