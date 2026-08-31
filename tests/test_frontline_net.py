@@ -60,7 +60,9 @@ def _client(fake: FakeFrontlineServer, **kwargs) -> FrontlineClient:
     return FrontlineClient(fake.address[0], fake.address[1], "test", timeout=0.4, **kwargs)
 
 
-def _wait_for_line(fake: FakeFrontlineServer, client: FrontlineClient, wanted: str) -> bool:
+def _wait_for_line(
+    fake: FakeFrontlineServer, client: FrontlineClient, wanted: str, timeout: float = 3.0
+) -> bool:
     """Wait for a line containing ``wanted``, keeping the lines already read.
 
     `read_lines` **consumes** what it returns, so a predicate that calls it directly throws away
@@ -74,7 +76,7 @@ def _wait_for_line(fake: FakeFrontlineServer, client: FrontlineClient, wanted: s
         seen.extend(client.read_lines())
         return any(wanted in line for line in seen)
 
-    return bool(fake.wait_for(arrived))
+    return bool(fake.wait_for(arrived, timeout=timeout))
 
 
 # -- the codec ----------------------------------------------------------------------------------
@@ -194,21 +196,31 @@ def test_logging_in_switches_the_server_reporting_on(server):
     try:
         for command in LOGGING_COMMANDS:
             assert server.wait_for(lambda c=command: c in server.received), command
-        assert server.chat_logging and server.debug_logging
+        # The flag, not just the command: `received` is appended to before the command is
+        # carried out, so the two are not the same statement.
+        assert server.wait_for(lambda: server.chat_logging and server.debug_logging)
     finally:
         client.close()
 
 
 def test_chat_really_is_silent_until_then(server):
     """Stated against the fake, because it is the whole reason those commands are sent."""
-    server.say_as("Courgette", "hello")  # chat_logging is False: nothing is emitted
-    assert server._conn is None or True  # nothing to read; the point is that nothing was sent
-
     client = _client(server)
     client.open()
     try:
+        # `open` sends them, but the server acts on them on its own thread and chat stays off until
+        # it has. Waiting for the flag rather than for a moment is the difference between a test and
+        # a race: otherwise the line below can be spoken into a server that has not read
+        # `CHATLOGGING TRUE` yet, and nothing in this protocol ever says it a second time.
+        assert server.wait_for(lambda: server.chat_logging), "CHATLOGGING TRUE never arrived"
         server.say_as("Courgette", "hello")
         assert _wait_for_line(server, client, "CHAT:")
+
+        # And back to the state every connection starts in, which is the state a bot that skipped
+        # those commands would stay in for ever: a player talks and nothing whatever is reported.
+        server.chat_logging = False
+        server.say_as("Courgette", "anyone there?")
+        assert not _wait_for_line(server, client, "CHAT:", timeout=0.5)
     finally:
         client.close()
 
@@ -424,7 +436,9 @@ def test_a_reconnect_switches_the_reporting_back_on(server):
             client._retry_at = 0.0
             time.sleep(0.05)
         assert client.authed
-        assert server.chat_logging, "chat logging was switched on again"
+        # Again on the server's own thread: `open` has returned, but the commands it sent are
+        # only in flight until the server reads them.
+        assert server.wait_for(lambda: server.chat_logging), "chat logging was switched on again"
     finally:
         client.close()
 
