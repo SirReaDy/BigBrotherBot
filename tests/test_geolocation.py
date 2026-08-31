@@ -307,3 +307,26 @@ def test_disabling_closes_the_files(console):
     assert reader.closed is True
     assert asn.closed is True
     assert plugin.reader is None
+
+
+def test_a_database_named_relative_to_the_config_is_found(console, tmp_path, caplog):
+    """`@conf/GeoLite2-City.mmdb` is how an instance names a file beside its own config.
+
+    It is the convention every other path in this bot uses — banlist's lists, the status file, the
+    sqlite database — and this plugin was the one that did not honour it. An operator who followed it
+    was told `database '@conf/GeoLite2-City.mmdb' does not exist`, which sends them looking for a
+    directory called `@conf`.
+    """
+    conf = tmp_path / "instance"
+    conf.mkdir()
+    (conf / "GeoLite2-City.mmdb").write_bytes(b"a real file, if not a real database")
+    console.config_path = conf / "b3.yaml"
+
+    plugin = GeolocationPlugin(console, {"settings": {"database": "@conf/GeoLite2-City.mmdb"}})
+    with caplog.at_level("ERROR"):
+        plugin.open_database("@conf/GeoLite2-City.mmdb")
+
+    assert "does not exist" not in caplog.text, "the file is beside the config, where it was named"
+    assert "@conf" not in caplog.text, (
+        "and the token is never reported back as though it were a path"
+    )

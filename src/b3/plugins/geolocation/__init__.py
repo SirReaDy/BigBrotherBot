@@ -38,7 +38,6 @@ from __future__ import annotations
 import logging
 import unicodedata
 from dataclasses import dataclass, replace
-from pathlib import Path
 from typing import Any, Protocol
 
 from b3.core.console import Console
@@ -223,13 +222,20 @@ class GeolocationPlugin(Plugin):
         """Open an `.mmdb`, or explain once why not. Never raises: this is an optional feature."""
         if not path:
             return None
-        if not Path(path).is_file():
+        # `@conf/GeoLite2-City.mmdb` is how an instance names a file that lives beside its own
+        # config, and it is the convention the rest of this bot's paths use. Reported unresolved,
+        # the error names a directory called `@conf` that nobody has.
+        resolved = self.resolve_path(path)
+        if not resolved.is_file():
             log.error(
-                "geolocation: %s %r does not exist; nothing will be looked up in it", what, path
+                "geolocation: %s %r does not exist; nothing will be looked up in it",
+                what,
+                str(resolved),
             )
             return None
+        path = str(resolved)
         try:
-            import maxminddb  # type: ignore[import-not-found]
+            import maxminddb
         except ImportError:
             log.error(
                 "geolocation: the `maxminddb` package is not installed, so %r cannot be read. "

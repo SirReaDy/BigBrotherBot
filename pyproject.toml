@@ -88,6 +88,10 @@ dev = [
     # `mypy --strict` cannot see into them and reports every call site as untyped.
     "types-PyYAML>=6.0",
     "types-paramiko>=3.4",
+    # The optional geolocation reader, here so `mypy --strict` can see into it. Without it that
+    # plugin's only import is unresolvable, every call on the reader is untyped, and the file passes
+    # on an ignore rather than on being checked — which is not the same thing.
+    "maxminddb>=2.6",
 ]
 # Building the documentation site. An extra rather than a dev dependency: `pytest`, `ruff` and `mypy`
 # are what you need to *change* this project, and the site is what you need to publish it — a
