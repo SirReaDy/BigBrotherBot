@@ -39,7 +39,11 @@ class PushClient(RconClient, LogSource, Protocol):
 
 
 def build_bot(
-    config: Config, *, rcon: RconClient | None = None, conf_dir: Path | None = None
+    config: Config,
+    *,
+    rcon: RconClient | None = None,
+    conf_dir: Path | None = None,
+    config_path: str = "",
 ) -> Bot:
     """Build a bot with the plugins listed in the config, loaded in dependency order."""
     from b3.core.plugininstall import installed_plugins_dir, register_installed_plugins
@@ -53,6 +57,11 @@ def build_bot(
     register_installed_plugins(installed_plugins_dir(config.bot.plugins_dir, conf_dir))
 
     bot = Bot(config, rcon=rcon)
+    # Before the plugins load, not after. A plugin resolving `@conf` in its own settings asks the bot
+    # for this path, and a bot that does not know yet falls back to the working directory — so
+    # banlist looked for its list files wherever the operator happened to `cd` from, and said it
+    # could not read them.
+    bot.config_path = Path(config_path) if config_path else None
     for loaded in load_plugins(bot, config, conf_dir=conf_dir):
         bot.add_plugin(loaded.plugin, loaded.name)
     bot.start()
@@ -390,8 +399,8 @@ async def _run_live(
         return 1
     connection = _connect(config)
     rcon, source = connection.rcon, connection.source
-    bot = build_bot(config, rcon=rcon, conf_dir=conf_dir)
-    bot.config_path = Path(config_path) if config_path else None  # so `!reconfig` can re-read it
+    # `config_path` is also what `!reconfig` re-reads.
+    bot = build_bot(config, rcon=rcon, conf_dir=conf_dir, config_path=config_path)
 
     from b3.net.logsource import LogSourceError
 
@@ -444,8 +453,7 @@ async def _run_replay(
 ) -> None:
     from b3.net.logsource import FileLogSource
 
-    bot = build_bot(config, conf_dir=conf_dir)  # no rcon in replay mode
-    bot.config_path = Path(config_path) if config_path else None
+    bot = build_bot(config, conf_dir=conf_dir, config_path=config_path)  # no rcon in replay mode
     source = FileLogSource(logfile, encoding=config.server.encoding, from_start=True)
     source.open()
     lines = source.read_lines()
