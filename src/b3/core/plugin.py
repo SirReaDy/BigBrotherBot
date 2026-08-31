@@ -10,6 +10,8 @@ state, so disabling a plugin cleanly silences its handlers.
 from __future__ import annotations
 
 import logging
+from pathlib import Path
+
 from abc import ABC
 from collections.abc import Callable
 from typing import Any
@@ -39,6 +41,25 @@ class Plugin(ABC):
         self._subs: list[Subscription] = []
         self._tasks: list[ScheduledTask] = []  # scheduled work, torn down on unload
         self._commands: list[Command] = []
+
+    def resolve_path(self, value: str) -> Path:
+        """Expand the `@b3` / `@conf` / `@home` tokens a path setting may use.
+
+        `@conf` is the directory this server's main config was loaded from, which is what makes an
+        instance directory portable: the database, the ban lists and the status file are named
+        relative to the config that mentions them rather than to whatever directory the bot happened
+        to be started from.
+
+        Here rather than in each plugin because it was in three of them already, in three copies, and
+        the plugins that had *not* copied it reported the token back as though it were a filename —
+        "database '@conf/dbip-country-lite.mmdb' does not exist", which sends an operator looking for a
+        directory called `@conf`.
+        """
+        from b3.config.loader import resolve_path_token
+
+        config_path = getattr(self.console, "config_path", None)
+        conf_dir = Path(config_path).parent if config_path else None
+        return Path(resolve_path_token(value, conf_dir))
 
     # -- lifecycle hooks (override as needed) ------------------------------
 

@@ -41,7 +41,7 @@ straight answers when something is misconfigured.
 **Where it stands today.** All 59 classic admin commands at the classic levels, 38 game titles across
 thirteen parser families — 34 of the classic bot's 37, plus four it never had — and every core service the
 old bot offered, plus remote log tailing, PunkBuster, per-server deployment and pre-flight checks it
-never had. 3,049 tests, `mypy --strict` clean.
+never had. 3,066 tests, `mypy --strict` clean.
 
 ## What was deleted, and what was rebuilt
 
@@ -74,7 +74,7 @@ account to hold, no terms accepted, no rate limit anybody agreed to, and nothing
 or being blocked on a Tuesday.
 
 The privacy question came up once before here, over the geolocation plugins, and it was answered by
-finding a local alternative: a MaxMind-format file the operator supplies, so **no player address
+finding a local alternative: an `.mmdb` file that ships with the bot, so **no player address
 leaves the machine**. There is no local equivalent for translation. That makes this a real decision
 rather than a missing dependency, and the decision is no — a bot that quietly forwards a server's
 chat to somebody else's API is not a default we are willing to ship. Nothing here replaces it, and

@@ -2,9 +2,9 @@
 
 There are no captured tests for this one, and the classic's own design is what these tests are about.
 It had four backends tried in a fixed order — `ip-api.com`, `telize.com`, `freegeoip.net`, then a local
-MaxMind database **last** — of which two have since shut down, so on a current network every arriving
+local database **last** — of which two have since shut down, so on a current network every arriving
 player cost two doomed HTTP requests before anything useful was tried. The local database it shipped in
-the repository was MaxMind's legacy format, discontinued in 2018.
+the repository was a legacy format, discontinued in 2018.
 
 So the tests here are about a local database read: the record shapes the two current vendors publish
 (they differ, and both have to work), and what happens when there is no database, no library, or no
@@ -25,7 +25,7 @@ from b3.plugins.geolocation import (
     location_from_record,
 )
 
-#: A GeoLite2-City record, trimmed to the keys this reads. Real shape, from MaxMind's own docs.
+#: A city-edition record, trimmed to the keys this reads. The shape every `.mmdb` city file uses.
 CITY_RECORD = {
     "city": {"names": {"en": "Córdoba"}},
     "continent": {"code": "SA", "names": {"en": "South America"}},
@@ -264,7 +264,7 @@ async def test_without_an_asn_database_the_isp_is_simply_unknown(console):
 
 @pytest.mark.asyncio
 async def test_with_no_database_nothing_happens_and_nothing_breaks(console):
-    plugin = _plugin(console)
+    plugin = _plugin(console, database="")  # explicit: a bundled database ships with the bot now
     joe = _join(console, "Joe", ip="1.2.3.4")
 
     await _auth(console, joe)
@@ -290,8 +290,13 @@ def test_a_database_path_that_does_not_exist_is_reported_not_raised(console):
     assert plugin.reader is None
 
 
-def test_no_database_configured_opens_nothing(console):
-    plugin = GeolocationPlugin(console, {"settings": {}})
+def test_empty_database_settings_switch_the_plugin_off(console):
+    """The way to have no geolocation at all, now that a database ships with the bot.
+
+    Both settings, because they are independent: an ASN file with no country file is a legitimate
+    setup — `!isp` answers and nobody is placed — so emptying one does not empty the other.
+    """
+    plugin = GeolocationPlugin(console, {"settings": {"database": "", "asn_database": ""}})
     plugin.start()
 
     assert plugin.reader is None
@@ -307,3 +312,75 @@ def test_disabling_closes_the_files(console):
     assert reader.closed is True
     assert asn.closed is True
     assert plugin.reader is None
+
+
+def test_a_database_named_relative_to_the_config_is_found(console, tmp_path, caplog):
+    """`@conf/dbip-country-lite.mmdb` is how an instance names a file beside its own config.
+
+    It is the convention every other path in this bot uses — banlist's lists, the status file, the
+    sqlite database — and this plugin was the one that did not honour it. An operator who followed it
+    was told `database '@conf/dbip-country-lite.mmdb' does not exist`, which sends them looking for a
+    directory called `@conf`.
+    """
+    conf = tmp_path / "instance"
+    conf.mkdir()
+    (conf / "dbip-country-lite.mmdb").write_bytes(b"a real file, if not a real database")
+    console.config_path = conf / "b3.yaml"
+
+    plugin = GeolocationPlugin(console, {"settings": {"database": "@conf/dbip-country-lite.mmdb"}})
+    with caplog.at_level("ERROR"):
+        plugin.open_database("@conf/dbip-country-lite.mmdb")
+
+    assert "does not exist" not in caplog.text, "the file is beside the config, where it was named"
+    assert "@conf" not in caplog.text, (
+        "and the token is never reported back as though it were a path"
+    )
+
+
+def test_a_fresh_install_can_place_a_player_with_nothing_configured(console):
+    """The reason a database ships with this bot at all.
+
+    The classic bot's answer to "where is this player" was three web services, two of which have since
+    shut down; ours is a file, and a file nobody has is not an answer either. So one is carried, and
+    the default setting names it.
+    """
+    plugin = GeolocationPlugin(console, {"settings": {}})
+    plugin.start()
+
+    assert plugin.reader is not None, "a fresh install places players without being configured"
+    record = plugin.reader.get("8.8.8.8")
+    assert record is not None, "and the database it carries answers"
+
+
+def test_the_shared_copy_is_preferred_over_the_bundled_one(tmp_path, monkeypatch, console):
+    """`b3 init` downloads the current month's file; without this it would never be read.
+
+    It goes to `~/.b3`, once per machine — every server on a box answers the same question about the
+    same addresses, so a copy each would be the same 8 MB several times over, refreshed on several
+    different days. The bundled copy is only ever as fresh as the release that carried it, and a
+    stale database does not say "I do not know": it names the country the address used to be in.
+    """
+    from b3.config import loader
+    from b3.plugins.geolocation import BUNDLED_DATABASE, SHARED_DATABASE
+
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setattr(loader, "_HOME_DIR", home)
+    console.config_path = tmp_path / "b3.yaml"
+    plugin = GeolocationPlugin(console, {"settings": {}})
+    plugin.on_load_config()
+
+    assert plugin.database_path() == BUNDLED_DATABASE, "nothing downloaded yet"
+
+    (home / "dbip-country-lite.mmdb").write_bytes(b"a file where init would put one")
+    assert plugin.database_path() == SHARED_DATABASE, "the downloaded one wins once it is there"
+
+
+def test_a_database_an_operator_named_is_never_silently_swapped(tmp_path, console):
+    """No fallback for a path somebody wrote themselves: they named a file, and reading a different
+    one would be worse than saying theirs is missing."""
+    console.config_path = tmp_path / "b3.yaml"
+    plugin = GeolocationPlugin(console, {"settings": {"database": "@conf/mine.mmdb"}})
+    plugin.on_load_config()
+
+    assert plugin.database_path() == "@conf/mine.mmdb"
