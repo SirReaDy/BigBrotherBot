@@ -50,7 +50,7 @@ dependencies = [
 [project.urls]
 Homepage = "https://github.com/SirReaDy/BigBrotherBot"
 Repository = "https://github.com/SirReaDy/BigBrotherBot"
-Documentation = "https://github.com/SirReaDy/BigBrotherBot/blob/main/docs/index.md"
+Documentation = "https://sirready.github.io/BigBrotherBot/"
 Issues = "https://github.com/SirReaDy/BigBrotherBot/issues"
 Changelog = "https://github.com/SirReaDy/BigBrotherBot/releases"
 
