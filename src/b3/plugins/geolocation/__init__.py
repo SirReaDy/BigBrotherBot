@@ -8,15 +8,15 @@ The whole of the port is in **where the answer comes from**, which is the one th
 wrong in a way that has only got worse with time.
 
 It carried four backends and used them in a fixed order: `ip-api.com`, then `telize.com`, then
-`freegeoip.net`, then a local MaxMind database — which was tried **last**. Two of those three web
+`freegeoip.net`, then a local database — which was tried **last**. Two of those three web
 services have since shut down, so on a current network every arriving player cost two doomed HTTP
 requests, each with its own timeout, before anything useful was tried. The local database was also
-*shipped inside the repository* as `GeoIP.dat`: MaxMind's legacy format, which stopped being updated in
+*shipped inside the repository* as `GeoIP.dat`: a legacy format, which stopped being updated in
 2018 and whose downloads were withdrawn in 2019. Porting that file would mean shipping data that
 answers with the wrong country for whole ranges.
 
-So: **one source, a local MaxMind-format database the operator points at.** Two vendors publish one —
-DB-IP's "IP to Country Lite" (a monthly `.mmdb`, no account, CC-BY) and MaxMind's GeoLite2 (a free
+So: **one source, a local `.mmdb` database.** DB-IP's "IP to Country Lite" ships with this bot (a
+monthly file, no account, CC-BY, redistributable — which is why it and not a licensed one
 account and a licence key, not redistributable). Either works; the reader is the same.
 
 What that buys, beyond being the only option that still works:
@@ -64,13 +64,18 @@ BUNDLED_DATABASE = "@b3/data/dbip-country-lite.mmdb"
 #: addresses, so a copy each would be the same 8 MB several times over.
 SHARED_DATABASE = "@home/dbip-country-lite.mmdb"
 
+#: The network-operator database, fetched alongside it. Nothing is bundled for this one: it is
+#: what `!isp` reports and a bot with no answer for that is a bot missing one command's data,
+#: not a bot that cannot place anybody.
+ASN_DATABASE = "@home/dbip-asn-lite.mmdb"
+
 DEFAULTS: dict[str, object] = {
-    # Path to a MaxMind-format database (`.mmdb`). The bundled DB-IP country file by default; set it
-    # to a GeoLite2-City to get cities, or to "" to switch this plugin off entirely.
+    # Path to an `.mmdb` database. The shared DB-IP country file by default, falling back to the copy
+    # bundled with b3; point it at DB-IP's free city edition for city names, or "" to switch off.
     "database": SHARED_DATABASE,
-    # Optional second database naming the network's operator — GeoLite2-ASN is the one that has it.
-    # Without it `isp` is simply unknown, which is a truthful answer.
-    "asn_database": "",
+    # The second database, naming the network a player is on. `b3 init` fetches this one too, and
+    # without it `isp` is simply unknown — a truthful answer, and what `!isp` reports.
+    "asn_database": ASN_DATABASE,
     # Fold place names to plain ASCII. On by default and for a real reason: the Quake 3 and Call of
     # Duty consoles cannot render anything else, and a row of question marks is worse than "Cordoba".
     "ascii_only": True,
@@ -82,7 +87,7 @@ class Location:
     """Where an address is, as far as the database goes.
 
     Every field is optional and independently so, because the databases differ in what they carry: a
-    country-only database (DB-IP Lite, GeoLite2-Country) fills in two of these, a city database most of
+    country-only database (DB-IP's country lite) fills in two of these, a city database most of
     them, and the ASN database only `isp`. The classic's object had the same shape; what it did not have
     was any way to tell "the database does not say" from "there is nothing there".
     """
@@ -141,7 +146,7 @@ def location_from_record(record: Any, *, ascii_only: bool = True) -> Location:
     """Read a GeoIP2-shaped record into a `Location`, taking whatever it happens to contain.
 
     Both vendors' files use this shape, and they carry different subsets of it: DB-IP's country-only
-    database has `country` and `continent`, GeoLite2-City adds `city`, `subdivisions`, `location` and
+    database has `country` and `continent`, a city edition adds `city`, `subdivisions`, `location` and
     `postal`. Everything is looked up defensively rather than indexed, because a record is data from a
     file the operator supplied and a missing key is not an error.
     """
@@ -228,7 +233,7 @@ class GeolocationPlugin(Plugin):
         if self.reader is None:
             log.warning(
                 "geolocation: no database is loaded, so nobody will be placed. Point `database` at a "
-                "MaxMind-format .mmdb file — DB-IP's IP to Country Lite needs no account"
+                ".mmdb file, or leave it unset to use the one that ships with this bot"
             )
 
     def database_path(self) -> str:
@@ -255,7 +260,7 @@ class GeolocationPlugin(Plugin):
         """Open an `.mmdb`, or explain once why not. Never raises: this is an optional feature."""
         if not path:
             return None
-        # `@conf/GeoLite2-City.mmdb` is how an instance names a file that lives beside its own
+        # `@conf/dbip-country-lite.mmdb` is how an instance names a file that lives beside its own
         # config, and it is the convention the rest of this bot's paths use. Reported unresolved,
         # the error names a directory called `@conf` that nobody has.
         resolved = self.resolve_path(path)
@@ -280,7 +285,7 @@ class GeolocationPlugin(Plugin):
         try:
             reader: Reader = maxminddb.open_database(path)
         except Exception as exc:  # noqa: BLE001 - a bad file must not stop the bot from starting
-            log.error("geolocation: %r could not be opened as a MaxMind database (%s)", path, exc)
+            log.error("geolocation: %r could not be opened as an .mmdb database (%s)", path, exc)
             return None
         log.info("geolocation: reading %s from %s", what, path)
         return reader

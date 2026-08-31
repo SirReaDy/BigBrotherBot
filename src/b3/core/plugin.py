@@ -52,7 +52,7 @@ class Plugin(ABC):
 
         Here rather than in each plugin because it was in three of them already, in three copies, and
         the plugins that had *not* copied it reported the token back as though it were a filename —
-        "database '@conf/GeoLite2-City.mmdb' does not exist", which sends an operator looking for a
+        "database '@conf/dbip-country-lite.mmdb' does not exist", which sends an operator looking for a
         directory called `@conf`.
         """
         from b3.config.loader import resolve_path_token

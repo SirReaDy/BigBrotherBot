@@ -379,14 +379,16 @@ Config: `examples/plugin_spawnkill.yaml`.
 ### geolocation — where a player is connecting from
 
 Answers no commands and says nothing in game: it resolves addresses and publishes the result for
-`location`, `geowelcome` and `countryfilter` to use. It reads a **local MaxMind-format `.mmdb`** and makes
+`location`, `geowelcome` and `countryfilter` to use. It reads a **local `.mmdb`** and makes
 no network requests, so no player's address leaves the machine and there is no service to be down. The
 classic plugin queried three web services before trying a local file, and two of those services have
 since shut down.
 
 You supply the database. **DB-IP "IP to Country Lite"** is a monthly `.mmdb` with no account and a CC-BY
-licence — start there; **MaxMind GeoLite2** needs a free account and a licence key but adds city, region,
-coordinates and (with GeoLite2-ASN) the network operator. Nothing needs installing for either: the reader is a dependency and a country database ships with the bot.
+licence. Nothing needs setting up: the reader is a dependency, the country database ships with the bot,
+and `b3 init` fetches the current country and ASN files into `~/.b3`, shared by every server on the
+machine. DB-IP's free city edition adds city, region and coordinates; it is 58 MB, so it is a download
+you make rather than one made for you.
 Place names are folded to ASCII by default, because a Quake 3 console cannot draw `Córdoba` and a row of
 question marks is worse than "Cordoba". Config: `examples/plugin_geolocation.yaml`.
 
@@ -397,8 +399,8 @@ The user-facing half of the geo family: it announces each arrival's place and ad
 without one it announces nothing and answers "I do not know", which is the truthful reply rather than a
 fault.
 
-What it can say depends on the database. A country file (DB-IP Lite, GeoLite2-Country) answers `!locate`;
-`!distance` needs coordinates, so a city file; `!isp` needs GeoLite2-ASN as the second database. Missing
+What it can say depends on the database. The bundled country file answers `!locate`; `!distance` needs
+coordinates, so a city file; `!isp` reads the ASN file `b3 init` fetches. Missing
 fields produce the message that says so — the classic substituted them as `--`, so a country-level
 database answered "Bob is connected from -- (Germany)". Nothing is announced for the first few minutes
 after the bot starts, since a restart mid-match authenticates everybody at once.

@@ -523,3 +523,20 @@ class FakeConsole:
 @pytest.fixture()
 def console() -> FakeConsole:
     return FakeConsole()
+
+
+@pytest.fixture(autouse=True)
+def _never_download_a_geoip_database(monkeypatch):
+    """No test reaches DB-IP, and none writes to the machine's `~/.b3`.
+
+    `b3 init` refreshes the IP-to-country database, and several tests here run `init` for reasons of
+    their own — the instance layout, game-name matching, the systemd unit. Left alone those tests
+    download 12 MB over the network and drop it in the home directory of whoever ran them, which is
+    slow, fails offline, and is not a test's business. `test_geoipdata.py` exercises the real thing
+    against bytes it makes up.
+    """
+    from b3.core import geoipdata
+
+    monkeypatch.setattr(
+        geoipdata, "refresh_all", lambda **_: ["(the geoip refresh is disabled in tests)"]
+    )

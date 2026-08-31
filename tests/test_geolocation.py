@@ -2,9 +2,9 @@
 
 There are no captured tests for this one, and the classic's own design is what these tests are about.
 It had four backends tried in a fixed order — `ip-api.com`, `telize.com`, `freegeoip.net`, then a local
-MaxMind database **last** — of which two have since shut down, so on a current network every arriving
+local database **last** — of which two have since shut down, so on a current network every arriving
 player cost two doomed HTTP requests before anything useful was tried. The local database it shipped in
-the repository was MaxMind's legacy format, discontinued in 2018.
+the repository was a legacy format, discontinued in 2018.
 
 So the tests here are about a local database read: the record shapes the two current vendors publish
 (they differ, and both have to work), and what happens when there is no database, no library, or no
@@ -25,7 +25,7 @@ from b3.plugins.geolocation import (
     location_from_record,
 )
 
-#: A GeoLite2-City record, trimmed to the keys this reads. Real shape, from MaxMind's own docs.
+#: A city-edition record, trimmed to the keys this reads. The shape every `.mmdb` city file uses.
 CITY_RECORD = {
     "city": {"names": {"en": "Córdoba"}},
     "continent": {"code": "SA", "names": {"en": "South America"}},
@@ -290,9 +290,13 @@ def test_a_database_path_that_does_not_exist_is_reported_not_raised(console):
     assert plugin.reader is None
 
 
-def test_an_empty_database_setting_switches_the_plugin_off(console):
-    """The way to have no geolocation, now that a database ships with the bot."""
-    plugin = GeolocationPlugin(console, {"settings": {"database": ""}})
+def test_empty_database_settings_switch_the_plugin_off(console):
+    """The way to have no geolocation at all, now that a database ships with the bot.
+
+    Both settings, because they are independent: an ASN file with no country file is a legitimate
+    setup — `!isp` answers and nobody is placed — so emptying one does not empty the other.
+    """
+    plugin = GeolocationPlugin(console, {"settings": {"database": "", "asn_database": ""}})
     plugin.start()
 
     assert plugin.reader is None
@@ -311,21 +315,21 @@ def test_disabling_closes_the_files(console):
 
 
 def test_a_database_named_relative_to_the_config_is_found(console, tmp_path, caplog):
-    """`@conf/GeoLite2-City.mmdb` is how an instance names a file beside its own config.
+    """`@conf/dbip-country-lite.mmdb` is how an instance names a file beside its own config.
 
     It is the convention every other path in this bot uses — banlist's lists, the status file, the
     sqlite database — and this plugin was the one that did not honour it. An operator who followed it
-    was told `database '@conf/GeoLite2-City.mmdb' does not exist`, which sends them looking for a
+    was told `database '@conf/dbip-country-lite.mmdb' does not exist`, which sends them looking for a
     directory called `@conf`.
     """
     conf = tmp_path / "instance"
     conf.mkdir()
-    (conf / "GeoLite2-City.mmdb").write_bytes(b"a real file, if not a real database")
+    (conf / "dbip-country-lite.mmdb").write_bytes(b"a real file, if not a real database")
     console.config_path = conf / "b3.yaml"
 
-    plugin = GeolocationPlugin(console, {"settings": {"database": "@conf/GeoLite2-City.mmdb"}})
+    plugin = GeolocationPlugin(console, {"settings": {"database": "@conf/dbip-country-lite.mmdb"}})
     with caplog.at_level("ERROR"):
-        plugin.open_database("@conf/GeoLite2-City.mmdb")
+        plugin.open_database("@conf/dbip-country-lite.mmdb")
 
     assert "does not exist" not in caplog.text, "the file is beside the config, where it was named"
     assert "@conf" not in caplog.text, (
@@ -376,7 +380,7 @@ def test_a_database_an_operator_named_is_never_silently_swapped(tmp_path, consol
     """No fallback for a path somebody wrote themselves: they named a file, and reading a different
     one would be worse than saying theirs is missing."""
     console.config_path = tmp_path / "b3.yaml"
-    plugin = GeolocationPlugin(console, {"settings": {"database": "@conf/GeoLite2-City.mmdb"}})
+    plugin = GeolocationPlugin(console, {"settings": {"database": "@conf/mine.mmdb"}})
     plugin.on_load_config()
 
-    assert plugin.database_path() == "@conf/GeoLite2-City.mmdb"
+    assert plugin.database_path() == "@conf/mine.mmdb"
