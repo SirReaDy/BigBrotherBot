@@ -99,9 +99,20 @@ async def main() -> int:
                 "the ban records which server issued it",
             )
 
+        # Three commands, not one. `addBan` keys on the GUID, so it works for a player who is not
+        # standing in a slot; the kick is separate because `addBan` does not remove anybody; and
+        # `writeBans` is what makes the ban survive a restart of the game server.
         check(
-            server.wait_for_command("ban 2 0 cheating"),
-            "the ban reached the server as `ban <slot> 0 <reason>`",
+            server.wait_for_command(f"addBan {BOB_GUID} 0 cheating"),
+            "the ban reached the server as `addBan <guid> 0 <reason>`",
+        )
+        check(
+            server.wait_for_command("kick 2 cheating"),
+            "...and the player was kicked, which `addBan` does not do",
+        )
+        check(
+            server.wait_for_command("writeBans"),
+            "...and the ban list was saved, so it survives a server restart",
         )
         check(
             any(c.startswith("say ") for c in server.received),
@@ -120,7 +131,7 @@ async def main() -> int:
         # `say`s. Prove it is queued and not lost — the failure mode that pacing could introduce.
         for _ in range(30):
             client.read_lines()
-            if any("banned" in c or "cheating" in c for c in server.received[2:]):
+            if len([c for c in server.received if c.startswith("say ")]) >= 2:
                 break
             await asyncio.sleep(0.1)
         check(
