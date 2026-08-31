@@ -61,7 +61,7 @@ DEFAULTS: dict[str, object] = {
 }
 
 MESSAGES = {
-    "duel_proposed": "you have challenged {name} — they have to accept it",
+    "duel_proposed": "you have challenged {name} - they have to accept it",
     "duel_challenged": "{name} challenges you to a duel: type !duel {handle} to accept",
     "duel_accepted_you": "you accepted {name}'s challenge",
     "duel_accepted_them": "{name} accepted your challenge",
@@ -69,11 +69,11 @@ MESSAGES = {
     "duel_cancelled": "the duel with {name} is off",
     "duel_none": "you have no duel running",
     "duel_none_with": "you have no duel with {name}",
-    "duel_which": "you have {count} duels running — say which, as !{command} <player>",
+    "duel_which": "you have {count} duels running - say which, as !{command} <player>",
     "duel_yourself": "you cannot duel yourself",
     "duel_already": "you are already duelling {name}",
     "duel_too_many": "you already have {count} duels running",
-    "duel_usage": "!duel <player> — challenge somebody, or accept their challenge",
+    "duel_usage": "!duel <player> - challenge somebody, or accept their challenge",
     "duel_expired": "your challenge to {name} expired",
 }
 

@@ -424,7 +424,7 @@ async def test_an_arrival_is_announced_with_their_country_when_it_is_known(conso
 
     await _arrive(console, plugin, bob)
 
-    assert console.said == ["everyone welcome Bob from Rome (Italy), player #7, to the server"]
+    assert console.said == ["everyone welcome Bob from Rome (Italy) to the server"]
 
 
 @pytest.mark.asyncio
@@ -446,7 +446,7 @@ async def test_without_geolocation_the_plain_announcement_is_used(console):
 
     await _arrive(console, plugin, bob)
 
-    assert console.said == ["everyone welcome Bob, player #7, to the server"]
+    assert console.said == ["everyone welcome Bob to the server"]
 
 
 @pytest.mark.asyncio
@@ -457,4 +457,4 @@ async def test_a_player_geolocation_could_not_place_gets_the_plain_announcement(
 
     await _arrive(console, plugin, bob)
 
-    assert console.said == ["everyone welcome Bob, player #7, to the server"]
+    assert console.said == ["everyone welcome Bob to the server"]

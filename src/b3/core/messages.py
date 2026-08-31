@@ -42,10 +42,10 @@ DEFAULT_MESSAGES: dict[str, str] = {
     # -- target resolution -------------------------------------------------
     "player_not_found": "no player found matching '{handle}'",
     "stored_player_not_found": "no stored player found matching '{handle}'",
-    "ambiguous_target": "{count} players match — be more specific or use @id: {candidates}",
+    "ambiguous_target": "{count} players match - be more specific or use @id: {candidates}",
     # Connected players are named by slot rather than @dbid: the slot is on screen and in `!status`,
     # and a player who has just joined may not have a database id yet.
-    "ambiguous_connected": "{count} players match — be more specific or use the slot: {candidates}",
+    "ambiguous_connected": "{count} players match - be more specific or use the slot: {candidates}",
     # -- moderation --------------------------------------------------------
     "kicked": "{name} was kicked ({reason})",
     "kicked_no_reason": "{name} was kicked",
@@ -57,7 +57,7 @@ DEFAULT_MESSAGES: dict[str, str] = {
     "unbanned": "{name} was unbanned ({count} {noun})",
     "no_active_ban": "{name} has no active ban",
     "invalid_duration": "invalid duration: '{value}' (try 30m, 2h, 1d)",
-    "name_too_long": "your name is too long — this game allows {limit} characters",
+    "name_too_long": "your name is too long - this game allows {limit} characters",
     # -- penalty inspection ------------------------------------------------
     "baninfo": "{name}: {details}",
     "baninfo_none": "{name} is not banned",
@@ -102,7 +102,7 @@ DEFAULT_MESSAGES: dict[str, str] = {
     "maps_rotation": "map rotation: {maps}",
     "maps_none": "the server has no map rotation configured",
     "map_not_found": "no map in the rotation matching '{map}'",
-    "map_ambiguous": "{count} maps match — be more specific: {maps}",
+    "map_ambiguous": "{count} maps match - be more specific: {maps}",
     "nextmap": "next map: {map}",
     "nextmap_unknown": "could not work out the next map",
     "status": "database {database}, {players} player(s) on {map}",
@@ -114,14 +114,14 @@ DEFAULT_MESSAGES: dict[str, str] = {
     "punkbuster_reply": "PunkBuster says: {reply}",
     # -- lookup / info -------------------------------------------------------
     "found_player": "found {name} in slot {cid}",
-    "lookup_found": "@{id} {name} — last seen {when}",
+    "lookup_found": "@{id} {name} - last seen {when}",
     "lookup_none": "no stored player matches '{handle}'",
     "seen": "{name} was last seen {when}",
     "player_list": "players: {players}",
     "player_list_none": "nobody is connected",
     "player_line": "[{cid}] {name} @{id} level {level} ping {ping}",
     "time": "server time: {time}",
-    "b3_version": "{name} {version} — {plugins} plugin(s), {commands} commands",
+    "b3_version": "{name} {version} - {plugins} plugin(s), {commands} commands",
     "b3_update": "version {version} is available; the operator can install it with `b3 update`",
     "poked": "{message} {name}!",
     "noticed": "notice added to {name}: {notice}",

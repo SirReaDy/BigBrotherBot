@@ -71,7 +71,7 @@ ANY_PLACEHOLDER_RE = re.compile(r"<[A-Z][A-Z0-9_:]*[^<>]*>")
 
 MESSAGES = {
     "custom_needs_argument": "that command needs something after it",
-    "custom_no_such_map": "no map like {map} — try {maps}",
+    "custom_no_such_map": "no map like {map} - try {maps}",
     "custom_unknown_killer": "nobody has killed you yet",
     "custom_unknown_victim": "you have not killed anybody yet",
 }

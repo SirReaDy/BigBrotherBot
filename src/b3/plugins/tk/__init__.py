@@ -116,8 +116,8 @@ MESSAGES = {
     "tk_cleared": "{name} cleared of {points} TK point(s)",
     # Names the slot to type, because the victim is being asked to act in the two seconds before
     # they respawn and "forgive him" is not a command.
-    "tk_alert": "{name} will be kicked if nobody forgives them — type !forgive {cid} [damage: {points}]",
-    "tk_warning_reason": "do not attack teammates — you hit {victim} [{points}]",
+    "tk_alert": "{name} will be kicked if nobody forgives them - type !forgive {cid} [damage: {points}]",
+    "tk_warning_reason": "do not attack teammates - you hit {victim} [{points}]",
     "tk_request_action": "type !fp to forgive {attacker}",
 }
 

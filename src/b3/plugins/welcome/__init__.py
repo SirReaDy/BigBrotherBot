@@ -87,27 +87,25 @@ DEFAULTS: dict[str, object] = {
 }
 
 MESSAGES = {
-    "welcome_first": "welcome {name}, this must be your first visit — you are player #{id}. "
-    "Type !help for help",
-    "welcome_newb": "welcome back {name} [@{id}], last seen {last_visit}. Type !register to "
-    "register, !help for help",
-    "welcome_user": "welcome back {name} [@{id}], last seen {last_visit} — you are a {group}, "
-    "here {connections} times",
-    "announce_first": "everyone welcome {name}, player #{id}, to the server",
-    "announce_user": "everyone welcome back {name}, player #{id} — here {connections} times",
+    "welcome_first": "welcome {name}, this must be your first visit. Type !help for help",
+    "welcome_newb": "welcome back {name}, last seen {last_visit}. Type !register to register, "
+    "!help for help",
+    "welcome_user": "welcome back {name}, last seen {last_visit} - you are a {group}, here "
+    "{connections} times",
+    "announce_first": "everyone welcome {name} to the server",
+    "announce_user": "everyone welcome back {name} - here {connections} times",
     # Used instead of the two above when `geolocation` has placed the player. This is the whole of
     # what the classic bot's separate `geowelcome` plugin did — see the note in this module's
     # docstring about why it is two messages here rather than a plugin.
-    "announce_first_geo": "everyone welcome {name} from {place}, player #{id}, to the server",
-    "announce_user_geo": "everyone welcome back {name} from {place}, player #{id} — here "
-    "{connections} times",
+    "announce_first_geo": "everyone welcome {name} from {place} to the server",
+    "announce_user_geo": "everyone welcome back {name} from {place} - here {connections} times",
     "greeting_announce": "{name} joined: {greeting}",
     "greeting_none": "you have no greeting set",
     "greeting_yours": "your greeting is: {greeting}",
     "greeting_changed": "greeting changed to: {greeting}",
     "greeting_cleared": "greeting cleared",
     "greeting_too_long": "that greeting is {length} characters; the limit is {limit}",
-    "greeting_bad": "a greeting cannot use {{{field}}} — try {fields}",
+    "greeting_bad": "a greeting cannot use {{{field}}} - try {fields}",
     # A player the database has never dated. "Unknown" is a truthful answer and the classic's own.
     "welcome_unknown_visit": "unknown",
 }

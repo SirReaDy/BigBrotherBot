@@ -107,20 +107,20 @@ DEFAULTS: dict[str, object] = {
 }
 
 MESSAGES = {
-    "makeroom_info": "making room for a member — please come back again",
-    "makeroom_auto_info": "a slot is kept free for a member — please come back again",
+    "makeroom_info": "making room for a member - please come back again",
+    "makeroom_auto_info": "a slot is kept free for a member - please come back again",
     "makeroom_kick_announce": "kicking {name} to free a slot",
     "makeroom_kick_reason": "to make room for a server member",
     "makeroom_freed": "{name} was kicked to free a slot",
-    "makeroom_freed_retained": "{name} was kicked to free a slot — a member has {seconds}s to take it",
+    "makeroom_freed_retained": "{name} was kicked to free a slot - a member has {seconds}s to take it",
     "makeroom_none": "there is nobody here I may kick to free a slot",
     "makeroom_in_progress": "a makeroom request is already running",
-    "makeroom_retaining": "a slot is already being held for a member — {seconds}s left",
+    "makeroom_retaining": "a slot is already being held for a member - {seconds}s left",
     "makeroom_not_full": "no need: {players} of {slots} slots are taken",
     "makeroom_auto_usage": "expecting on or off",
     "makeroom_auto_on": "makeroom automation is on, keeping {count} of {slots} slots free",
     "makeroom_auto_off": "makeroom automation is off",
-    "makeroom_auto_unavailable": "this server has not said how many slots it has — "
+    "makeroom_auto_unavailable": "this server has not said how many slots it has - "
     "set total_slots in the makeroom config",
 }
 

@@ -127,7 +127,7 @@ PROTECT_DEFAULTS: dict[str, object] = {
 }
 
 MESSAGES = {
-    "callvote_denied": "you may not call a {type} vote — that needs {group}",
+    "callvote_denied": "you may not call a {type} vote - that needs {group}",
     "callvote_next_map": "next map: {map}",
     "callvote_vetoed": "the vote was cancelled",
     "callvote_veto_impossible": "this game has no way to cancel a vote",

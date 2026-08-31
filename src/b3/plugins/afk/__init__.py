@@ -106,8 +106,8 @@ DEFAULTS: dict[str, object] = {
 
 MESSAGES = {
     "afk_are_you_there": "are you AFK? Say something or you will be kicked",
-    "afk_suspected": "{name} may be AFK — kicking in {seconds}s unless they say something",
-    "afk_still_here": "you are not AFK, then — thanks",
+    "afk_suspected": "{name} may be AFK - kicking in {seconds}s unless they say something",
+    "afk_still_here": "you are not AFK, then - thanks",
     "afk_kick_reason": "AFK for too long",
 }
 
