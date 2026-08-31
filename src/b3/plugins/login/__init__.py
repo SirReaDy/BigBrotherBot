@@ -71,18 +71,18 @@ DEFAULTS: dict[str, object] = {
 
 MESSAGES = {
     "login_needed": "log in to use your admin rights: type {command} in the console",
-    "login_no_password": "you have no password set, so your admin rights are inactive — ask a "
+    "login_no_password": "you have no password set, so your admin rights are inactive - ask a "
     "superadmin to set one with !setpassword",
-    "login_done": "logged in — your {group} rights are active",
+    "login_done": "logged in - your {group} rights are active",
     "login_already": "you are already logged in",
     "login_not_needed": "you do not need to log in",
     "login_denied": "wrong password",
-    "login_locked": "too many wrong passwords — try again in {wait}",
+    "login_locked": "too many wrong passwords - try again in {wait}",
     "login_usage": "type this in the console, not in chat: {command}",
     "login_password_set": "password saved",
     "login_password_set_for": "password saved for {name}",
     "login_password_too_low": "you can only set a password for yourself or somebody below you",
-    "login_password_short": "that password is too short — use at least {minimum} characters",
+    "login_password_short": "that password is too short - use at least {minimum} characters",
 }
 
 #: Refused outright. Four characters is not a password when the alternative is somebody else's `!ban`.

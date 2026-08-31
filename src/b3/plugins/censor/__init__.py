@@ -64,7 +64,7 @@ PENALTIES = ("warning", "kick", "tempban", "ban")
 MESSAGES = {
     "censor_chat": "watch your language",
     "censor_name": "your name is not acceptable here",
-    "censor_muted": "{name} is muted for {minutes} minutes — watch your language",
+    "censor_muted": "{name} is muted for {minutes} minutes - watch your language",
 }
 
 

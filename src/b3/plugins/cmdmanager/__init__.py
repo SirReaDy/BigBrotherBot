@@ -67,7 +67,7 @@ MESSAGES = {
     "cmd_no_grant": "{name} had no grant for {command}",
     "cmd_can_use": "{name} can use {command}",
     "cmd_cannot_use": "{name} cannot use {command}",
-    "cmd_not_stored": "changes will be lost when the bot restarts — this storage keeps nothing",
+    "cmd_not_stored": "changes will be lost when the bot restarts - this storage keeps nothing",
 }
 
 

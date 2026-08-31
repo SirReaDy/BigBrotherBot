@@ -78,7 +78,7 @@ VERB_RE = re.compile(r"^[a-z][a-z0-9_]*$", re.IGNORECASE)
 COD_TITLES: tuple[str, ...] = tuple(sorted(cod_profiles.ALL))
 
 MESSAGES = {
-    "codam_needs_command": "name the admin-mod command to send — see !help codam",
+    "codam_needs_command": "name the admin-mod command to send - see !help codam",
     "codam_sent": "sent {command} to the admin mod",
     "codam_no_slot": "the server has given {name} no slot number, so the mod cannot be told",
 }

@@ -126,7 +126,7 @@ async def test_a_vote_from_somebody_below_the_level_is_cancelled(console):
 
     assert console.vote_cancels == 1
     assert plugin.current is None
-    assert _told(console, caller) == ["you may not call a kick vote — that needs Admin"]
+    assert _told(console, caller) == ["you may not call a kick vote - that needs Admin"]
 
 
 @pytest.mark.asyncio

@@ -63,7 +63,7 @@ RADIO_DEFAULTS: dict[str, object] = {
 MESSAGES = {
     "spam_warning": "do not spam, you have been warned",
     "spamins": "{name} has {points} spam point(s)",
-    "radio_muted": "your radio is off for {seconds} seconds — stop spamming it",
+    "radio_muted": "your radio is off for {seconds} seconds - stop spamming it",
 }
 
 

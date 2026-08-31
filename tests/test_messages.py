@@ -146,3 +146,39 @@ def test_two_plugins_registering_the_same_key_keep_the_first():
     messages.register_defaults({"shared": "first"})
     messages.register_defaults({"shared": "second"})
     assert messages.get("shared") == "first"
+
+
+def test_every_shipped_message_can_be_printed_by_the_game():
+    """A message a console cannot encode is a message nobody reads.
+
+    Found on a live CoD4X server: the greeting arrived as "player #2 ? here 5 times". The Call of
+    Duty and Quake 3 families read and write **latin-1**, so the em dash these tables were written
+    with — U+2014, which is not in latin-1 — reached the player as a question mark. Sixty-three
+    shipped messages had one, across the core table and twenty-two plugins.
+
+    Checked against latin-1 rather than ASCII because that is the narrowest encoding any supported
+    title uses, and because an accented name in a message is fine while typographic punctuation is
+    not.
+    """
+    import importlib
+    import pkgutil
+
+    import b3.plugins
+    from b3.core.messages import DEFAULT_MESSAGES
+
+    tables = {"core": DEFAULT_MESSAGES}
+    for module in pkgutil.iter_modules(b3.plugins.__path__):
+        plugin = importlib.import_module(f"b3.plugins.{module.name}")
+        table = getattr(plugin, "MESSAGES", None)
+        if isinstance(table, dict):
+            tables[module.name] = table
+
+    unprintable = [
+        f"{owner}.{key}: {char!r} in {text!r}"
+        for owner, table in tables.items()
+        for key, text in table.items()
+        if isinstance(text, str)
+        for char in text
+        if ord(char) > 255
+    ]
+    assert not unprintable, "\n".join(unprintable)

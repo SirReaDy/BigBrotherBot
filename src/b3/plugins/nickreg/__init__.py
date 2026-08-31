@@ -72,7 +72,7 @@ MESSAGES = {
     "nick_none": "{name} has no registered nicknames",
     "nick_list": "{name} has registered: {nicks}",
     "nick_not_yours": "you cannot manage {name}'s registered nicknames",
-    "nick_stolen": "that nickname is registered to somebody else — please change it",
+    "nick_stolen": "that nickname is registered to somebody else - please change it",
 }
 
 

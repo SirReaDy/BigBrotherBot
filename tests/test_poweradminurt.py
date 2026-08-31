@@ -1774,7 +1774,7 @@ async def test_a_dominant_side_is_named(console):
 
     plugin.advise(0.6, "advise")  # 5 * 0.6 = 3.0 -> "dominating", and unfair
 
-    assert console.said == ["blue team is now dominating — !bal would even them up"]
+    assert console.said == ["blue team is now dominating - !bal would even them up"]
 
 
 @pytest.mark.asyncio
@@ -1812,7 +1812,7 @@ async def test_a_mild_difference_needs_no_action(console):
 
     plugin.advise(0.3, "advise")  # 1.5 -> "stronger", below the unfair threshold
 
-    assert console.said == ["blue team is now stronger — nothing worth doing about it yet"]
+    assert console.said == ["blue team is now stronger - nothing worth doing about it yet"]
 
 
 @pytest.mark.asyncio
@@ -2408,7 +2408,7 @@ async def test_a_newcomer_is_told_what_a_helmet_is_for(console):
     for _ in range(3):
         await _hit(console, bob, ann, "head")
 
-    assert _told(console, ann) == ["3 hits to the head — a helmet would have stopped some of those"]
+    assert _told(console, ann) == ["3 hits to the head - a helmet would have stopped some of those"]
 
 
 @pytest.mark.asyncio
@@ -2448,7 +2448,7 @@ async def test_kevlar_advice_counts_the_torso(console):
     for _ in range(2):
         await _hit(console, bob, ann, "torso")
 
-    assert _told(console, ann) == ["2 hits to the torso — kevlar would keep you alive longer"]
+    assert _told(console, ann) == ["2 hits to the torso - kevlar would keep you alive longer"]
 
 
 @pytest.mark.asyncio

@@ -83,7 +83,7 @@ MESSAGES = {
     "banlist_none": "no ban lists are configured",
     "banlist_updated": "{list}: updated, {entries} entries",
     "banlist_unchanged": "{list}: unchanged",
-    "banlist_failed": "{list}: update failed — {reason}",
+    "banlist_failed": "{list}: update failed - {reason}",
     "banlist_checking": "checking {count} player(s) against {lists} list(s)",
 }
 

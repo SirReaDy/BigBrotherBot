@@ -105,7 +105,7 @@ MESSAGES = {
     "ussd_started": "recording {name} to {file}",
     "ussd_started_for": "recording {name} to {file}, stopping in {minutes} minute(s)",
     "ussd_already": "{name} is already being recorded",
-    "ussd_waiting": "{name} has not joined a team yet — recording will start when they do",
+    "ussd_waiting": "{name} has not joined a team yet - recording will start when they do",
     "ussd_refused": "the server would not record {name}: {reply}",
     "ussd_stopped": "stopped recording {name}",
     "ussd_stop_refused": "the server said: {reply}",
