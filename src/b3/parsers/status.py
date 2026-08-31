@@ -155,6 +155,15 @@ def _parse_rows(text: str, row_re: re.Pattern[str], identity: str) -> list[Playe
             # the bot's guid straight back, and every AI that ever played would end up sharing one
             # database row, with a single level and ban history between them.
             chosen = ""
+        # The identity under the *other* name this table gives it — the one the log uses. Blank for
+        # an AI player, whose `chosen` was just cleared: giving them a second spelling of an identity
+        # they must not have would put every bot back on one shared record through the other door.
+        raw_guid = (groups.get("guid") or "").strip()
+        alt_guid = (
+            raw_guid
+            if chosen and raw_guid not in ("", "0") and raw_guid.lower() != chosen.lower()
+            else ""
+        )
         lobby = bool(groups.get("lobby"))
         seen = players.get(match["slot"])
         if seen is not None and (lobby or not seen.lobby):
@@ -165,6 +174,7 @@ def _parse_rows(text: str, row_re: re.Pattern[str], identity: str) -> list[Playe
             name=match["name"].strip(),
             guid=chosen,
             steam_id=steam if steam not in ("", "0") else "",
+            alt_guid=alt_guid,
             ip=groups.get("ip") or "",
             # Every one of these is read defensively, because a row can legitimately omit them:
             # a Plutonium table prints `localhost` with no port for a listen server, and an

@@ -780,7 +780,7 @@ class Bot:
             return None
         for info in players:
             if info.cid == cid and info.ip:
-                return AuthInfo(cid=cid, guid=info.guid, ip=info.ip)
+                return AuthInfo(cid=cid, guid=info.guid, ip=info.ip, alt_guid=info.alt_guid)
         return None
 
     def _on_resolved(self, info: AuthInfo, attempt: int) -> None:
@@ -788,10 +788,17 @@ class Bot:
         client = self.clients.get_by_cid(info.cid)
         if client is None:
             return
-        if client.guid and info.guid and not client.guid.lower().startswith(info.guid.lower()):
-            # The slot was recycled by someone else while we were polling.
-            log.info("auth resolve ignored: slot %s is now a different player", info.cid)
-            return
+        if client.guid and info.guid:
+            spelled = PlayerInfo(cid=info.cid, guid=info.guid, alt_guid=info.alt_guid)
+            if not self._names_the_same_player(client.guid, spelled):
+                # The slot was recycled by someone else while we were polling.
+                log.info("auth resolve ignored: slot %s is now a different player", info.cid)
+                return
+            if not client.guid.lower().startswith(info.guid.lower()):
+                # This poll is the first thing that can say who the player really is — it is what
+                # the join scheduled it for. Converging here rather than waiting for the roster sync
+                # is the difference between a second of being a stranger and five minutes of it.
+                self._adopt_identity(client, spelled)
         client.ip = info.ip
         if client.id is not None:
             self.storage.save_client(client)
@@ -1638,10 +1645,14 @@ class Bot:
             info = replace(info, guid=self.profile.canonical_guid(info.guid))
             client = self.clients.get_by_cid(info.cid)
             if client is not None and client.guid and info.guid:
-                if not client.guid.lower().startswith(info.guid.lower()):
+                if not self._names_the_same_player(client.guid, info):
                     # Someone else is in that slot now; forget the stale record first.
                     self._drop_client(client)
                     client = None
+                elif not client.guid.lower().startswith(info.guid.lower()):
+                    # The same person under the other spelling this engine uses. Converge, or they
+                    # keep two records and whichever spoke last decides who they are.
+                    self._adopt_identity(client, info)
             if client is None:
                 # An AI player takes a slot and appears in this table like anyone else. It must not
                 # be given an identity: every bot on the server reports the same guid, so they would
@@ -1673,6 +1684,42 @@ class Bot:
                 log.info("sync: %s is no longer on the server", client.name)
                 self._drop_client(client)
         return self.clients.connected()
+
+    @staticmethod
+    def _names_the_same_player(guid: str, info: PlayerInfo) -> bool:
+        """Whether a client's guid and a status row are one person, in either of the engine's spellings.
+
+        A title that spells one account two ways usually does it once per source. CS2's two spellings
+        convert into each other, which is what `GameProfile.canonical_guid` is for; CoD4X's do not —
+        its log names a player by a per-session number and its status table by their Steam64 id, two
+        unrelated numbers printed side by side in the same row. So the row itself is the only thing
+        that can say they are the same person, and this asks it.
+        """
+        wanted = guid.lower()
+        return any(
+            spelling and wanted.startswith(spelling.lower())
+            for spelling in (info.guid, info.alt_guid)
+        )
+
+    def _adopt_identity(self, client: Client, info: PlayerInfo) -> None:
+        """Re-key a client onto the identity the server states, and authenticate them again.
+
+        A client built from a log line is spelled the way the log spells it — on CoD4X, a per-session
+        number — and has already been authenticated as whoever that number is: a stranger, with no
+        level, no history and none of their bans. Left alone the same person holds two records that
+        take turns, so an admin who has just been made superadmin is a nobody again a second later.
+        `id` and `authed` are cleared so the record for the real identity is the one loaded.
+        """
+        log.info(
+            "sync: slot %s is %s, which the log spells %s; taking the identity the server states",
+            info.cid,
+            info.guid,
+            client.guid,
+        )
+        client.guid = info.guid
+        client.id = None
+        client.authed = False
+        self._authenticate(client)
 
     def _apply_team(self, client: Client, info: PlayerInfo) -> None:
         """Take the team and squad off a roster row, where the engine states them.

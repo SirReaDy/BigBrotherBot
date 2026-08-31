@@ -29,6 +29,10 @@ class AuthInfo:
     guid: str | None = None
     pbid: str = ""
     ip: str = ""
+    #: The same account as the *log* spells it, when the status table names it another way. CoD4X
+    #: prints both; without this the resolver cannot tell that the row it found describes the player
+    #: who just joined, and throws the answer away as somebody else's.
+    alt_guid: str = ""
 
 
 # resolve(cid) -> AuthInfo when the player is resolvable, else None (retry).
