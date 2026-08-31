@@ -386,7 +386,7 @@ since shut down.
 
 You supply the database. **DB-IP "IP to Country Lite"** is a monthly `.mmdb` with no account and a CC-BY
 licence — start there; **MaxMind GeoLite2** needs a free account and a licence key but adds city, region,
-coordinates and (with GeoLite2-ASN) the network operator. Install the reader with `pip install b3ng[geo]`.
+coordinates and (with GeoLite2-ASN) the network operator. Nothing needs installing for either: the reader is a dependency and a country database ships with the bot.
 Place names are folded to ASCII by default, because a Quake 3 console cannot draw `Córdoba` and a row of
 question marks is worse than "Cordoba". Config: `examples/plugin_geolocation.yaml`.
 

@@ -44,6 +44,11 @@ dependencies = [
     # IANA time-zone database for bot.time_zone / schedules. Windows ships no zoneinfo data at all,
     # and many slim Linux containers omit it too.
     "tzdata>=2024.1",
+    # Reads the IP-to-country database this package ships. Not an extra: shipping a database the
+    # default install cannot open would be 8 MB of dead weight and a `geolocation` plugin that
+    # explains, on every install, that it needs something else. Pure Python fallback included, so
+    # nothing here needs a compiler.
+    "maxminddb>=2.6",
 ]
 
 # There is no PyPI page to carry these, so they are what a packaged copy points back at.
@@ -66,10 +71,6 @@ sftp = ["paramiko>=3.4"]
 # extra, not a dependency: completion is a convenience, and a bot that would not start without a
 # completion library is a poor trade. `b3.cli` works unchanged when it is absent.
 completion = ["argcomplete>=3.1,<4.0"]
-# Reading a MaxMind-format database for `geolocation`. The database file itself is the operator's:
-# DB-IP's "IP to Country Lite" needs no account (CC-BY), MaxMind's GeoLite2 needs a free account and
-# a licence key. `maxminddb` has a pure-Python fallback, so no compiler is required.
-geo = ["maxminddb>=2.6"]
 # Test + dev tooling.
 dev = [
     # Every tool here is capped, and for one reason: CI installs whatever is newest, so an upstream
@@ -88,10 +89,6 @@ dev = [
     # `mypy --strict` cannot see into them and reports every call site as untyped.
     "types-PyYAML>=6.0",
     "types-paramiko>=3.4",
-    # The optional geolocation reader, here so `mypy --strict` can see into it. Without it that
-    # plugin's only import is unresolvable, every call on the reader is untyped, and the file passes
-    # on an ignore rather than on being checked — which is not the same thing.
-    "maxminddb>=2.6",
 ]
 # Building the documentation site. An extra rather than a dev dependency: `pytest`, `ruff` and `mypy`
 # are what you need to *change* this project, and the site is what you need to publish it — a

@@ -32,12 +32,18 @@ log = logging.getLogger(__name__)
 #: index to parse or an API to authenticate against.
 URL_TEMPLATE = "https://download.db-ip.com/free/dbip-country-lite-{year:04d}-{month:02d}.mmdb.gz"
 
-#: The name a downloaded database is given inside an instance directory.
+#: The name the database is given wherever it is written.
 FILENAME = "dbip-country-lite.mmdb"
 
 #: The copy that ships with this bot, which is what an install has before it downloads anything and
 #: what it falls back to when it cannot reach DB-IP.
 BUNDLED_PATH = Path(__file__).resolve().parent.parent / "data" / FILENAME
+
+#: Where a downloaded database goes: **once per machine, not once per server**. Every instance on a
+#: box answers the same question about the same addresses, so a copy each would be the same 8 MB
+#: several times over, refreshed on several different days. `~/.b3` is also writable without root and
+#: survives upgrading the package, which the directory the bundled copy lives in is not and does not.
+SHARED_PATH = Path("~/.b3").expanduser() / FILENAME
 
 #: Seconds. Short: this runs inside `b3 init`, where somebody is watching a prompt.
 TIMEOUT = 30.0
@@ -150,6 +156,7 @@ def refresh(destination: Path, bundled: Path | None = None, **kwargs: object) ->
 
 __all__ = [
     "BUNDLED_PATH",
+    "SHARED_PATH",
     "FILENAME",
     "URL_TEMPLATE",
     "build_date",

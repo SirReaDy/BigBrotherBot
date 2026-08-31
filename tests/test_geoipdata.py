@@ -1,7 +1,7 @@
 """Keeping the IP-to-country database current — the part that touches the network.
 
 The database ships with the bot so `geolocation` works on a fresh install, and `b3 init` replaces it
-with the current month's file. Everything here is about the second half being **safe to run inside a
+with the current month's file, once per machine rather than once per server. Everything here is about the second half being **safe to run inside a
 command somebody is waiting on**: every failure is survivable, nothing retries in a loop, and the
 bundled copy is what an install falls back to.
 
@@ -155,3 +155,16 @@ def test_the_build_date_of_something_unreadable_is_unknown_rather_than_an_error(
     junk.write_bytes(b"nope")
     assert geoipdata.build_date(junk) is None
     assert geoipdata.build_date(Path(tmp_path / "missing.mmdb")) is None
+
+
+def test_the_download_is_shared_by_every_server_on_the_machine():
+    """`~/.b3`, not the instance directory.
+
+    Every server on a box answers the same question about the same addresses, so a copy each would be
+    the same 8 MB several times over, refreshed on several different days. It is also writable
+    without root and survives upgrading the package, neither of which is true of the directory the
+    bundled copy lives in.
+    """
+    assert geoipdata.SHARED_PATH.name == geoipdata.FILENAME
+    assert geoipdata.SHARED_PATH.parent.name == ".b3"
+    assert geoipdata.SHARED_PATH != geoipdata.BUNDLED_PATH

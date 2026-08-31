@@ -58,14 +58,16 @@ NAME_LANGUAGE = "en"
 #: only ever as fresh as the release that carried it.
 BUNDLED_DATABASE = "@b3/data/dbip-country-lite.mmdb"
 
-#: Where `b3 init` puts the current download. Preferred over the bundled copy when it is
-#: there, which is what makes the refresh on `init` worth doing.
-INSTANCE_DATABASE = "@conf/dbip-country-lite.mmdb"
+#: Where `b3 init` puts the current download: `~/.b3`, shared by every instance on this machine.
+#: Preferred over the bundled copy when it is there, which is what makes the refresh worth doing —
+#: and shared rather than per-instance because every server answers the same question about the same
+#: addresses, so a copy each would be the same 8 MB several times over.
+SHARED_DATABASE = "@home/dbip-country-lite.mmdb"
 
 DEFAULTS: dict[str, object] = {
     # Path to a MaxMind-format database (`.mmdb`). The bundled DB-IP country file by default; set it
     # to a GeoLite2-City to get cities, or to "" to switch this plugin off entirely.
-    "database": INSTANCE_DATABASE,
+    "database": SHARED_DATABASE,
     # Optional second database naming the network's operator — GeoLite2-ASN is the one that has it.
     # Without it `isp` is simply unknown, which is a truthful answer.
     "asn_database": "",
@@ -269,8 +271,9 @@ class GeolocationPlugin(Plugin):
             import maxminddb
         except ImportError:
             log.error(
-                "geolocation: the `maxminddb` package is not installed, so %r cannot be read. "
-                "Install it with `pip install b3ng[geo]`",
+                "geolocation: the `maxminddb` package is not installed, so %r cannot be read. It "
+                "is a dependency of this bot, so something has gone wrong with the install: "
+                "`pip install --force-reinstall b3ng`",
                 path,
             )
             return None

@@ -833,9 +833,11 @@ def _create(args: argparse.Namespace, spec: InstanceSpec, *, run_doctor: bool) -
         # A copy ships with this bot so geolocation works out of the box; this is what stops it being
         # the copy from whenever the release was cut. Optional, bounded and never fatal — see
         # `b3.core.geoipdata`. Nothing here can stop an instance being created.
-        from b3.core.geoipdata import BUNDLED_PATH, FILENAME, refresh
+        from b3.core.geoipdata import BUNDLED_PATH, SHARED_PATH, refresh
 
-        _changed, said = refresh(spec.directory / FILENAME, bundled=BUNDLED_PATH)
+        # `~/.b3`, not this instance: every server on this machine reads the same answer about the
+        # same addresses, and a copy each would be the same 8 MB several times over.
+        _changed, said = refresh(SHARED_PATH, bundled=BUNDLED_PATH)
         print(said)
 
     print(f"\nnext:\n  b3 -c {spec.directory / 'b3.yaml'} run")

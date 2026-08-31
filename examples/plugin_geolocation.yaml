@@ -36,9 +36,7 @@
 # country. Re-download on whatever schedule suits you; MaxMind's licence has something to say about
 # how long you may keep a copy.
 #
-# The reader is an optional dependency, since not every operator wants this at all:
-#
-#   pip install b3ng[geo]
+# The reader (`maxminddb`) is installed with b3, and so is a database, so there is nothing to set up.
 
 settings:
   # The database. The default is this instance's own copy — the one `b3 init` downloads — falling back

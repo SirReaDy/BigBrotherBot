@@ -348,24 +348,28 @@ def test_a_fresh_install_can_place_a_player_with_nothing_configured(console):
     assert record is not None, "and the database it carries answers"
 
 
-def test_the_instance_copy_is_preferred_over_the_bundled_one(tmp_path, console):
+def test_the_shared_copy_is_preferred_over_the_bundled_one(tmp_path, monkeypatch, console):
     """`b3 init` downloads the current month's file; without this it would never be read.
 
-    The bundled copy is only ever as fresh as the release that carried it, and a stale database does
-    not say "I do not know" — it says the country the address used to be in.
+    It goes to `~/.b3`, once per machine — every server on a box answers the same question about the
+    same addresses, so a copy each would be the same 8 MB several times over, refreshed on several
+    different days. The bundled copy is only ever as fresh as the release that carried it, and a
+    stale database does not say "I do not know": it names the country the address used to be in.
     """
-    from b3.plugins.geolocation import BUNDLED_DATABASE, INSTANCE_DATABASE
+    from b3.config import loader
+    from b3.plugins.geolocation import BUNDLED_DATABASE, SHARED_DATABASE
 
-    conf = tmp_path / "instance"
-    conf.mkdir()
-    console.config_path = conf / "b3.yaml"
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setattr(loader, "_HOME_DIR", home)
+    console.config_path = tmp_path / "b3.yaml"
     plugin = GeolocationPlugin(console, {"settings": {}})
     plugin.on_load_config()
 
     assert plugin.database_path() == BUNDLED_DATABASE, "nothing downloaded yet"
 
-    (conf / "dbip-country-lite.mmdb").write_bytes(b"a file where init would put one")
-    assert plugin.database_path() == INSTANCE_DATABASE, "the downloaded one wins once it is there"
+    (home / "dbip-country-lite.mmdb").write_bytes(b"a file where init would put one")
+    assert plugin.database_path() == SHARED_DATABASE, "the downloaded one wins once it is there"
 
 
 def test_a_database_an_operator_named_is_never_silently_swapped(tmp_path, console):
