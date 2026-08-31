@@ -236,13 +236,16 @@ async def test_the_greeting_waits_for_the_delay(console):
 
 
 def test_a_delay_outside_the_sensible_range_is_refused(console, caplog):
-    """Under fifteen seconds the player is still loading the map; past ninety they have stopped
-    reading chat. The classic clamped it to 30 silently."""
+    """Past ninety seconds nobody is reading chat, so that end of the range is refused.
+
+    The short end is not: see the two tests at the end of this file. It used to be refused too, which
+    meant asking for a shorter wait produced the thirty-second default instead — a longer one.
+    """
     with caplog.at_level("WARNING"):
-        plugin = _welcome(console, delay=5)
+        plugin = _welcome(console, delay=5000)
 
     assert plugin.settings["delay"] == 30
-    assert "outside" in caplog.text
+    assert "stopped reading chat" in caplog.text
 
 
 # -- a player's own greeting ---------------------------------------------------------------------
@@ -424,7 +427,7 @@ async def test_an_arrival_is_announced_with_their_country_when_it_is_known(conso
 
     await _arrive(console, plugin, bob)
 
-    assert console.said == ["everyone welcome Bob from Rome (Italy) to the server"]
+    assert console.said == ["everyone welcome Bob from Rome (Italy)"]
 
 
 @pytest.mark.asyncio
@@ -458,3 +461,29 @@ async def test_a_player_geolocation_could_not_place_gets_the_plain_announcement(
     await _arrive(console, plugin, bob)
 
     assert console.said == ["everyone welcome Bob to the server"]
+
+
+@pytest.mark.asyncio
+async def test_a_delay_shorter_than_the_advice_is_honoured_not_overruled(console):
+    """Asking for a shorter wait used to produce a longer one.
+
+    Anything under the fifteen-second floor was discarded and replaced with the thirty-second
+    default, so an operator who wrote `delay: 3` waited thirty seconds and was told why only in a log
+    they were not watching. The floor is good advice about a busy public server — a player greeted
+    that early is still on the loading screen — but it is advice, and it is not true of the server
+    somebody is testing a bot on.
+    """
+    plugin = _welcome(console, delay=3)
+    assert plugin.settings["delay"] == 3
+
+    client = _client(connections=1)
+    await _arrive(console, plugin, client, delay=3)
+
+    assert console.said, "greeted after the delay the operator actually asked for"
+
+
+@pytest.mark.asyncio
+async def test_a_delay_past_the_ceiling_is_still_refused(console):
+    """Past ninety seconds nobody is reading chat, and that end of the range is not a preference."""
+    plugin = _welcome(console, delay=6000)
+    assert plugin.settings["delay"] == 30

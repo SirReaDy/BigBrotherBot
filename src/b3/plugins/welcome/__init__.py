@@ -87,18 +87,16 @@ DEFAULTS: dict[str, object] = {
 }
 
 MESSAGES = {
-    "welcome_first": "welcome {name}, this must be your first visit. Type !help for help",
-    "welcome_newb": "welcome back {name}, last seen {last_visit}. Type !register to register, "
-    "!help for help",
-    "welcome_user": "welcome back {name}, last seen {last_visit} - you are a {group}, here "
-    "{connections} times",
+    "welcome_first": "welcome {name} - your first visit, type !help",
+    "welcome_newb": "welcome back {name}, last seen {last_visit} - type !register",
+    "welcome_user": "welcome back {name}, last seen {last_visit} - {group}, {connections} visits",
     "announce_first": "everyone welcome {name} to the server",
     "announce_user": "everyone welcome back {name} - here {connections} times",
     # Used instead of the two above when `geolocation` has placed the player. This is the whole of
     # what the classic bot's separate `geowelcome` plugin did — see the note in this module's
     # docstring about why it is two messages here rather than a plugin.
-    "announce_first_geo": "everyone welcome {name} from {place} to the server",
-    "announce_user_geo": "everyone welcome back {name} from {place} - here {connections} times",
+    "announce_first_geo": "everyone welcome {name} from {place}",
+    "announce_user_geo": "welcome back {name} from {place} - {connections} visits",
     "greeting_announce": "{name} joined: {greeting}",
     "greeting_none": "you have no greeting set",
     "greeting_yours": "your greeting is: {greeting}",
@@ -137,18 +135,27 @@ class WelcomePlugin(Plugin):
         config = self.config if isinstance(self.config, dict) else {}
         self.settings = {**DEFAULTS, **(config.get("settings") or {})}
         delay = as_int(self.settings.get("delay"), 30)
-        if not MIN_DELAY <= delay <= MAX_DELAY:
+        if delay < 0 or delay > MAX_DELAY:
             log.warning(
-                "welcome: delay %s is outside %d-%d seconds; using %d — under %d the player is "
-                "still loading and past %d they have stopped reading chat",
+                "welcome: delay %s is not one this plugin can use; using %d — past %d seconds the "
+                "player has stopped reading chat",
                 delay,
-                MIN_DELAY,
-                MAX_DELAY,
                 DEFAULTS["delay"],
-                MIN_DELAY,
                 MAX_DELAY,
             )
             self.settings["delay"] = DEFAULTS["delay"]
+        elif delay < MIN_DELAY:
+            # Honoured rather than overridden. The reason for the floor is real — on a public server
+            # a player greeted that early is still on the loading screen and never sees it — but it
+            # is advice about a busy server, not a fact about every one. Replacing the value with the
+            # default handed an operator who asked for a shorter wait a *longer* one, which is the
+            # opposite of what they wrote, and said so only in a log they may not be watching.
+            log.warning(
+                "welcome: greeting after %ds, under the %ds this plugin suggests; a player may still "
+                "be loading the map and never see it",
+                delay,
+                MIN_DELAY,
+            )
 
     def on_startup(self) -> None:
         self.register_messages(MESSAGES)
