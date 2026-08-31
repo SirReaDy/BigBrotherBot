@@ -235,3 +235,34 @@ async def test_a_ban_records_which_server_issued_it(tmp_path):
     bob = bot.storage.get_client_by_guid(GBOB)
     (penalty,) = bot.storage.get_active_penalties(bob.id, PenaltyType.BAN)
     assert penalty.server_id == "cod4_2"
+
+
+@pytest.mark.asyncio
+async def test_a_plugin_resolves_conf_while_it_is_starting(tmp_path):
+    """`@conf` inside a plugin's own settings has to work while that plugin is starting.
+
+    Found on a live CoD4X server: `banlist` resolves its list files through `console.config_path`,
+    which `build_bot` set only *after* it returned — so every plugin started with it unset and
+    `@conf/banlist_guids.txt` fell back to the working directory. The bot reported it could not read
+    a file sitting beside its own config, and the answer changed with wherever it was started from.
+    """
+    conf = tmp_path / "instance"
+    conf.mkdir()
+    (conf / "banlist_guids.txt").write_text("1100012345678901\n", encoding="utf-8")
+    (conf / "plugin_banlist.yaml").write_text(
+        'lists:\n  - name: community\n    kind: guid\n    file: "@conf/banlist_guids.txt"\n',
+        encoding="utf-8",
+    )
+
+    config = Config(
+        bot=BotConfig(database=f"sqlite:///{tmp_path / 'b3.sqlite'}"),
+        server=ServerConfig(game="cod4"),
+        plugins=[
+            PluginEntry(name="admin"),  # banlist requires it
+            PluginEntry(name="banlist", config="@conf/plugin_banlist.yaml"),
+        ],
+    )
+    bot = build_bot(config, rcon=FakeRcon(), conf_dir=conf, config_path=str(conf / "b3.yaml"))
+
+    banlist = bot.get_plugin("banlist")
+    assert [str(entry.path) for entry in banlist.lists] == [str(conf / "banlist_guids.txt")]

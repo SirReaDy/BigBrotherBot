@@ -39,7 +39,11 @@ class PushClient(RconClient, LogSource, Protocol):
 
 
 def build_bot(
-    config: Config, *, rcon: RconClient | None = None, conf_dir: Path | None = None
+    config: Config,
+    *,
+    rcon: RconClient | None = None,
+    conf_dir: Path | None = None,
+    config_path: str = "",
 ) -> Bot:
     """Build a bot with the plugins listed in the config, loaded in dependency order."""
     from b3.core.plugininstall import installed_plugins_dir, register_installed_plugins
@@ -53,6 +57,11 @@ def build_bot(
     register_installed_plugins(installed_plugins_dir(config.bot.plugins_dir, conf_dir))
 
     bot = Bot(config, rcon=rcon)
+    # Before the plugins load, not after. A plugin resolving `@conf` in its own settings asks the bot
+    # for this path, and a bot that does not know yet falls back to the working directory — so
+    # banlist looked for its list files wherever the operator happened to `cd` from, and said it
+    # could not read them.
+    bot.config_path = Path(config_path) if config_path else None
     for loaded in load_plugins(bot, config, conf_dir=conf_dir):
         bot.add_plugin(loaded.plugin, loaded.name)
     bot.start()
@@ -390,8 +399,8 @@ async def _run_live(
         return 1
     connection = _connect(config)
     rcon, source = connection.rcon, connection.source
-    bot = build_bot(config, rcon=rcon, conf_dir=conf_dir)
-    bot.config_path = Path(config_path) if config_path else None  # so `!reconfig` can re-read it
+    # `config_path` is also what `!reconfig` re-reads.
+    bot = build_bot(config, rcon=rcon, conf_dir=conf_dir, config_path=config_path)
 
     from b3.net.logsource import LogSourceError
 
@@ -444,8 +453,7 @@ async def _run_replay(
 ) -> None:
     from b3.net.logsource import FileLogSource
 
-    bot = build_bot(config, conf_dir=conf_dir)  # no rcon in replay mode
-    bot.config_path = Path(config_path) if config_path else None
+    bot = build_bot(config, conf_dir=conf_dir, config_path=config_path)  # no rcon in replay mode
     source = FileLogSource(logfile, encoding=config.server.encoding, from_start=True)
     source.open()
     lines = source.read_lines()
@@ -508,6 +516,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     init.add_argument("--database", default="sqlite:///b3.sqlite", help="SQLAlchemy URL")
     init.add_argument("--shared-plugins-dir", help="plugin pool shared with other instances")
+    init.add_argument(
+        "--no-geoip",
+        action="store_true",
+        help="skip the IP-to-country database check; the copy bundled with b3 is used instead",
+    )
     init.add_argument("--service", action="store_true", help="also write a systemd unit file")
     init.add_argument("--service-user", default="b3", help="user the systemd unit runs as")
     init.add_argument("--force", action="store_true", help="overwrite an existing config")
@@ -815,6 +828,18 @@ def _create(args: argparse.Namespace, spec: InstanceSpec, *, run_doctor: bool) -
 
     for path in written:
         print(f"wrote {path}")
+
+    if not args.no_geoip:
+        # A copy ships with this bot so geolocation works out of the box; this is what stops it being
+        # the copy from whenever the release was cut. Optional, bounded and never fatal — see
+        # `b3.core.geoipdata`. Nothing here can stop an instance being created.
+        from b3.core.geoipdata import refresh_all
+
+        # Into `~/.b3`, not this instance: every server on this machine reads the same answer about
+        # the same addresses, and a copy each would be the same megabytes several times over.
+        for said in refresh_all():
+            print(said)
+
     print(f"\nnext:\n  b3 -c {spec.directory / 'b3.yaml'} run")
     if _needs_command_file(spec.game):
         # This family has no rcon password to set, and one path it cannot work without.

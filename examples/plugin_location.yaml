@@ -14,9 +14,10 @@
 #
 # What each command can say depends on which database you have:
 #
-#   DB-IP Lite / GeoLite2-Country   the country. `!locate` works; `!distance` cannot (no coordinates).
-#   GeoLite2-City                   city, region, coordinates — `!distance` works.
-#   GeoLite2-ASN (as `asn_database`)  the network operator, which is what `!isp` reports.
+#   dbip-country-lite   the country, and what ships with b3. `!locate` works; `!distance` cannot,
+#                       because a country file carries no coordinates.
+#   dbip-city-lite      city, region, coordinates — `!distance` works. A free download, 58 MB.
+#   dbip-asn-lite       the network operator, which is what `!isp` reports. `b3 init` fetches it.
 
 settings:
   # Announce each arrival's location to the whole server.

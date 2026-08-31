@@ -9,39 +9,45 @@
 # This plugin answers no commands and says nothing in game. It resolves addresses and publishes the
 # answer, so that `location`, `geowelcome` and `countryfilter` have something to work with.
 #
-# It reads a **local MaxMind-format database** (`.mmdb`) and makes no network requests at all: no
+# It reads a **local `.mmdb` database** and makes no network requests at all while it runs: no
 # player's address leaves the machine, there is no service to be down or rate-limit you, and a lookup
 # takes microseconds. The classic plugin queried three web services before trying a local file; two of
 # those services have since shut down, so every arriving player paid for two doomed HTTP requests.
 #
-# WHERE TO GET A DATABASE — two vendors, same file format:
+# NOTHING NEEDS SETTING UP. A country database ships with this bot — DB-IP's "IP to Country Lite",
+# under CC-BY-4.0:
 #
-#   DB-IP "IP to Country Lite"   https://db-ip.com/db/download/ip-to-country-lite
-#       A monthly .mmdb, direct download, **no account needed**, CC-BY-4.0. Country only, which is
-#       all `countryfilter` and most of `geowelcome` need. Start here.
+#   IP Geolocation by DB-IP — https://db-ip.com
 #
-#   MaxMind GeoLite2             https://dev.maxmind.com/geoip/geolite2-free-geolocation-data
-#       Free, but needs an account and a licence key, and may not be redistributed. GeoLite2-City
-#       adds the city, region, postcode, timezone and coordinates — which is what `!locate` and
-#       `!distance` in the `location` plugin can use. GeoLite2-ASN carries the network operator.
+# and `b3 init` fetches the current month's country and ASN files into `~/.b3`, shared by every server
+# on the machine and preferred over the bundled copy. Re-run `b3 init` to refresh them. Every DB-IP
+# lite edition is free, needs no account and may be redistributed, which is why this bot uses them
+# throughout rather than a database it would have to send you off to register for.
 #
-# Both are updated regularly and go stale: an address that moved provider answers with the old
-# country. Re-download on whatever schedule suits you; MaxMind's licence has something to say about
-# how long you may keep a copy.
+# A database goes stale: an address that moved provider answers with the country it used to be in,
+# and says nothing about it. DB-IP publish monthly.
 #
-# The reader is an optional dependency, since not every operator wants this at all:
+# WANT CITIES? DB-IP's free city edition adds the city, region, postcode, timezone and coordinates,
+# which is what `!locate` and `!distance` can use. It is 58 MB compressed against 3, which is why it
+# is not fetched for you:
 #
-#   pip install b3ng[geo]
+#   https://db-ip.com/db/download/ip-to-city-lite
+#
+# Download it, put it beside this file, and point `database` at it.
 
 settings:
-  # The database. An empty path (the default) means this plugin does nothing at all, and says so once
-  # at startup rather than complaining per player.
-  database: ""
-  # database: "/var/lib/b3/dbip-country-lite.mmdb"
+  # The database. The default is the shared copy in `~/.b3` — the one `b3 init` downloads — falling
+  # back to the copy bundled with b3 when there is none, so a fresh install places players at once.
+  #
+  # Set it to a file of your own to use that instead, with no fallback: naming a file and being given
+  # a different one silently would be worse than being told yours is missing. Set it to "" to switch
+  # geolocation off entirely, which also switches off `location` and `countryfilter`.
+  database: "@home/dbip-country-lite.mmdb"
+  # database: "@conf/dbip-city-lite.mmdb"   # cities, regions, coordinates - see above
 
-  # Optional second database naming the network's operator — GeoLite2-ASN is the one that has it.
-  # Without it the ISP is simply unknown, which is a truthful answer and what `!isp` will report.
-  asn_database: ""
+  # The second database, naming the network a player is on. `b3 init` fetches this one too; without
+  # it the ISP is simply unknown, which is a truthful answer and what `!isp` will report.
+  asn_database: "@home/dbip-asn-lite.mmdb"
 
   # Fold place names to plain ASCII, so `Córdoba` is announced as `Cordoba`. On by default, and not
   # out of laziness: the Quake 3 and Call of Duty consoles cannot render anything else, and a row of

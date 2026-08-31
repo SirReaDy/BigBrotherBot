@@ -74,7 +74,7 @@ account to hold, no terms accepted, no rate limit anybody agreed to, and nothing
 or being blocked on a Tuesday.
 
 The privacy question came up once before here, over the geolocation plugins, and it was answered by
-finding a local alternative: a MaxMind-format file the operator supplies, so **no player address
+finding a local alternative: an `.mmdb` file that ships with the bot, so **no player address
 leaves the machine**. There is no local equivalent for translation. That makes this a real decision
 rather than a missing dependency, and the decision is no — a bot that quietly forwards a server's
 chat to somebody else's API is not a default we are willing to ship. Nothing here replaces it, and
