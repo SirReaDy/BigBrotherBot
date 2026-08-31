@@ -264,7 +264,7 @@ async def test_without_an_asn_database_the_isp_is_simply_unknown(console):
 
 @pytest.mark.asyncio
 async def test_with_no_database_nothing_happens_and_nothing_breaks(console):
-    plugin = _plugin(console)
+    plugin = _plugin(console, database="")  # explicit: a bundled database ships with the bot now
     joe = _join(console, "Joe", ip="1.2.3.4")
 
     await _auth(console, joe)
@@ -290,8 +290,9 @@ def test_a_database_path_that_does_not_exist_is_reported_not_raised(console):
     assert plugin.reader is None
 
 
-def test_no_database_configured_opens_nothing(console):
-    plugin = GeolocationPlugin(console, {"settings": {}})
+def test_an_empty_database_setting_switches_the_plugin_off(console):
+    """The way to have no geolocation, now that a database ships with the bot."""
+    plugin = GeolocationPlugin(console, {"settings": {"database": ""}})
     plugin.start()
 
     assert plugin.reader is None
@@ -330,3 +331,48 @@ def test_a_database_named_relative_to_the_config_is_found(console, tmp_path, cap
     assert "@conf" not in caplog.text, (
         "and the token is never reported back as though it were a path"
     )
+
+
+def test_a_fresh_install_can_place_a_player_with_nothing_configured(console):
+    """The reason a database ships with this bot at all.
+
+    The classic bot's answer to "where is this player" was three web services, two of which have since
+    shut down; ours is a file, and a file nobody has is not an answer either. So one is carried, and
+    the default setting names it.
+    """
+    plugin = GeolocationPlugin(console, {"settings": {}})
+    plugin.start()
+
+    assert plugin.reader is not None, "a fresh install places players without being configured"
+    record = plugin.reader.get("8.8.8.8")
+    assert record is not None, "and the database it carries answers"
+
+
+def test_the_instance_copy_is_preferred_over_the_bundled_one(tmp_path, console):
+    """`b3 init` downloads the current month's file; without this it would never be read.
+
+    The bundled copy is only ever as fresh as the release that carried it, and a stale database does
+    not say "I do not know" — it says the country the address used to be in.
+    """
+    from b3.plugins.geolocation import BUNDLED_DATABASE, INSTANCE_DATABASE
+
+    conf = tmp_path / "instance"
+    conf.mkdir()
+    console.config_path = conf / "b3.yaml"
+    plugin = GeolocationPlugin(console, {"settings": {}})
+    plugin.on_load_config()
+
+    assert plugin.database_path() == BUNDLED_DATABASE, "nothing downloaded yet"
+
+    (conf / "dbip-country-lite.mmdb").write_bytes(b"a file where init would put one")
+    assert plugin.database_path() == INSTANCE_DATABASE, "the downloaded one wins once it is there"
+
+
+def test_a_database_an_operator_named_is_never_silently_swapped(tmp_path, console):
+    """No fallback for a path somebody wrote themselves: they named a file, and reading a different
+    one would be worse than saying theirs is missing."""
+    console.config_path = tmp_path / "b3.yaml"
+    plugin = GeolocationPlugin(console, {"settings": {"database": "@conf/GeoLite2-City.mmdb"}})
+    plugin.on_load_config()
+
+    assert plugin.database_path() == "@conf/GeoLite2-City.mmdb"

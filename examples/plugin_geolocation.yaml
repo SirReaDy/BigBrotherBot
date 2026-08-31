@@ -14,7 +14,14 @@
 # takes microseconds. The classic plugin queried three web services before trying a local file; two of
 # those services have since shut down, so every arriving player paid for two doomed HTTP requests.
 #
-# WHERE TO GET A DATABASE — two vendors, same file format:
+# A DATABASE SHIPS WITH THIS BOT, so none of the below is required to get started: DB-IP's
+# "IP to Country Lite", carried under CC-BY-4.0 (IP Geolocation by DB-IP — https://db-ip.com), which
+# is why it is that file and not GeoLite2 — MaxMind's is free to download but may not be
+# redistributed. `b3 init` fetches the current month's copy into the instance directory and the
+# plugin prefers it, because a bundled file is only ever as fresh as the release that carried it.
+# Re-run `b3 init` on the same directory to refresh it.
+#
+# WHERE TO GET A BETTER ONE — two vendors, same file format:
 #
 #   DB-IP "IP to Country Lite"   https://db-ip.com/db/download/ip-to-country-lite
 #       A monthly .mmdb, direct download, **no account needed**, CC-BY-4.0. Country only, which is
@@ -34,10 +41,14 @@
 #   pip install b3ng[geo]
 
 settings:
-  # The database. An empty path (the default) means this plugin does nothing at all, and says so once
-  # at startup rather than complaining per player.
-  database: ""
-  # database: "/var/lib/b3/dbip-country-lite.mmdb"
+  # The database. The default is this instance's own copy — the one `b3 init` downloads — falling back
+  # to the copy bundled with b3 when there is none, so a fresh install places players immediately.
+  #
+  # Set it to a file of your own to use that instead, with no fallback: naming a file and being given
+  # a different one silently would be worse than being told yours is missing. Set it to "" to switch
+  # geolocation off entirely, which also switches off `location` and `countryfilter`.
+  database: "@conf/dbip-country-lite.mmdb"
+  # database: "@conf/GeoLite2-City.mmdb"   # cities, regions, coordinates - see below
 
   # Optional second database naming the network's operator — GeoLite2-ASN is the one that has it.
   # Without it the ISP is simply unknown, which is a truthful answer and what `!isp` will report.

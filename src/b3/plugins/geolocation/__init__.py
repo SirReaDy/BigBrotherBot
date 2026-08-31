@@ -51,10 +51,21 @@ log = logging.getLogger(__name__)
 #: only one every one of these databases carries.
 NAME_LANGUAGE = "en"
 
+#: The database this ships with, named the way any other path setting would be. `@b3` is the
+#: installed package directory, so this resolves wherever b3 is installed and needs nothing from the
+#: operator: geolocation works on a fresh install, which is the whole reason for carrying a copy.
+#: `b3 init` replaces it with a current download when it can reach DB-IP, because a bundled file is
+#: only ever as fresh as the release that carried it.
+BUNDLED_DATABASE = "@b3/data/dbip-country-lite.mmdb"
+
+#: Where `b3 init` puts the current download. Preferred over the bundled copy when it is
+#: there, which is what makes the refresh on `init` worth doing.
+INSTANCE_DATABASE = "@conf/dbip-country-lite.mmdb"
+
 DEFAULTS: dict[str, object] = {
-    # Path to a MaxMind-format database (`.mmdb`). Empty means this plugin can do nothing, and says so
-    # once at startup rather than per player.
-    "database": "",
+    # Path to a MaxMind-format database (`.mmdb`). The bundled DB-IP country file by default; set it
+    # to a GeoLite2-City to get cities, or to "" to switch this plugin off entirely.
+    "database": INSTANCE_DATABASE,
     # Optional second database naming the network's operator — GeoLite2-ASN is the one that has it.
     # Without it `isp` is simply unknown, which is a truthful answer.
     "asn_database": "",
@@ -203,7 +214,7 @@ class GeolocationPlugin(Plugin):
         self.settings = {**DEFAULTS, **(config.get("settings") or {})}
 
     def on_startup(self) -> None:
-        self.reader = self.reader or self.open_database(str(self.settings.get("database") or ""))
+        self.reader = self.reader or self.open_database(self.database_path())
         self.asn_reader = self.asn_reader or self.open_database(
             str(self.settings.get("asn_database") or ""), what="ASN database"
         )
@@ -217,6 +228,26 @@ class GeolocationPlugin(Plugin):
                 "geolocation: no database is loaded, so nobody will be placed. Point `database` at a "
                 "MaxMind-format .mmdb file — DB-IP's IP to Country Lite needs no account"
             )
+
+    def database_path(self) -> str:
+        """Which database to read: this instance's own copy, or the one b3 ships with.
+
+        `b3 init` downloads the current month's file into the instance directory, and that is the one
+        to prefer — the bundled copy is only ever as fresh as the release that carried it, and a
+        database that has gone stale answers with the country an address used to be in rather than
+        admitting it does not know. An instance created before this existed, or one whose download
+        could not reach DB-IP, has no such file and falls back to the bundled copy, which is the
+        whole reason for carrying one.
+
+        A `database` an operator has set themselves is used as written, with no fallback: they named
+        a file, and quietly reading a different one would be worse than saying it is missing.
+        """
+        configured = str(self.settings.get("database") or "")
+        if configured != DEFAULTS["database"]:
+            return configured
+        if self.resolve_path(configured).is_file():
+            return configured
+        return BUNDLED_DATABASE
 
     def open_database(self, path: str, what: str = "database") -> Reader | None:
         """Open an `.mmdb`, or explain once why not. Never raises: this is an optional feature."""

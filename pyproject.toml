@@ -113,6 +113,11 @@ b3 = "b3.cli:main"
 [tool.setuptools.packages.find]
 where = ["src"]
 
+# The bundled IP-to-country database, so `geolocation` works on a fresh install with nothing to
+# download. See `src/b3/data/README.md` for the licence and the attribution it asks for.
+[tool.setuptools.package-data]
+b3 = ["data/*.mmdb", "data/*.md"]
+
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]

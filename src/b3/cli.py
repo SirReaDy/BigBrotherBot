@@ -516,6 +516,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     init.add_argument("--database", default="sqlite:///b3.sqlite", help="SQLAlchemy URL")
     init.add_argument("--shared-plugins-dir", help="plugin pool shared with other instances")
+    init.add_argument(
+        "--no-geoip",
+        action="store_true",
+        help="skip the IP-to-country database check; the copy bundled with b3 is used instead",
+    )
     init.add_argument("--service", action="store_true", help="also write a systemd unit file")
     init.add_argument("--service-user", default="b3", help="user the systemd unit runs as")
     init.add_argument("--force", action="store_true", help="overwrite an existing config")
@@ -823,6 +828,16 @@ def _create(args: argparse.Namespace, spec: InstanceSpec, *, run_doctor: bool) -
 
     for path in written:
         print(f"wrote {path}")
+
+    if not args.no_geoip:
+        # A copy ships with this bot so geolocation works out of the box; this is what stops it being
+        # the copy from whenever the release was cut. Optional, bounded and never fatal — see
+        # `b3.core.geoipdata`. Nothing here can stop an instance being created.
+        from b3.core.geoipdata import BUNDLED_PATH, FILENAME, refresh
+
+        _changed, said = refresh(spec.directory / FILENAME, bundled=BUNDLED_PATH)
+        print(said)
+
     print(f"\nnext:\n  b3 -c {spec.directory / 'b3.yaml'} run")
     if _needs_command_file(spec.game):
         # This family has no rcon password to set, and one path it cannot work without.
