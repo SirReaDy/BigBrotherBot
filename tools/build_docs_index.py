@@ -26,6 +26,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 README = ROOT / "README.md"
 INDEX = ROOT / "docs" / "index.md"
+MKDOCS = ROOT / "mkdocs.yml"
 
 #: Said in the file itself, because the first thing anybody does with a generated file is edit it.
 BANNER = (
@@ -44,12 +45,44 @@ DOCS_LINK_RE = re.compile(r"\]\(docs/([A-Za-z0-9_.-]+\.md)")
 #: markdown links would publish a broken image without failing anything.
 DOCS_SRC_RE = re.compile(r'(src|href)="docs/')
 
+#: ``[Contributing](CONTRIBUTING.md)`` -> the same file on GitHub. The site is built from `docs/`
+#: alone, so `CONTRIBUTING.md` and `LICENSE` are not in it and never will be: left alone they are
+#: dead links, and `mkdocs build --strict` refuses to publish the home page over them. Only a bare
+#: filename is considered — a target with a slash in it is a path into `docs/`, which the rewrite
+#: above has already moved — and only one that really is a file at the repository root, so a link
+#: to a sibling page is left exactly as it is.
+ROOT_LINK_RE = re.compile(r"\]\((?P<target>[A-Za-z0-9_.-]+)(?P<anchor>#[^)]*)?\)")
+
+#: Where the repository lives, read from `mkdocs.yml` rather than written down a second time: the
+#: site already has to know that address, and two copies of a URL is one copy that goes stale.
+REPO_URL_RE = re.compile(r"^repo_url:\s*(\S+)\s*$", re.MULTILINE)
+
+
+def repo_blob_url() -> str:
+    """The prefix under which a file at the repository root is readable."""
+    match = REPO_URL_RE.search(MKDOCS.read_text(encoding="utf-8"))
+    if match is None:
+        raise SystemExit(
+            f"{MKDOCS.name} has no repo_url, so a link to a file at the repository root cannot be "
+            "rewritten for the site"
+        )
+    return f"{match.group(1).rstrip('/')}/blob/main/"
+
 
 def render(readme: str) -> str:
     """Turn the README's text into the home page's text."""
     body = DOCS_LINK_RE.sub(r"](\1", readme)
     body = DOCS_SRC_RE.sub(r'\1="', body)
-    return BANNER + body
+
+    base = repo_blob_url()
+
+    def root_link(match: re.Match[str]) -> str:
+        target = match["target"]
+        if not (ROOT / target).is_file() or (ROOT / "docs" / target).exists():
+            return match[0]
+        return f"]({base}{target}{match['anchor'] or ''})"
+
+    return BANNER + ROOT_LINK_RE.sub(root_link, body)
 
 
 def main(argv: list[str] | None = None) -> int:
