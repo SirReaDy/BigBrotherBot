@@ -29,6 +29,11 @@ class PlayerInfo:
     guid: str = ""
     #: The raw Steam64 id when the engine reports one (CoD4X with `sv_usesteam64id 1`).
     steam_id: str = ""
+    #: The same account as the **log** spells it, when that is a different column from the identity.
+    #: CoD4X prints both and uses each in a different place: its log names a player by the per-session
+    #: `guid` column, while their persistent identity is the Steam64 beside it. Without this the two
+    #: sources describe one player two ways and nothing downstream can tell they are the same person.
+    alt_guid: str = ""
     ip: str = ""
     port: int = 0
     ping: int = 0

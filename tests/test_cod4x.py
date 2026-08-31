@@ -16,6 +16,7 @@ import pytest
 from b3.config.schema import BotConfig, Config, PluginEntry, ServerConfig
 from b3.core.clock import FakeClock
 from b3.core.commands import CommandProcessor
+from b3.core.events import EventType
 from b3.domain.client import Client, PenaltyType
 from b3.parsers.cod import status as sp
 from b3.parsers.cod.profiles import COD4, COD4X
@@ -643,3 +644,47 @@ def test_an_unknown_dialect_falls_back_loudly(caplog):
     with caplog.at_level("WARNING"):
         assert isinstance(dialect_for("nonsense"), Quake3Dialect)
     assert "unknown rcon dialect" in caplog.text
+
+
+# -- the log and the table naming one player differently ---------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_the_log_and_the_table_naming_one_player_is_not_two_players(tmp_path):
+    """Found on a live CoD4X 1.8 server, where it made the bot unusable.
+
+    Every log line there names a player by the `guid` column — a per-session number — while the
+    status table names them by the Steam64 id printed beside it. The two are unrelated numbers, so
+    the client built from a log line and the row describing that same slot looked like two different
+    people: `_reconcile` read it as a stranger having taken the slot, **dropped the record and
+    adopted a new one**, and the next log line put the old one back.
+
+    The cost was not theoretical. Dropping a client ends their session: the pending `welcome`
+    greeting is cancelled, anything holding a session dies, and a second database row appears for
+    one person. The operator's `!iamgod` landed on one row and their next command was refused by the
+    other.
+
+    The row carries both spellings, so it is the row that says they are one person.
+    """
+    log_guid = "2310346614714116451"  # what every log line on that server carries
+    status = (
+        "map: mp_crash\n"
+        "num score ping guid                steamid           name      address\n"
+        "--- ----- ---- ------------------- ----------------- --------- --------------------\n"
+        f"  0     0    8 {log_guid} {STEAM_ADMIN} Admin     192.0.2.44:28960\n"
+    )
+    bot = _bot(tmp_path, rcon=ScriptedRcon({"b3status": status}), forget_startup=True)
+    dropped: list[str] = []
+    bot.bus.subscribe(EventType.CLIENT_DISCONNECT, lambda e: dropped.append(e.client.name))
+    try:
+        await bot.feed_line(f"J;{log_guid};0;Admin")
+        joined = bot.clients.get_by_cid("0")
+        assert joined is not None and joined.guid == log_guid
+
+        bot.sync()
+
+        assert bot.clients.get_by_cid("0") is joined, "re-keyed in place, not dropped and replaced"
+        assert dropped == [], "nobody left the server, so nobody may be disconnected"
+        assert joined.guid == STEAM_ADMIN, "and the identity the server states is the one kept"
+    finally:
+        bot.storage.close()
