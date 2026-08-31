@@ -4,6 +4,9 @@ A modern, typed, `asyncio`-based rewrite of [Big Brother Bot](https://github.com
 the game-server admin bot: it watches a game server, keeps a database of who played and what they did,
 and gives your admins commands to act on it.
 
+**[Read the documentation](https://sirready.github.io/BigBrotherBot/)** — the same pages as below,
+with search, published from `docs/` on every push to `main`.
+
 | **Overview** | [CLI](docs/cli.md) | [Plugins](docs/plugins.md) | [Deployment](docs/deployment.md) | [Commands](docs/commands.md) | [Configuration](docs/configuration.md) | [Games](docs/games.md) | [Migrating](docs/migrating.md) | [Development](docs/development.md) |
 |---|---|---|---|---|---|---|---|---|
 

@@ -23,6 +23,13 @@ from typing import Any
 #: only a link target moves.
 README_LINK_RE = re.compile(r"\]\(\.\./README\.md(?P<anchor>#[^)]*)?\)")
 
+#: The line the README opens with, pointing at this site. It is how a reader of the repository finds
+#: these pages at all; on these pages it is a link to where they already are, so it goes — the same
+#: argument as the navigation row below, and the same mechanism.
+SITE_LINK_RE = re.compile(
+    r"^\*\*\[Read the documentation\]\([^)]*\)\*\*[^\n]*\n(?:[^\n]+\n)*\n", re.MULTILINE
+)
+
 #: The hand-written navigation row every page opens with — eight cells linking to the other seven
 #: pages, with this one in bold — and its separator line.
 #:
@@ -44,4 +51,5 @@ NAV_ROW_RE = re.compile(
 def on_page_markdown(markdown: str, **_kwargs: Any) -> str:
     """Make one markdown file read correctly in the two places it is published."""
     markdown = README_LINK_RE.sub(lambda m: f"](index.md{m['anchor'] or ''})", markdown)
+    markdown = SITE_LINK_RE.sub("", markdown, count=1)
     return NAV_ROW_RE.sub("", markdown, count=1)
