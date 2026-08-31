@@ -688,3 +688,28 @@ async def test_the_log_and_the_table_naming_one_player_is_not_two_players(tmp_pa
         assert joined.guid == STEAM_ADMIN, "and the identity the server states is the one kept"
     finally:
         bot.storage.close()
+
+
+@pytest.mark.asyncio
+async def test_the_auth_poll_settles_the_identity_it_was_scheduled_to_find(tmp_path):
+    """The poll a join schedules is the first thing that can say who the player is.
+
+    Waiting for the five-minute roster sync instead leaves them a stranger for up to five minutes —
+    long enough to type `!iamgod` and have it recorded against a number that means nothing tomorrow.
+    """
+    from b3.parsers.cod.auth import AuthInfo
+
+    log_guid = "2310346614714116451"
+    bot = _bot(tmp_path, rcon=ScriptedRcon(), forget_startup=True)
+    try:
+        await bot.feed_line(f"J;{log_guid};0;Admin")
+        client = bot.clients.get_by_cid("0")
+        assert client is not None and client.guid == log_guid
+
+        bot._on_resolved(AuthInfo(cid="0", guid=STEAM_ADMIN, ip="192.0.2.44", alt_guid=log_guid), 1)
+
+        assert bot.clients.get_by_cid("0") is client, "re-keyed in place, not replaced"
+        assert client.guid == STEAM_ADMIN
+        assert client.ip == "192.0.2.44", "and the address the poll went for is still applied"
+    finally:
+        bot.storage.close()

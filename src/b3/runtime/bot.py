@@ -794,6 +794,11 @@ class Bot:
                 # The slot was recycled by someone else while we were polling.
                 log.info("auth resolve ignored: slot %s is now a different player", info.cid)
                 return
+            if not client.guid.lower().startswith(info.guid.lower()):
+                # This poll is the first thing that can say who the player really is — it is what
+                # the join scheduled it for. Converging here rather than waiting for the roster sync
+                # is the difference between a second of being a stranger and five minutes of it.
+                self._adopt_identity(client, spelled)
         client.ip = info.ip
         if client.id is not None:
             self.storage.save_client(client)
