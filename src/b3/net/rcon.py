@@ -70,12 +70,23 @@ class Quake3Dialect:
         return self.PREFIX + f"{cmd}\n".encode(encoding, "replace")
 
     def strip_reply(self, data: bytes, encoding: str, errors: str = "replace") -> str:
-        # Strip on bytes (the header contains 0xFF, which is not a clean text char) before decode.
-        if data.startswith(self.REPLY_HEADER):
-            data = data[len(self.REPLY_HEADER) :]
-        else:
-            data = data.replace(self.REPLY_HEADER, b"")
-        return data.decode(encoding, errors)
+        """Every header, not just the leading one.
+
+        Stripped on bytes, before decode: the header contains 0xFF, which is not a clean text
+        character in any of the encodings these servers use.
+
+        **Every** occurrence, because a reply that does not fit one datagram arrives as several and
+        each one carries its own header. This used to strip the leading header *or* — as an
+        either/or — all of them, so on a long reply the second packet's header stayed, in the middle
+        of the text. The split lands mid-row, so that is one corrupted player line and nothing else
+        to see: on CoD4X the row read `...2310346614714116451 <header>76561198137164452 SirReaDy`
+        and matched no pattern, so a `status` big enough to span two datagrams parsed as **zero
+        players**. Which reads exactly like an empty server — the auth poll finds nobody and gives
+        up, nobody is authenticated, and every admin on a busy server is suddenly a stranger. With
+        the header gone the two halves are the row again, because the packet boundary falls inside
+        the line rather than replacing anything.
+        """
+        return data.replace(self.REPLY_HEADER, b"").decode(encoding, errors)
 
 
 class Cod7Dialect(Quake3Dialect):

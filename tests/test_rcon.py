@@ -72,6 +72,52 @@ def test_dialect_strips_reply_header():
     assert d.strip_reply(raw, "latin-1") == "map: mp_crash"
 
 
+def test_every_datagrams_header_is_stripped_not_just_the_first():
+    """A `status` too long for one datagram arrives as several, each with its own header.
+
+    The split falls inside a row, so a header left in the middle corrupts exactly one player line —
+    and on CoD4X that is the difference between a full roster and **zero players parsed**, which
+    reads as an empty server: the auth poll finds nobody, gives up, and every admin on a busy
+    server is a stranger with no level. The classic bot's `readSocket` strips the header from each
+    packet as it reads it (`data += d.replace(self.rconreplystring, '')`); this does the same on
+    the reassembled reply.
+    """
+    d = Quake3Dialect()
+    # Where the packet boundary actually fell on a live CoD4X server, mid-row.
+    header = b"\xff\xff\xff\xffprint\n"
+    first = header + b"map: mp_crash\n  3    30    9 2310346614714116451 "
+    second = header + b"76561198137164452 SirReaDy 0 127.0.0.1:28961\n"
+
+    text = d.strip_reply(first + second, "latin-1")
+
+    assert "print" not in text
+    assert "2310346614714116451 76561198137164452 SirReaDy" in text, "the row is whole again"
+
+
+def test_a_split_reply_parses_as_the_players_it_names():
+    """The same reply, end to end: what the bug actually cost was the roster."""
+    from b3.parsers.cod.profiles import COD4X
+    from b3.parsers.status import parse_status
+
+    d = Quake3Dialect()
+    header = b"\xff\xff\xff\xffprint\n"
+    raw = (
+        header + b"map: mp_crash\n"
+        b"num score ping playerid            steamid           name      lastmsg address\n"
+        b"  0    32    0 0                   0                 bots            0 bot     7217 100000\n"
+        b"  3    30    9 2310346614714116451 "
+        + header
+        + b"76561198137164452 SirReaDy        0 127.0.0.1:28961 13907 1048576\n"
+    )
+
+    _map, players = parse_status(d.strip_reply(raw, "latin-1"), COD4X.status_patterns, "steam")
+
+    assert [p.cid for p in players] == ["0", "3"], "the bot and the person, both of them"
+    assert players[1].guid == "76561198137164452"
+    assert players[1].ip == "127.0.0.1"
+    assert players[0].guid == "0" and players[0].ip == "", "a bot has no address to record"
+
+
 def test_dialect_reply_without_header_untouched():
     d = Quake3Dialect()
     assert d.strip_reply(b"plain reply", "latin-1") == "plain reply"
