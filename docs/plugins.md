@@ -35,6 +35,7 @@ list, each with an optional config of its own (see `examples/`):
 | `geolocation` | resolves where a player is connecting from, for the plugins that need it | — |
 | `location` | announces where arrivals are from, and answers for it | `!locate` `!distance` `!isp` |
 | `countryfilter` | refuses players from the countries a server does not accept | — |
+| `discord` | relays bans, kicks and map changes to a Discord channel | — |
 | `poweradminurt` | Urban Terror's admin commands, and the two balancers | `!paslap` `!panuke` `!pakill` `!pamute` `!pateams` `!pabalance` `!paskuffle` `!paforce` `!pabigtext` `!paset` `!paget` `!pavote` `!pactf` `!pabomb` `!pagear` … |
 | `codam` | a Call of Duty admin mod's own verbs, from a list you write | `!codam` plus `c` + every verb you list |
 | `poweradmincod7` | Black Ops's playlists, map exclusions, DLC packs and config files | `!pasetmap` `!paplaylist` `!pagetplaylists` `!pasetplaylist` `!paexcludemaps` `!paset` `!paget` `!pasetdlc` `!palistcfg` `!paload` `!pamaprestart` `!pafastrestart` `!pagametype` |
@@ -419,6 +420,43 @@ database cannot name is in **neither** list, so it is refused by a whitelist and
 blocklist: the classic matched with `str.find`, and an empty string is found in anything, so those
 players were refused by *any* deny list. `exempt_names` works but is spoofable — a name is whatever the
 player typed. Config: `examples/plugin_countryfilter.yaml`.
+
+### discord — an admin channel that sees what the server does
+
+Bans, kicks, unbans and map changes posted to a Discord webhook, so admins see what happened without
+being in the game. Warnings, joins, leaves and chat can be turned on too. Config:
+`examples/plugin_discord.yaml`.
+
+**Outbound only.** Events go to Discord and nothing comes back, which is a decision rather than a
+gap. The transport is the smaller half of the reason — a bot token, a gateway websocket that must
+stay up, reconnect and heartbeat, and a dependency. The real one is that **a Discord message has no
+player behind it**: before `!ban` could be typed in a channel, somebody has to decide how a Discord
+account maps to a b3 identity and a level, and until that is decided the channel's permissions *are*
+the admin system. If the want is to administer a server without being in the game, that is what the
+web API is for, and building it twice through Discord's gateway is the expensive way to get it.
+
+Three things it does that are easy to get wrong:
+
+* **It batches.** Discord's webhook endpoint sends one message per request, so relaying one request
+  per line rate limits a busy server within a minute. Every line since the last flush goes in one
+  message, up to Discord's 2000-character limit, and whatever does not fit waits for the next one.
+* **It obeys the rate limit Discord states**, from the `retry_after` in a 429, rather than a number
+  hardcoded here — Discord does not publish a fixed figure for webhooks.
+* **It cannot cost you a ban.** The request runs on a worker thread and every failure is swallowed
+  and logged; a Discord outage must never stall the bot or stop a penalty being applied. The queue
+  is bounded, and the next message that gets through says how many lines were dropped.
+
+A player's name is escaped before it reaches a channel, so somebody calling themselves `@everyone`
+cannot mention it and `**bold**` cannot reformat the rest of the line. Commands are never relayed
+even with chat on: `!login <password>` is typed in the same place as chat.
+
+**Chat is off by default** — a player talking in a game they are playing has not agreed to being
+quoted elsewhere — and nothing is sent at all until you paste in a webhook of your own. That is the
+difference from the classic bot's `translator`, which was dropped for sending every line to a third
+party the operator had no relationship with, by default.
+
+**Pictures:** none ship, and none are fetched. `map_image_url` is a template pointing at your own
+hosting; Discord renders a bare image URL by itself.
 
 ### poweradminurt — Urban Terror's own commands
 
