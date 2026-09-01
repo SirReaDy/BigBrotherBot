@@ -166,7 +166,13 @@ DEFAULT_MESSAGES: dict[str, str] = {
     # -- misc --------------------------------------------------------------
     "admins_online": "admins online: {admins}",
     "admins_none": "no admins are currently connected",
-    "help_commands": "commands: {commands}",
+    # `!help` is cut by group rather than printed whole: a game console holds a few lines and cannot
+    # page, so sixty command names scroll their own top away. {groups} is where else to look.
+    "help_group": "{group}: {commands}",
+    "help_group_more": "also: !help {groups}",
+    "help_group_empty": "you have no {group} commands",
+    "help_command": "{usage}",
+    "help_unknown": "no command or group called {word} - try !help {groups}",
     "iamgod_done": "you are now superadmin",
     "iamgod_disabled": "there is already a superadmin; iamgod is disabled",
 }

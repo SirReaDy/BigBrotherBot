@@ -10,7 +10,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Callable
 
-from b3.core.commands import CommandContext, command
+from b3.core.commands import Command, CommandContext, command
 from b3.core.console import Console
 from b3.core.events import Event, EventType
 from b3.core.game import PlayerInfo
@@ -1380,10 +1380,61 @@ class AdminPlugin(Plugin):
 
     @command(level=0, alias="h")
     def cmd_help(self, ctx: CommandContext) -> None:
-        """help - list the commands you can use"""
-        usable = self.console.command_registry.usable_by(ctx.client)
-        names = sorted({c.name for c in usable})
-        ctx.reply(self.message("help_commands", commands=", ".join(names)))
+        """help [group|command] - list the commands you can use, a group at a time
+
+        One list of everything is what this was, and on a server running twenty plugins it is sixty
+        names — several wrapped lines in a chat window that holds four, so the top of it has scrolled
+        away before it is read. A game console cannot page, so the list is cut where it already has a
+        seam: the level a command needs. `!help` is what a guest can run, `!help mod` is what a
+        moderator adds, and nobody is shown a command they could not use anyway.
+        """
+        registry = self.console.command_registry
+        usable = registry.usable_by(ctx.client)
+        argument = ctx.arg_list()[0].lower() if ctx.arg_list() else ""
+
+        if argument:
+            single = registry.get(argument)
+            if single is not None and registry.may_use(ctx.client, single):
+                # The command's own one-line docstring, which every command here writes as
+                # "name <args> - what it does". Falls back to the name when a plugin wrote none.
+                ctx.reply(self.message("help_command", usage=single.help or single.name))
+                return
+            group = find_group(argument, self.groups)
+            if group is None:
+                ctx.reply(
+                    self.message("help_unknown", word=argument, groups=self._help_groups(usable))
+                )
+                return
+        else:
+            group = min(self.groups, key=lambda g: g.level)
+
+        names = sorted({c.name for c in usable if self._help_tier(c) == group.level})
+        if not names:
+            ctx.reply(self.message("help_group_empty", group=group.keyword))
+            return
+        ctx.reply(self.message("help_group", group=group.keyword, commands=", ".join(names)))
+        # A second reply rather than a tail on the first: the first one is already several wrapped
+        # lines, and "where else to look" is the part that must not be the thing that scrolls away.
+        others = [word for word in self._help_groups(usable).split(", ") if word != group.keyword]
+        if others:
+            ctx.reply(self.message("help_group_more", groups=", !help ".join(others)))
+
+    def _help_tier(self, cmd: Command) -> int:
+        """The group a command belongs in: the highest one whose level it does not exceed.
+
+        A command at level 30 sits with `mod` (20) rather than with `admin` (40), because the
+        question a reader is asking is "what did being a moderator get me", and the answer is
+        everything they can run that a regular could not.
+        """
+        below = [g.level for g in self.groups if g.level <= cmd.min_level]
+        return max(below) if below else min(g.level for g in self.groups)
+
+    def _help_groups(self, usable: list[Command]) -> str:
+        """The groups this player has commands in, for the "there is more" tail."""
+        levels = {self._help_tier(c) for c in usable}
+        return ", ".join(
+            g.keyword for g in sorted(self.groups, key=lambda g: g.level) if g.level in levels
+        )
 
     @command(level=0)
     def cmd_iamgod(self, ctx: CommandContext) -> None:

@@ -10,7 +10,7 @@ a fresh player should not be able to make the bot shout at the whole server.
 <!-- generated:commands -->
 | Command | Alias | Level | What it does |
 |---|---|---|---|
-| `!help` | `!h` | 0 | List the commands you can use |
+| `!help [group\|command]` | `!h` | 0 | List the commands you can use, a group at a time |
 | `!iamgod` |  | 0 | Claim superadmin (only works while the server has no superadmin) |
 | `!register` |  | 0 | Register yourself as a basic user |
 | `!rules` | `!r` | 0 | Say the server rules |
