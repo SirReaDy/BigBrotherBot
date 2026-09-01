@@ -680,15 +680,15 @@ class Bot:
         if event.client.rejected:
             return  # thrown out on the spot; there is nobody left to poll for
         if event.client.is_bot or not event.client.guid:
-            # Nothing a status poll could tell us. An AI player has no identity by design â€” the
-            # parser blanks the shared guid â€” so polling ten times per bot, on a server that keeps
+            # Nothing a status poll could tell us. An AI player has no identity by design — the
+            # parser blanks the shared guid — so polling ten times per bot, on a server that keeps
             # its slots full of them, is a round trip a second spent to conclude that again.
             return
         if not authed or not event.client.ip:
             # Two reasons to poll, and the same poll answers both. The join line has no IP; that
             # only exists in the server's status table, which lags the join by a second or two
             # (legacy Parser.authorizeClients). And on a title whose log spells a player differently
-            # from its status table, that table is the only thing that can say who this is â€” so an
+            # from its status table, that table is the only thing that can say who this is — so an
             # authentication *deferred* for want of an identity is waiting on this exact round trip.
             self._schedule_auth(event.client)
 
@@ -813,7 +813,7 @@ class Bot:
             elif not client.authed:
                 # The log spelled them the way the server does after all. Nothing to re-key, but on
                 # a title where the log's guid is not by itself an identity this poll is the
-                # confirmation that lets them be authenticated at all â€” without this they would wait
+                # confirmation that lets them be authenticated at all — without this they would wait
                 # for the roster sync, which is the five minutes the branch above exists to avoid.
                 client.identity_confirmed = True
                 self._authenticate(client)
@@ -830,13 +830,13 @@ class Bot:
         On almost every title the log's guid *is* the identity and this is always true. CoD4X is the
         exception this exists for: its log prints a per-machine playerid, its status table prints the
         Steam64 id, and the profile names the second (`identity_field`). Both are long strings of
-        digits, so nothing about the *shape* of one tells them apart â€” only the status table can, and
+        digits, so nothing about the *shape* of one tells them apart — only the status table can, and
         it is a round trip away.
 
         The cost of guessing is not abstract: authenticating on the log's spelling writes a second
         record for the same person, with no level and none of their bans, and `_adopt_identity` then
-        swaps the client onto the real one a moment later. The player spends the gap as a stranger â€”
-        an admin typing `!ban` in the first second of a join is told they may not â€” and the junk
+        swaps the client onto the real one a moment later. The player spends the gap as a stranger —
+        an admin typing `!ban` in the first second of a join is told they may not — and the junk
         record stays in the database, collecting connections, forever.
 
         A bot with no rcon is the one case where waiting would mean waiting for ever, so there the
@@ -862,7 +862,7 @@ class Bot:
             self._record_history(client)
             return True
         if client.guid and not self._identity_is_usable(client):
-            # Not a refusal â€” they play, they show up in the roster, their kills count. They simply
+            # Not a refusal — they play, they show up in the roster, their kills count. They simply
             # have no database record yet, because the name the log gave them is not the one this
             # title's records are keyed on. The status poll scheduled at the join answers within a
             # second and authenticates them then.
@@ -958,7 +958,7 @@ class Bot:
         if not self._authenticate(event.client):
             if event.client.rejected:
                 return  # banned client: do not serve commands
-            # Not banned â€” not yet identified. On a title where the status table is the identity
+            # Not banned — not yet identified. On a title where the status table is the identity
             # there is a couple of seconds after a join in which nothing knows who this is, and
             # typing something is exactly what an admin does in it. Asking the server now costs one
             # status round trip and turns "you do not have permission" into the command working;
@@ -971,7 +971,7 @@ class Bot:
     async def _identify_now(self, client: Client) -> None:
         """Resolve one client's identity immediately, rather than waiting for the scheduled poll.
 
-        A no-op where the log's guid is already the identity, and for a bot â€” which has none and
+        A no-op where the log's guid is already the identity, and for a bot — which has none and
         would otherwise cost a round trip per line it says.
         """
         if client.cid is None or self._rcon is None or client.is_bot:
@@ -1991,12 +1991,14 @@ class Bot:
 
     def kick(self, client: Client, reason: str = "", admin: Client | None = None) -> None:
         self._record_penalty(PenaltyType.KICK, client, admin, reason, 0, NEVER_EXPIRES)
-        self.bus.publish_soon(Event(EventType.CLIENT_KICK, client=client, data=reason))
+        self.bus.publish_soon(
+            Event(EventType.CLIENT_KICK, client=client, target=admin, data=reason)
+        )
         self._send_penalty(self.profile.kick_template, client, self._penalty_values(client, reason))
 
     def ban(self, client: Client, reason: str = "", admin: Client | None = None) -> None:
         self._record_penalty(PenaltyType.BAN, client, admin, reason, 0, NEVER_EXPIRES)
-        self.bus.publish_soon(Event(EventType.CLIENT_BAN, client=client, data=reason))
+        self.bus.publish_soon(Event(EventType.CLIENT_BAN, client=client, target=admin, data=reason))
         self._send_ban(client, reason, admin)
 
     def _send_ban(self, client: Client, reason: str, admin: Client | None = None) -> None:
@@ -2011,7 +2013,17 @@ class Bot:
     ) -> None:
         expire = self.clock.epoch() + minutes * 60
         self._record_penalty(PenaltyType.TEMPBAN, client, admin, reason, minutes, expire)
-        self.bus.publish_soon(Event(EventType.CLIENT_BAN_TEMP, client=client, data=reason))
+        self.bus.publish_soon(
+            Event(
+                EventType.CLIENT_BAN_TEMP,
+                client=client,
+                target=admin,
+                data=reason,
+                # How long, for anything that reports the ban rather than applies it. Without it a
+                # relay can only say "a while" about a ban the game itself called 14 days.
+                extra={"duration": minutes},
+            )
+        )
         self._send_tempban(client, minutes, reason, admin)
 
     def _send_tempban(
@@ -2053,19 +2065,25 @@ class Bot:
         """Record a warning. ``minutes`` gives it a lifetime; 0 means it stands until cleared."""
         expire = self.clock.epoch() + minutes * 60 if minutes > 0 else NEVER_EXPIRES
         self._record_penalty(PenaltyType.WARNING, client, admin, reason, minutes, expire)
-        self.bus.publish_soon(Event(EventType.CLIENT_WARN, client=client, data=reason))
+        self.bus.publish_soon(
+            Event(EventType.CLIENT_WARN, client=client, target=admin, data=reason)
+        )
 
     def notice(self, client: Client, reason: str = "", admin: Client | None = None) -> None:
         """Record a note about a player — no in-game effect, it is admin memory."""
         self._record_penalty(PenaltyType.NOTICE, client, admin, reason, 0, NEVER_EXPIRES)
-        self.bus.publish_soon(Event(EventType.CLIENT_NOTICE, client=client, data=reason))
+        self.bus.publish_soon(
+            Event(EventType.CLIENT_NOTICE, client=client, target=admin, data=reason)
+        )
 
     def unban(self, client: Client, reason: str = "", admin: Client | None = None) -> None:
         """Lift every active ban (soft-delete, never a physical delete) and un-ban server-side."""
         if client.id is not None:
             for type_ in (PenaltyType.BAN, PenaltyType.TEMPBAN):
                 self.storage.disable_penalties(client.id, type_)
-        self.bus.publish_soon(Event(EventType.CLIENT_UNBAN, client=client, data=reason))
+        self.bus.publish_soon(
+            Event(EventType.CLIENT_UNBAN, client=client, target=admin, data=reason)
+        )
         if self.profile.unban_template is None:
             # No single command can express it on this engine (see GameProfile.unban_template). Some
             # clients can still do it as a sequence — BattlEye has to read its ban list to find the
@@ -2118,7 +2136,7 @@ class Bot:
             if not client.guid:
                 # Nothing to record it against. Every AI player reports the same guid and the parser
                 # blanks it for exactly that reason, so saving here would put every bot on the
-                # server â€” and every player an engine names without identifying â€” on one database
+                # server — and every player an engine names without identifying — on one database
                 # row, sharing a level and a ban history. It also simply fails: `clients.guid` is
                 # unique, so the second one raises out of whatever plugin happened to warn it.
                 # The penalty still happens in the game. Only the memory of it cannot.
