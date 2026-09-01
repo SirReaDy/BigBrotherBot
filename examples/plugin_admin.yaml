@@ -64,3 +64,6 @@ warn_reasons:
   tk: "1d, ^7stop team killing"
   afk: "5m, ^7you appear to be away from your keyboard"
   spawnfire: "3h, ^7do not fire at spawn"
+  # The classic bot spells that one `sfire`, and its `tk` plugin asks for it by that name.
+  # Kept as an alias so a config carried over from there, or an admin with the habit, works.
+  sfire: "/spawnfire"

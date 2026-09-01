@@ -67,9 +67,15 @@ DEFAULTS: dict[str, object] = {
     # Seconds after a round starts during which firing at a teammate counts as spawn-killing.
     # 0 disables the whole idea, including the multipliers below.
     "round_grace": 7,
-    # The warning given for firing at spawn. Expanded through the admin plugin's `warn_reasons`, so
-    # `sfire` means whatever the operator's table says it does. Empty = do not warn for it.
-    "issue_warning": "sfire",
+    # The warning given for firing at spawn — a *keyword*, expanded through the admin plugin's
+    # `warn_reasons` table, so it means whatever that table says it does. Empty = do not warn.
+    #
+    # The classic's default here is `sfire`, which its own `plugin_admin.ini` defines as `/rule9`.
+    # This bot's admin config spells the same entry `spawnfire`, and the two defaults shipped
+    # disagreeing: `sfire` resolved to nothing, and the fallback warned the player with the bare
+    # word "sfire". Named for the table it is actually looked up in. A config imported from the
+    # classic still says `sfire`, and `warn_reasons` there carries it, so both spellings work.
+    "issue_warning": "spawnfire",
     # Whether `!grudge` exists at all, and from which level. Unlike the classic, a disabled grudge
     # command still answers — it says grudges are off, rather than looking like a typo.
     "grudge_enable": True,
@@ -189,6 +195,8 @@ class TkPlugin(Plugin):
         #: When everybody's points are next halved, and when they last were.
         self._halve_due = 0.0
         self._halved_at = 0.0
+        #: Said once per run, not once per team kill — see `_resolve_reason`.
+        self._warned_about_keyword = False
 
     # -- setup --------------------------------------------------------------
 
@@ -430,7 +438,21 @@ class TkPlugin(Plugin):
         if resolve is None:  # pragma: no cover - admin is a declared requirement
             return 0, keyword
         minutes, text = resolve(keyword)
-        return minutes, text or keyword
+        text = text or keyword
+        if text == keyword and keyword not in getattr(admin, "warn_reasons", {}):
+            # The keyword is not in the table, so the fallback is about to warn a player with the
+            # bare word — "sfire", to somebody who has just shot a teammate. Harmless to the bot and
+            # baffling in the game, and silent: exactly the kind of thing an operator sees once,
+            # wonders about, and never reports. Said once, at the moment it first happens.
+            if not self._warned_about_keyword:
+                self._warned_about_keyword = True
+                log.warning(
+                    "tk: issue_warning is %r, which is not in the admin plugin's warn_reasons "
+                    "table - players are being warned with that bare word. Add it to "
+                    "warn_reasons, or name one that is there",
+                    keyword,
+                )
+        return minutes, text
 
     def _latest_warning_id(self, client: Client) -> int | None:
         """The id of the warning just issued, so it can be lifted when the victim forgives."""
