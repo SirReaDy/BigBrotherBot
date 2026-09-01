@@ -26,6 +26,11 @@ from b3.parsers.registry import handles
 
 log = logging.getLogger(__name__)
 
+#: What every CoD engine prints where a guid goes when it has not identified the client — an AI
+#: player, or a human in the moment between connecting and being resolved. Distinguished from a
+#: *wrongly shaped* guid, which means the configured title is wrong and is worth shouting about.
+UNIDENTIFIED = "0"
+
 # Sentinel attacker cid for a world/environment kill.
 WORLD_CID = "-1"
 # Control byte some CoD servers prepend to chat messages.
@@ -150,6 +155,12 @@ class CodParser(Parser):
             return ""
         if len(guid) >= self.profile.guid_min_length:
             return guid
+        if guid == UNIDENTIFIED:
+            # Not a misconfiguration, so not worth the alarm below: this is the engine's own word
+            # for "I do not know who this is yet" — what every CoD server prints for an AI player,
+            # and for a human in the moment between connecting and being identified. The status
+            # table is what settles it either way.
+            return ""
         if guid and not self._warned_about_guids:
             self._warned_about_guids = True
             log.warning(

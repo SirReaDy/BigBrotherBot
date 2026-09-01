@@ -421,20 +421,55 @@ async def test_a_returning_player_is_the_same_person(tmp_path):
     """The whole point of keying on Steam64: one record, and the ban follows them back."""
     rcon = ScriptedRcon({"status": COD4X_STATUS})
     bot = _bot(tmp_path, rcon=rcon)
+    bot.auth._initial_delay = 0
+    bot.auth._retry_delay = 0
 
     await bot.replay([f"J;{STEAM_ADMIN};0;Admin", "say;x;0;Admin;!iamgod"])
     await bot.feed_line(f"J;{STEAM_BOB};2;Bob")
+    # The status poll is what authenticates on this title — see `_identity_is_usable`.
+    await bot.auth.wait_all()
     proc = CommandProcessor(bot.command_registry, bot)
     await proc.handle(bot.clients.get_by_cid("0"), "!permban Bob cheating")
     await bot.bus.drain()
 
-    # Bob comes back in a different slot after a reconnect.
+    # Bob comes back in a different slot after a reconnect, and the server's table says so too.
     bot.clients.remove("2")
+    rcon.replies["status"] = COD4X_STATUS.replace("\n  2 ", "\n  5 ")
     await bot.feed_line(f"J;{STEAM_BOB};5;Bob")
+    await bot.auth.wait_all()
 
     assert bot.storage.count_clients() == 2  # not three: he is the same person
     assert bot.clients.get_by_cid("5").rejected is True
     assert "permban 5" in " ".join(rcon.commands)  # re-banned in his new slot
+
+
+@pytest.mark.asyncio
+async def test_the_log_spelling_never_becomes_a_second_record(tmp_path):
+    """CoD4X prints a per-machine playerid in the log and the Steam64 in `status`.
+
+    Both are long strings of digits, so nothing about the shape of one tells them apart. Keying on
+    the log's produced a *second* record for the same person — no level, no history, none of their
+    bans — which then took turns with the real one: an admin was a nobody for the first seconds of
+    every join, and the junk record stayed in the database collecting connections.
+    """
+    playerid = "2310346614714116451"  # what the log says
+    status = f"""map: mp_crash
+num score ping guid              steamid           name            address
+--- ----- ---- ----------------- ----------------- --------------- --------------------
+  0    12   47 {playerid} {STEAM_ADMIN} Admin           192.0.2.44:28960
+"""
+    bot = _bot(tmp_path, rcon=ScriptedRcon({"status": status}))
+    bot.auth._initial_delay = 0
+    bot.auth._retry_delay = 0
+
+    await bot.feed_line(f"J;{playerid};0;Admin")
+    await bot.auth.wait_all()
+
+    admin = bot.clients.get_by_cid("0")
+    assert admin.guid == STEAM_ADMIN, "the identity is the one the server states"
+    assert admin.authed is True
+    assert bot.storage.count_clients() == 1, "one person, one record"
+    assert bot.storage.get_client_by_guid(playerid) is None, "and nothing under the log's spelling"
 
 
 @pytest.mark.asyncio
@@ -711,5 +746,94 @@ async def test_the_auth_poll_settles_the_identity_it_was_scheduled_to_find(tmp_p
         assert bot.clients.get_by_cid("0") is client, "re-keyed in place, not replaced"
         assert client.guid == STEAM_ADMIN
         assert client.ip == "192.0.2.44", "and the address the poll went for is still applied"
+    finally:
+        bot.storage.close()
+
+
+@pytest.mark.asyncio
+async def test_a_command_typed_before_the_poll_lands_still_runs(tmp_path):
+    """The two seconds after a join are exactly when an admin types something.
+
+    The scheduled status poll waits two seconds before its first attempt (the classic bot's own
+    number, and its `newPlayer` timer dropped everything typed inside that window). Here a line from
+    a player nobody has identified yet asks the server who they are, then runs.
+    """
+    log_guid = "2310346614714116451"
+    status = f"""map: mp_crash
+num score ping guid              steamid           name            address
+--- ----- ---- ----------------- ----------------- --------------- --------------------
+  0    12   47 {log_guid} {STEAM_ADMIN} Admin           192.0.2.44:28960
+"""
+    bot = _bot(tmp_path, rcon=ScriptedRcon({"status": status}))
+    try:
+        bot.storage.save_client(Client(guid=STEAM_ADMIN, name="Admin", group_bits=128))
+
+        await bot.feed_line(f"J;{log_guid};0;Admin")
+        assert bot.clients.get_by_cid("0").authed is False, "nobody knows who this is yet"
+
+        # No wait_all(): the scheduled poll has not run. The say line is what identifies them.
+        await bot.feed_line(f"say;{log_guid};0;Admin;!help")
+
+        admin = bot.clients.get_by_cid("0")
+        assert admin.authed is True
+        assert admin.guid == STEAM_ADMIN
+        assert admin.max_level() == 100, "and with the level their record carries, not level 0"
+    finally:
+        bot.storage.close()
+
+
+@pytest.mark.asyncio
+async def test_a_penalty_against_a_player_with_no_identity_is_not_recorded(tmp_path):
+    """Every AI player reports the same guid, so the parser blanks it — leaving nothing to key on.
+
+    Recording anyway put them all on one database row: `clients.guid` is unique, so the second bot
+    warned raised an IntegrityError out of whatever plugin happened to warn it. The penalty still
+    happens in the game; only the memory of it cannot.
+    """
+    bot = _bot(tmp_path, rcon=ScriptedRcon())
+    try:
+        before = bot.storage.count_clients()
+        for name in ("bota", "botb", "botc"):
+            bot.warn(Client(cid="3", name=name, guid="", is_bot=True), reason="team damage")
+
+        assert bot.storage.count_clients() == before, "no rows written for players with no identity"
+    finally:
+        bot.storage.close()
+
+
+@pytest.mark.asyncio
+async def test_a_penalty_event_names_the_admin_and_how_long(tmp_path):
+    """Every penalty published the player and the reason, and nothing about who did it.
+
+    So anything *reporting* a penalty rather than applying it — `discord` is the first — had no
+    admin to name, and relayed an admin's ban as the bot's own doing. A tempban carried no length
+    either, so a relay could only call a fourteen-day ban "a while". `target` is the admin, by the
+    convention the event vocabulary already documents for these.
+    """
+    bot = _bot(tmp_path, rcon=ScriptedRcon())
+    try:
+        admin = Client(guid=STEAM_ADMIN, name="SirReaDy", cid="0", id=1, group_bits=128)
+        bob = Client(guid=STEAM_BOB, name="Bob", cid="2", id=2)
+        seen = []
+        for kind in (
+            EventType.CLIENT_KICK,
+            EventType.CLIENT_BAN,
+            EventType.CLIENT_BAN_TEMP,
+            EventType.CLIENT_WARN,
+            EventType.CLIENT_UNBAN,
+        ):
+            bot.bus.subscribe(kind, seen.append)
+
+        bot.kick(bob, reason="spam", admin=admin)
+        bot.ban(bob, reason="cheating", admin=admin)
+        bot.tempban(bob, 20160, reason="cheating", admin=admin)
+        bot.warn(bob, reason="language", admin=admin)
+        bot.unban(bob, reason="appealed", admin=admin)
+        await bot.bus.drain()
+
+        assert len(seen) == 5
+        assert all(e.target is admin for e in seen), "every one of them names who did it"
+        tempban = next(e for e in seen if e.type is EventType.CLIENT_BAN_TEMP)
+        assert tempban.extra["duration"] == 20160, "and a tempban says how long it is"
     finally:
         bot.storage.close()

@@ -42,9 +42,14 @@ COD4X_PLAYER_LINE_RE = re.compile(
     r"(?P<steam>[0-9]+)\s+"
     r"(?P<name>.*?)\s+"
     r"(?:(?P<lastmsg>[0-9]+)\s+)?"
-    r"(?P<ip>(?:(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])\.){3}"
+    # An address, or the literal word `bot` — what CoD4X writes for an AI player, and the only
+    # thing in the row that identifies one. Without the alternative, a table holding bots *and*
+    # people yielded only the people (the first pattern that matches any row wins), so every bot
+    # was dropped from the roster a second after the log put it there — and `!kick botd` could not
+    # find a player who was plainly on the server.
+    r"(?:(?P<ip>(?:(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])\.){3}"
     r"(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])):?"
-    r"(?P<port>-?[0-9]{1,5})"
+    r"(?P<port>-?[0-9]{1,5})|bot)"
     r"(?:\s+(?P<qport>-?[0-9]+))?(?:\s+(?P<rate>[0-9]+))?\s*$",
     re.IGNORECASE,
 )
