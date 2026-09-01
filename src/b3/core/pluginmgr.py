@@ -179,6 +179,10 @@ def load_plugins(
     game = config.server.game
     loaded: list[LoadedPlugin] = []
     enabled_so_far: dict[str, bool] = {}
+    #: What `check_config` gets to ask about. Taken from the config rather than from what has loaded
+    #: so far, because load order is topological and a plugin must not see a different answer
+    #: depending on where in that order it happens to sit.
+    configured = frozenset(entry.name for entry in entries if not entry.disabled)
 
     for name in order_names(classes, [e.name for e in entries]):
         entry, klass = by_name[name], classes[name]
@@ -193,6 +197,15 @@ def load_plugins(
                 raise
             log.warning("plugin %r: config file missing (not loading it; plugin is off)", name)
             plugin_config = None
+
+        if enabled:
+            problems = klass.check_config(plugin_config, configured)
+            if problems:
+                # A refusal rather than a warning, and deliberately: a setting that names a plugin
+                # which is not there does nothing at all, and "does nothing" is the one failure an
+                # operator cannot see from in the game. Better to be stopped at startup, where the
+                # message is on the screen they are already looking at.
+                raise PluginLoadError(f"plugin {name!r}: " + "; ".join(problems))
 
         plugin = klass(console, plugin_config)
         if not enabled:

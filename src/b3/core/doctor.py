@@ -23,6 +23,7 @@ from b3.config.schema import Config
 if TYPE_CHECKING:
     from collections.abc import Callable
 
+    from b3.core.plugin import Plugin
     from b3.runtime.bot import RconClient
 
 log = logging.getLogger(__name__)
@@ -353,8 +354,7 @@ def _check_rcon(config: Config, rcon_factory: "Callable[[], RconClient] | None" 
             f"unexpected reply to 'status': {reply.strip()[:60]!r}",
             "the server answered, but not with a status table — is this a CoD server?",
         )
-    players = max(0, len([ln for ln in reply.splitlines() if ln.strip()]) - 3)
-    return Check("rcon", Status.OK, f"answered; roughly {players} player(s) connected")
+    return Check("rcon", Status.OK, f"answered; {_players_in(reply)} player(s) connected")
 
 
 def _check_command_file(config: Config) -> Check:
@@ -665,8 +665,7 @@ def _check_battleye_rcon(config: Config) -> Check:
     finally:
         client.close()
 
-    players = max(0, len([ln for ln in reply.splitlines() if ln.strip()]) - 3)
-    return Check("rcon", Status.OK, f"logged in; roughly {players} player(s) connected")
+    return Check("rcon", Status.OK, f"logged in; {_players_in(reply)} player(s) connected")
 
 
 def _check_frostbite_rcon(config: Config) -> Check:
@@ -725,10 +724,11 @@ def _check_plugins(config: Config, conf_dir: Path | None) -> list[Check]:
         return [Check("plugins", Status.WARN, "none configured", "at least `admin` is usual")]
 
     checks: list[Check] = []
+    configured = frozenset(entry.name for entry in config.plugins if not entry.disabled)
     for entry in config.plugins:
         label = f"plugin {entry.name}"
         try:
-            resolve_plugin_class(entry)
+            klass = resolve_plugin_class(entry)
         except PluginLoadError as exc:
             checks.append(
                 Check(
@@ -747,8 +747,49 @@ def _check_plugins(config: Config, conf_dir: Path | None) -> list[Check]:
                 checks.append(Check(label, Status.FAIL, f"config file not found: {path}", ""))
                 continue
         state = " (disabled)" if entry.disabled else ""
+        # What the plugin itself says about its settings, now that the whole config is known. This is
+        # where a setting that names another plugin gets checked, and doctor is the right place for
+        # it: the alternative is finding out from a bot that started, said nothing, and relayed
+        # nothing. `run` refuses to start on the same answer.
+        problems = (
+            _config_problems(entry, klass, conf_dir, configured) if not entry.disabled else []
+        )
+        if problems:
+            checks.extend(Check(label, Status.FAIL, problem, "") for problem in problems)
+            continue
         checks.append(Check(label, Status.OK, f"imports cleanly{state}"))
     return checks
+
+
+def _players_in(reply: str) -> int:
+    """How many players a `status` table lists.
+
+    Counted from the row shape rather than from the height of the header, which is what this did
+    before: "every non-empty line, minus three" assumed a six-line preamble and CoD4X prints eight,
+    so a server holding one player was reported as holding six. A row starts with the slot number,
+    and nothing in any of these headers does — which is also true of the titles whose preamble is a
+    different length again, so there is no number left to get wrong.
+    """
+    rows = 0
+    for line in reply.splitlines():
+        head = line.strip().split(" ", 1)[0]
+        if head.isdigit():
+            rows += 1
+    return rows
+
+
+def _config_problems(
+    entry: object, klass: type[Plugin], conf_dir: Path | None, configured: frozenset[str]
+) -> list[str]:
+    """Ask one plugin what is wrong with its own settings. Never raises: this is a report."""
+    from b3.core.pluginmgr import load_plugin_config
+
+    try:
+        plugin_config = load_plugin_config(entry, conf_dir)  # type: ignore[arg-type]
+        return list(klass.check_config(plugin_config, configured))
+    except Exception as exc:  # noqa: BLE001 - a broken check must not take the whole report down
+        log.debug("could not check %s's config: %s", getattr(entry, "name", "?"), exc)
+        return []
 
 
 def _safe_url(url: str) -> str:

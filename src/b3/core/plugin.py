@@ -32,6 +32,26 @@ class Plugin(ABC):
     load_after: tuple[str, ...] = ()
     requires_parsers: tuple[str, ...] | None = None
 
+    @classmethod
+    def check_config(cls, config: object, configured: frozenset[str]) -> list[str]:
+        """Problems with this plugin's config that only the *whole* config can reveal.
+
+        ``requires_plugins`` says "I cannot run without that one". This is the softer, and more
+        common, case: a plugin runs perfectly well without `report`, right up until somebody switches
+        on the one setting that needs it. Declaring that as a hard requirement would force every
+        operator to load a plugin they may not want, so the dependency belongs to the *setting*
+        rather than to the plugin, and only the plugin knows which of its settings imply what.
+
+        Return one plain sentence per problem, naming the setting and what it needs — the strings are
+        printed to an operator by `b3 doctor` and used as the startup refusal, so they are the whole
+        of what somebody gets to work from. ``configured`` holds the names of the plugins this server
+        loads, minus any switched off with ``disabled: true`` — a plugin that is off is not there to
+        be depended on.
+
+        Called before anything is instantiated, so it gets the raw config object rather than `self`.
+        """
+        return []
+
     def __init__(self, console: Console, config: object | None = None) -> None:
         self.console = console
         self.config = config

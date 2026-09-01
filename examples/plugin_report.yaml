@@ -1,0 +1,48 @@
+# report — `!report <player> <reason>`, so a player can raise a cheater when no admin is watching.
+#
+# Point at it from the main config:
+#
+#   plugins:
+#     - name: report
+#       config: "@conf/plugin_report.yaml"
+#
+# A report does NOTHING to the player named. It tells the admins who are in the game, and it raises
+# an event for whatever relays one — `discord`, today. That is deliberate: the moment a report acts
+# on its own, three players who dislike a fourth can remove them.
+#
+# To get reports into Discord, load this plugin AND set `reports: yes` in plugin_discord.yaml. Set
+# one without the other and the bot refuses to start rather than going quietly nowhere; `b3 doctor`
+# says the same thing without starting anything.
+
+settings:
+  # Who may report. Guests included by default: the player who notices a cheater first is usually
+  # the one being shot by them, and asking them to register first loses the report.
+  level: 0
+
+  # Refuse a report that does not say what the player is doing. On, because the person who reads it
+  # was not there — "SirReaDy is aimbotting" can be acted on an hour later, "SirReaDy" cannot.
+  force_reason: yes
+
+  # Seconds one player must wait before reporting anybody again.
+  cooldown: 60
+
+  # Reporting the SAME player again within this many seconds is answered with "already reported"
+  # rather than sent a second time. Two different players reporting the same one both get through:
+  # one player complaining twice is noise, two agreeing is the opposite.
+  duplicate_gap: 300
+
+  # Tell the admins who are in the game, privately, at this level and above. They are the ones who
+  # can do something about it now.
+  tell_admins: yes
+  admin_level: 20
+
+  # Say to the whole server that a report was made. Off: it tells the reported player they were
+  # reported, which is how the reporter gets shot for the rest of the map.
+  announce: no
+
+# THE WORDING lives in the main config's `messages:` section, like all the bot's text - not here.
+# The keys are `report_done`, `report_no_admins`, `report_to_admin`, `report_announce`,
+# `report_self`, `report_needs_reason`, `report_too_soon` and `report_already`; the fields are
+# {name} the player reported, {reporter} who reported them, {reason}, and {seconds} on the cooldown
+# refusal. These go to a game console, so they are limited to what one can print: no em dashes and
+# no emoji, unlike the Discord templates in plugin_discord.yaml.
