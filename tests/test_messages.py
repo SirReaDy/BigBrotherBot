@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import pathlib
+from collections.abc import Iterator
+
 import pytest
 
 from b3.core.messages import DEFAULT_MESSAGES, Messages
@@ -169,16 +172,74 @@ def test_every_shipped_message_can_be_printed_by_the_game():
     tables = {"core": DEFAULT_MESSAGES}
     for module in pkgutil.iter_modules(b3.plugins.__path__):
         plugin = importlib.import_module(f"b3.plugins.{module.name}")
-        table = getattr(plugin, "MESSAGES", None)
-        if isinstance(table, dict):
-            tables[module.name] = table
+        # **Every** module-level table of text, not just the one called MESSAGES. Checking that name
+        # alone missed `spree.DEFAULT_KILLING_SPREES`, whose five-kill line carried an em dash all
+        # the way to a live server: "is on a killing spree ? 5 kills in a row". A plugin's
+        # announcements are messages whatever the constant holding them is called.
+        for name in dir(plugin):
+            if name.startswith("_") or name == "TEMPLATES":
+                continue  # TEMPLATES goes to Discord, which is UTF-8 — see the discord plugin
+            table = getattr(plugin, name)
+            if isinstance(table, dict) and table:
+                tables[f"{module.name}.{name}"] = table
+
+    def strings(value: object) -> "Iterator[str]":
+        """Every line in a table entry — some hold a tuple of them, one per situation."""
+        if isinstance(value, str):
+            yield value
+        elif isinstance(value, (tuple, list)):
+            for item in value:
+                yield from strings(item)
 
     unprintable = [
-        f"{owner}.{key}: {char!r} in {text!r}"
+        f"{owner}[{key!r}]: {char!r} in {text!r}"
         for owner, table in tables.items()
-        for key, text in table.items()
-        if isinstance(text, str)
+        for key, value in table.items()
+        for text in strings(value)
         for char in text
         if ord(char) > 255
     ]
+    assert not unprintable, "\n".join(unprintable)
+
+
+def test_every_shipped_example_config_can_be_printed_by_the_game():
+    """The operator's copy comes from `examples/`, so every message ships twice.
+
+    Fixing a plugin default and leaving the example fixes nothing: `b3 init` copies these files, and
+    what an operator has in front of them is what their server says. The spree em dash was in both,
+    and it was the copy that reached the player.
+
+    `plugin_discord.yaml` is exempt, and is the one file that should be: its templates go to
+    Discord, which is UTF-8, and the emoji in them are the point.
+    """
+    import yaml
+
+    root = pathlib.Path(__file__).resolve().parent.parent / "examples"
+    # Only the sections whose values are *said in the game*. Comments are not loaded by yaml at all,
+    # so the prose explaining each setting stays free to use whatever punctuation reads best.
+    spoken = ("messages", "spamages", "warn_reasons", "sprees", "killing_sprees", "losing_sprees")
+    unprintable: list[str] = []
+
+    def walk(value: object, where: str, name: str) -> None:
+        if isinstance(value, str):
+            unprintable.extend(
+                f"{name} {where}: {char!r} in {value!r}" for char in value if ord(char) > 255
+            )
+        elif isinstance(value, dict):
+            for key, item in value.items():
+                walk(item, f"{where}.{key}", name)
+        elif isinstance(value, list):
+            for index, item in enumerate(value):
+                walk(item, f"{where}[{index}]", name)
+
+    for path in sorted(root.glob("*.yaml")):
+        if path.name == "plugin_discord.yaml":
+            continue
+        loaded = yaml.safe_load(path.read_text(encoding="utf-8"))
+        if not isinstance(loaded, dict):
+            continue
+        for section in spoken:
+            if section in loaded:
+                walk(loaded[section], section, path.name)
+
     assert not unprintable, "\n".join(unprintable)
