@@ -1,0 +1,28 @@
+name: Question
+description: How do I make it do X
+labels: ["question"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        The [documentation](https://sirready.github.io/BigBrotherBot/) covers configuration, the
+        plugins and their settings, and migrating from the classic bot. `b3 doctor` answers most
+        "why is it not working" questions before a person has to.
+
+  - type: input
+    id: title
+    attributes:
+      label: Game
+      description: Which title, if the question is about one.
+      placeholder: cod4x
+
+  - type: textarea
+    id: question
+    attributes:
+      label: The question
+      description: >
+        What you are trying to get the bot to do, and what you have tried. If a setting is not doing
+        what its comment says, that is a bug report rather than a question - the comments are meant
+        to be true.
+    validations:
+      required: true

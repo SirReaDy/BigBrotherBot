@@ -101,6 +101,12 @@ What makes a PR easy to merge:
 with your description as its message. Write that description as the thing you would want to find in
 the log a year from now — what changed and why, not what you did to the branch.
 
+## Conduct
+
+[CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) - Contributor Covenant 2.1. Reports go to the maintainer
+privately, through a [security advisory](https://github.com/SirReaDy/BigBrotherBot/security/advisories/new)
+or a message to [@SirReaDy](https://github.com/SirReaDy).
+
 ## Licensing of what you send
 
 By opening a pull request you agree your contribution is licensed under

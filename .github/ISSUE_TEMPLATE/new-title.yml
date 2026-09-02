@@ -1,0 +1,70 @@
+name: Support a game we do not
+description: A title this bot cannot read yet
+labels: ["new title"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        38 titles are supported across thirteen parser families, and most of what separates them is
+        **data rather than code** - a guid length, a status-table shape, the verbs for kick and ban.
+        A request with the artefacts below is often a profile entry; a request without them cannot
+        be actioned at all, because there is no way to check a guess against the engine.
+
+        `b3 games` lists what is supported today.
+
+  - type: input
+    id: title
+    attributes:
+      label: The game, and which server software
+      description: >
+        The stock dedicated server, or a mod or fork - which one and which version. The fork usually
+        matters more than the game: CoD4X and stock CoD4 differ in the column that identifies a
+        player.
+      placeholder: Insurgency Sandstorm, stock dedicated server
+    validations:
+      required: true
+
+  - type: dropdown
+    id: family
+    attributes:
+      label: What does it resemble?
+      description: If you know. A wrong guess costs nothing; it is checked against the artefacts.
+      options:
+        - Quake 3 / Call of Duty (a log file, rcon over UDP)
+        - Source (RCON over TCP, srcds)
+        - Frostbite (Battlefield, Medal of Honor - structured rcon)
+        - BattlEye (Arma)
+        - Something else, or no idea
+    validations:
+      required: true
+
+  - type: textarea
+    id: log
+    attributes:
+      label: A real log excerpt
+      description: >
+        Twenty or thirty lines covering a join, some chat, a kill and a map change. This is the
+        single most useful thing in the report: the line formats are the parser. Scrub addresses.
+      render: text
+    validations:
+      required: true
+
+  - type: textarea
+    id: status
+    attributes:
+      label: What the server answers for its player list
+      description: >
+        The reply to `status`, or whatever this engine calls it, with a player or two connected.
+        Column headings included, because which column is the persistent identity is exactly the
+        question that has to be answered - and getting it wrong creates a new record for a player
+        on every reconnect.
+      render: text
+
+  - type: textarea
+    id: verbs
+    attributes:
+      label: Its admin commands, if you know them
+      description: >
+        How the engine kicks, bans, unbans, changes map and says something to everybody. A ban that
+        the server does not persist across a restart is worth saying so, too - it changes what the
+        bot has to do about it.

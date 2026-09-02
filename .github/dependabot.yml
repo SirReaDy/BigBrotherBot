@@ -1,0 +1,38 @@
+# Two ecosystems, and the second is the one that rots quietly: a deprecated action keeps working
+# right up until the runner drops it, and then every workflow fails at once for a reason that has
+# nothing to do with the change being pushed.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+    # One PR for the lot. Nine actions across three workflows would otherwise be nine PRs a week
+    # asking the same question.
+    groups:
+      actions:
+        patterns: ["*"]
+    labels: ["dependencies", "ci"]
+    commit-message:
+      prefix: "chore(ci)"
+
+  - package-ecosystem: pip
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+    # `pyproject.toml` declares floors rather than pins, so a runtime dependency bump is usually a
+    # no-op here and the dev tools are where a version actually changes behaviour - ruff and mypy
+    # find new things when they move. Grouped by that split, so a mypy release does not arrive in
+    # the same PR as a SQLAlchemy floor.
+    groups:
+      dev-tools:
+        dependency-type: development
+        patterns: ["*"]
+      runtime:
+        dependency-type: production
+        patterns: ["*"]
+    labels: ["dependencies"]
+    commit-message:
+      prefix: chore
