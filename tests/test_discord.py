@@ -524,11 +524,12 @@ def test_the_placeholder_never_overrides_a_picture_that_exists(console):
 async def test_a_card_is_widened_to_the_message_column(console):
     """Discord offers no width of its own, so the lever is an invisible field.
 
-    A card of three short values is a narrow card. Figure spaces (U+2007) are invisible and Discord
-    does not collapse them the way it collapses ordinary spaces, so a last field of them pushes the
-    embed out to the width of the message column and stops there. The honest one of the two tricks
-    available: the other is a wide transparent image, which means hosting a file and having every
-    card fetch it.
+    A card of three short values is a narrow card. Figure spaces (U+2007) were tried first
+    and rendered narrow on a real client: Discord treats them as whitespace and trims them. A
+    braille blank (U+2800) is not whitespace - a printable glyph that happens to be empty - so a
+    run of them is one unbreakable word and the card has to be at least that wide. The honest one
+    of the two tricks available: the other is a wide transparent image, which means hosting a
+    file and having every card fetch it.
     """
     sender = FakeDiscord()
     plugin = _plugin(console, sender=sender)
@@ -537,8 +538,8 @@ async def test_a_card_is_widened_to_the_message_column(console):
     await plugin.flush()
 
     spacer = sender.embeds[0]["fields"][-1]
-    assert spacer["name"] == "​", "an empty name, which is all Discord accepts"
-    assert set(spacer["value"]) == {" "} and len(spacer["value"]) == 60
+    assert spacer["name"] == chr(0x200B), "an empty name, which is all Discord accepts"
+    assert set(spacer["value"]) == {chr(0x2800)}, "braille blanks, not spaces - see SPACER"
     assert spacer["inline"] is False, "a row of its own, or it widens nothing"
 
 
@@ -551,7 +552,7 @@ async def test_the_widening_can_be_switched_off(console):
     await plugin.flush()
 
     names = [f["name"] for f in sender.embeds[0]["fields"]]
-    assert "​" not in names
+    assert chr(0x200B) not in names
 
 
 @pytest.mark.asyncio

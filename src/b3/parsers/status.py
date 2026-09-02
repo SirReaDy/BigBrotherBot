@@ -28,6 +28,13 @@ from b3.core.game import PlayerInfo
 #: name containing a space.
 MAP_LINE_RE = re.compile(r"^map\s*:\s*(?P<map>\S+)", re.IGNORECASE)
 
+#: And the server's own name, from the same header. Worth reading for the same reason the map is:
+#: the alternative is a second query, and on the CoD family there is no query to make -
+#: `server_info_command` is empty for every one of them, so a bot that does not read this header
+#: never learns what the server is called. Greedy to the end of the line, because a hostname has
+#: spaces and colour codes in it.
+HOSTNAME_LINE_RE = re.compile(r"^hostname\s*:\s*(?P<hostname>.+?)\s*$", re.IGNORECASE)
+
 #: The stock id Tech 3 status row, printed by Call of Duty and by most Quake3 titles.
 #: Transplanted from the legacy ``cod4.py`` ``_regPlayer`` (hex guid, so it also
 #: matches the purely numeric guids older CoD titles print). Anchored on the ip:port + qport +
@@ -107,6 +114,15 @@ def _candidates(
     if isinstance(patterns, re.Pattern):
         return (patterns,)
     return tuple(patterns) or (PLAYER_LINE_RE,)
+
+
+def parse_hostname(text: str) -> str:
+    """The server's name out of a status reply's header, or "" if it does not state one."""
+    for line in text.splitlines():
+        header = HOSTNAME_LINE_RE.match(line.strip())
+        if header:
+            return header["hostname"].strip()
+    return ""
 
 
 def _parse_map(text: str) -> str:

@@ -188,12 +188,13 @@ COLOUR_CODES = tuple(f"^{digit}" for digit in "0123456789")
 #: Markdown a player could put in their own name to reformat the rest of a channel's line.
 MARKDOWN = ("*", "_", "`", "~", "|")
 
-#: An invisible field that widens a card. A zero-width space is the only thing Discord accepts as an
-#: empty field *name*, and the value is figure spaces (U+2007) because Discord collapses runs of
-#: ordinary spaces and does not collapse these. Sixty of them reach the width of the message column,
-#: which is as wide as an embed can be.
+#: An invisible field that widens a card. A zero-width space is the only thing Discord accepts
+#: as an empty field *name*. The value is braille blanks (U+2800): figure spaces were tried
+#: first and rendered narrow - Discord treats them as whitespace and trims them. A braille blank
+#: is not whitespace: it is a printable glyph that happens to be empty, so a run of them is one
+#: unbreakable word and the card has to be as wide as it is. Capped by the message column.
 SPACER_NAME = "\u200b"
-SPACER = "\u2007" * 60
+SPACER = "\u2800" * 30
 
 
 @dataclass(frozen=True, slots=True)

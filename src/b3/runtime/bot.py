@@ -1267,6 +1267,7 @@ class Bot:
                 raw, self.profile.status_patterns, self.profile.identity_field
             )
             map_name = map_name or found_map
+            self._learn_from_status(raw, found_map)
             if players:
                 self._status_command = command
                 self._status_unreadable = False
@@ -1293,6 +1294,29 @@ class Bot:
                 unreadable[0],
             )
         return map_name, []
+
+    def _learn_from_status(self, raw: str, found_map: str) -> None:
+        """Take the server's name and its map off a status reply's header.
+
+        The reply is already being made and already carries both, and on the whole Call of Duty
+        family there is no other way to get them: `server_info_command` is empty for every CoD
+        title, so `read_server_info` returns without asking and the bot never learns what the
+        server is called or which map it is on. Anything that reports rather than acts wants them -
+        the Discord cards named the *parser* ("cod4x") where the server's name belongs, and had no
+        map to state at all.
+
+        **Filled in only while unknown**, which is the important half. The log is what tracks a map
+        *change* (`_on_round_start` compares against this field to decide whether to publish
+        `GAME_MAP_CHANGE`), so a sync that overwrote it could land between the change and the log
+        line and swallow the event - a map change nobody is told about, once in a while, for no
+        gain. Startup is the gap worth closing, and after that the log is authoritative.
+        """
+        if not self.game.map_name and found_map:
+            self.game.map_name = found_map
+        if not self.game.hostname:
+            hostname = status_parser.parse_hostname(raw)
+            if hostname:
+                self.game.hostname = hostname
 
     def get_cvar(self, name: str) -> str | None:
         if self._rcon is None or not name:
