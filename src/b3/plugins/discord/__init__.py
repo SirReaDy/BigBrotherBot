@@ -101,6 +101,9 @@ DEFAULTS: dict[str, object] = {
     # Text along the foot of every embed, beside the time. Ignored in `lines` style, which has
     # nowhere to put it.
     "footer": "",
+    # Widen the card to the full width of the message column, with an invisible field. Discord
+    # offers no size of its own, so this is the lever that exists - see SPACER.
+    "full_width": True,
     # The author line at the top of each card. Empty uses the server's own `sv_hostname`, falling
     # back to the title being played — no table of game names is hardcoded here, see `game_title`.
     "game_name": "",
@@ -184,6 +187,13 @@ COLOUR_CODES = tuple(f"^{digit}" for digit in "0123456789")
 
 #: Markdown a player could put in their own name to reformat the rest of a channel's line.
 MARKDOWN = ("*", "_", "`", "~", "|")
+
+#: An invisible field that widens a card. A zero-width space is the only thing Discord accepts as an
+#: empty field *name*, and the value is figure spaces (U+2007) because Discord collapses runs of
+#: ordinary spaces and does not collapse these. Sixty of them reach the width of the message column,
+#: which is as wide as an embed can be.
+SPACER_NAME = "\u200b"
+SPACER = "\u2007" * 60
 
 
 @dataclass(frozen=True, slots=True)
@@ -564,6 +574,9 @@ class DiscordPlugin(Plugin):
             if self.settings.get("icon_url"):
                 embed["author"]["icon_url"] = str(self.settings["icon_url"])
 
+        if label and not relayed.plain:
+            embed["title"] = label
+
         fields: list[dict[str, Any]] = []
         if subject and relayed.who:
             fields.append({"name": subject, "value": relayed.who, "inline": True})
@@ -573,11 +586,15 @@ class DiscordPlugin(Plugin):
             # rest. "b3" here means nobody typed it: a ban list match, a warning that ran out.
             if relayed.by:
                 fields.append({"name": "By", "value": relayed.by, "inline": True})
+            # Where it happened. A moderation channel read the next morning has no other way to
+            # know, and it is the third column, which fills the row a two-field card leaves half
+            # empty. Not on a map change, where the map is the whole message.
+            current = self.current_map()
+            if current and relayed.kind != "map":
+                fields.append({"name": "Map", "value": current, "inline": True})
         else:
             # No labels to hang on it, so the sentence *is* the content.
             embed["description"] = relayed.text
-            if label and not relayed.plain:
-                embed["title"] = label
         fields += [
             {"name": name, "value": value or "-", "inline": inline}
             for name, value, inline in relayed.fields
@@ -591,6 +608,16 @@ class DiscordPlugin(Plugin):
             # they should be. A map *change* is the one event that is about the picture, so that
             # one gets it full width.
             embed["thumbnail" if relayed.kind != "map" else "image"] = {"url": picture}
+
+        if fields and self.settings.get("full_width"):
+            # Discord sizes an embed to its content and offers no width of its own, so a card with
+            # three short values is a narrow card. A last field of figure spaces - U+2007, which is
+            # invisible and which Discord does not collapse the way it collapses ordinary ones -
+            # pushes it out to the width of the message column and stops there.
+            #
+            # It is a trick, and it is the honest one of the two available: the alternative is a
+            # wide transparent image, which means hosting a file and having every card fetch it.
+            fields.append({"name": SPACER_NAME, "value": SPACER, "inline": False})
 
         # Only the operator's own line. Who did it used to live here and is a field now: Discord
         # prints a footer small and grey under everything else, and "who by" is not a footnote.
@@ -611,6 +638,11 @@ class DiscordPlugin(Plugin):
         hostname = self.clean(str(getattr(game, "hostname", "") or ""))
         profile = getattr(self.console, "profile", None)
         return hostname or str(getattr(profile, "name", "") or "")
+
+    def current_map(self) -> str:
+        """The map being played, for the card's third column."""
+        game = getattr(self.console, "game", None)
+        return self.clean(str(getattr(game, "map_name", "") or ""))
 
     def map_picture(self, map_name: str = "") -> str:
         """The picture for a map — the card's thumbnail, and a map change's full-width image.

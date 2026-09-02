@@ -51,6 +51,11 @@ settings:
   # webhook feeding something that parses it. There the templates are the whole message.
   style: embeds
 
+  # Widen every card to the message column. Discord offers no size of its own, so this is the lever
+  # that exists: an invisible last field of figure spaces, which it does not collapse the way it
+  # collapses ordinary ones. `no` leaves a card as narrow as its contents.
+  full_width: yes
+
   # The author line at the top of each card, and a small icon beside it. Empty uses your server's
   # own sv_hostname. No table of game names ships here: the plugins that hardcode one cover five
   # titles out of the thirty-eight this bot supports, and their icon URLs rot.

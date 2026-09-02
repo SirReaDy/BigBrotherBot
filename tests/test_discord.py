@@ -202,6 +202,7 @@ async def test_a_moderation_event_is_a_card_of_labelled_facts(console):
     """
     sender = FakeDiscord()
     console.game.hostname = "^1Local ^7COD4X Server"
+    console.game.map_name = "mp_crash"
     plugin = _plugin(console, sender=sender)
     admin = _client("Admin", cid="1", id_=1)
 
@@ -210,11 +211,14 @@ async def test_a_moderation_event_is_a_card_of_labelled_facts(console):
 
     embed = sender.embeds[0]
     assert embed["author"]["name"] == "Local COD4X Server", "colour codes gone, as everywhere"
-    assert embed["fields"] == [
-        {"name": "Banned Player", "value": "Bob", "inline": True},
-        {"name": "By", "value": "Admin", "inline": True},
-        {"name": "Reason", "value": "aimbot", "inline": False},
-    ]
+    assert embed["title"] == "Ban"
+    named = [(f["name"], f["value"], f["inline"]) for f in embed["fields"]]
+    assert named[:3] == [
+        ("Banned Player", "Bob", True),
+        ("By", "Admin", True),
+        ("Map", "mp_crash", True),
+    ], "three columns, which is a full row"
+    assert ("Reason", "aimbot", False) in named
     assert "footer" not in embed, "the server is named once, at the top"
     assert embed["timestamp"], "so Discord prints when it happened"
 
@@ -514,3 +518,51 @@ def test_the_placeholder_never_overrides_a_picture_that_exists(console):
     )
     relayed = plugin.render(Event(EventType.GAME_MAP_CHANGE, data="mp_crash"))
     assert relayed.image == "https://example.com/mp_crash.jpg"
+
+
+@pytest.mark.asyncio
+async def test_a_card_is_widened_to_the_message_column(console):
+    """Discord offers no width of its own, so the lever is an invisible field.
+
+    A card of three short values is a narrow card. Figure spaces (U+2007) are invisible and Discord
+    does not collapse them the way it collapses ordinary spaces, so a last field of them pushes the
+    embed out to the width of the message column and stops there. The honest one of the two tricks
+    available: the other is a wide transparent image, which means hosting a file and having every
+    card fetch it.
+    """
+    sender = FakeDiscord()
+    plugin = _plugin(console, sender=sender)
+
+    plugin.on_event(Event(EventType.CLIENT_KICK, client=_client(), data="afk"))
+    await plugin.flush()
+
+    spacer = sender.embeds[0]["fields"][-1]
+    assert spacer["name"] == "​", "an empty name, which is all Discord accepts"
+    assert set(spacer["value"]) == {" "} and len(spacer["value"]) == 60
+    assert spacer["inline"] is False, "a row of its own, or it widens nothing"
+
+
+@pytest.mark.asyncio
+async def test_the_widening_can_be_switched_off(console):
+    sender = FakeDiscord()
+    plugin = _plugin(console, sender=sender, full_width=False)
+
+    plugin.on_event(Event(EventType.CLIENT_KICK, client=_client(), data="afk"))
+    await plugin.flush()
+
+    names = [f["name"] for f in sender.embeds[0]["fields"]]
+    assert "​" not in names
+
+
+@pytest.mark.asyncio
+async def test_a_map_change_does_not_carry_a_map_field(console):
+    """The map is the whole message there; a column repeating it is chrome."""
+    sender = FakeDiscord()
+    console.game.map_name = "mp_crash"
+    plugin = _plugin(console, sender=sender)
+
+    plugin.on_event(Event(EventType.GAME_MAP_CHANGE, data="mp_shipment"))
+    await plugin.flush()
+
+    assert "mp_shipment" in sender.embeds[0]["description"]
+    assert "fields" not in sender.embeds[0], "nothing to label, so nothing is labelled"
