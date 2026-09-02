@@ -199,3 +199,52 @@ def test_a_scaffolded_instance_runs(tmp_path, monkeypatch):
 
     assert main(["-c", str(config_path), "replay", str(log)]) == 0
     assert (tmp_path / "srv" / "b3.sqlite").is_file()  # database created next to the config
+
+
+def test_supervise_starts_the_bot_again_when_restart_stopped_it(monkeypatch):
+    """`!restart` sets 221 and stops; something has to notice and start it again.
+
+    The bot does not re-exec itself, deliberately - a process replacing itself in place is how the
+    classic bot leaked file handles and RCON sockets. The classic shipped a launcher (`b3/run.py`)
+    that ran the bot as a subprocess and started it again on 221; `--supervise` is that launcher,
+    as a flag rather than a second script, so `!restart` works for somebody running `b3 run` in a
+    terminal with nothing watching it.
+    """
+    from b3 import cli
+
+    calls: list[list[str]] = []
+    codes = iter([RESTART_EXIT_CODE, RESTART_EXIT_CODE, 0])
+
+    def fake_call(argv):  # noqa: ANN001, ANN202
+        calls.append(list(argv))
+        return next(codes)
+
+    monkeypatch.setattr(cli.subprocess, "call", fake_call)
+    monkeypatch.setattr(cli.sys, "orig_argv", ["python", "b3", "run", "--supervise"])
+
+    assert cli._supervise() == 0
+    assert len(calls) == 3, "twice restarted, then it stopped for real"
+    assert all("--supervise" not in argv for argv in calls), "the child must not supervise itself"
+    assert calls[0] == ["python", "b3", "run"]
+
+
+def test_supervise_stops_when_the_bot_stops(monkeypatch):
+    """`!die`, a crash, or anything that is not a restart: pass the code up and exit."""
+    from b3 import cli
+
+    monkeypatch.setattr(cli.subprocess, "call", lambda argv: 1)  # noqa: ARG005
+    monkeypatch.setattr(cli.sys, "orig_argv", ["python", "b3", "run", "--supervise"])
+
+    assert cli._supervise() == 1
+
+
+def test_the_online_announcement_names_the_bot_and_its_version():
+    """Said to the server once the bot is reading, as the classic did from `parser.start()`."""
+    from b3.core.messages import Messages
+
+    said = Messages().get("b3_online", name="cod4x_1", version="2.0.0a0")
+
+    assert "cod4x_1" in said and "2.0.0a0" in said
+    assert Messages({"b3_online": ""}).get("b3_online", name="x", version="y") == "", (
+        "and an operator who wants it quiet sets it empty"
+    )

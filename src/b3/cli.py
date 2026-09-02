@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import logging
+import subprocess
 import sys
 import time
 from collections.abc import Callable
@@ -24,7 +25,7 @@ from b3 import __version__
 from b3.config.loader import load_config
 from b3.config.schema import Config
 from b3.core import completion
-from b3.core.instance import InstanceSpec
+from b3.core.instance import RESTART_EXIT_CODE, InstanceSpec
 from b3.net.logsource import LogSource
 from b3.runtime.bot import Bot, RconClient
 
@@ -388,6 +389,33 @@ def _ravaged_client(config: Config) -> PushClient:
     )
 
 
+def _supervise() -> int:
+    """Run the bot in a child process, and start it again when `!restart` stops it.
+
+    `!restart` sets exit code 221 and stops; **it does not re-exec**, and that is deliberate - a
+    process that replaces itself in place is how the classic bot leaked file handles and RCON
+    sockets. The classic solved the other half by shipping a launcher (`b3/run.py`) that ran the bot
+    as a subprocess and started it again on 221, and this is that launcher: one flag rather than a
+    second script, so `!restart` works for somebody who is simply running `b3 run` in a terminal.
+
+    Under systemd, Docker or any supervisor, do not use this: `Restart=on-failure` already does it,
+    and two things restarting one bot is one too many.
+
+    The child is the same command line minus this flag - taken from `sys.orig_argv`, so it works
+    whether the bot was started through the `b3` console script or as `python -m`.
+    """
+    child = [arg for arg in sys.orig_argv if arg != "--supervise"]
+    restarts = 0
+    while True:
+        status = subprocess.call(child)
+        if status != RESTART_EXIT_CODE:
+            if restarts:
+                logging.info("b3 stopped with exit code %d after %d restart(s)", status, restarts)
+            return status
+        restarts += 1
+        logging.info("b3 asked to restart (%d); starting it again", restarts)
+
+
 async def _run_live(
     config: Config,
     conf_dir: Path | None = None,
@@ -422,6 +450,13 @@ async def _run_live(
         return 1
 
     logging.info("b3 running; reading %s", connection.description)
+    # And say so in the game, as the classic bot did from `parser.start()`. On a server whose
+    # players know what b3 is, this is how they learn it is watching again after a restart - and
+    # after `!restart` it is the only confirmation that the bot came back at all. An operator who
+    # would rather it stayed quiet sets `b3_online` to nothing.
+    online = bot.messages.get("b3_online", name=config.bot.name, version=__version__)
+    if online.strip():
+        bot.say(online)
     next_poll = 0.0
     try:
         while bot.exit_code is None:
@@ -493,6 +528,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--allow-schema-drift",
         action="store_true",
         help="start even when the database has not had this version's migrations",
+    )
+    run.add_argument(
+        "--supervise",
+        action="store_true",
+        help="start again when `!restart` stops the bot, instead of exiting",
     )
 
     init = sub.add_parser("init", help="create a bot instance directory for one game server")
@@ -728,6 +768,8 @@ def _dispatch(args: argparse.Namespace) -> int:
         if args.cmd == "probe":
             return _run_probe(config, conf_dir, args.lines, args.cvar, args.redact)
         if args.cmd == "run":
+            if args.supervise:
+                return _supervise()
             return asyncio.run(
                 _run_live(
                     config,
