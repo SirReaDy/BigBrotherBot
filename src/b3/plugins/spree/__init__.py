@@ -8,25 +8,25 @@ like a place.
 
 Kept from the classic: the two tables (a message per kill count, a message per death count), the
 start/end message pairing, `{player}` and `{victim}` in the operator's own text, resetting at the end
-of a map, and the exact order the announcements come out in — a killer's own losing streak ending is
+of a map, and the exact order the announcements come out in - a killer's own losing streak ending is
 announced before the spree they just ended, which is what the captured tests pin.
 
 Changed, and the first two are faults:
 
 * **A spree now ends when the player dies, not only when they are shot.** The classic listened for
   `EVT_CLIENT_KILL` alone, so on the engines that report a gib as its own event a spree never started
-  at all, and a player could keep one alive indefinitely by walking off a ledge — a suicide, a team
+  at all, and a player could keep one alive indefinitely by walking off a ledge - a suicide, a team
   kill and a gib were all invisible to it. All four kinds of death count here, and only an honest
   kill adds to a spree: being team-killed ends yours, and team-killing somebody does not extend the
   killer's.
 * **The map reset works on more than three titles.** It hung off `EVT_GAME_EXIT`, which only the Call
-  of Duty, Quake 3 and Source parsers ever emit — so on Frostbite, Homefront, Altitude, Ravaged and
+  of Duty, Quake 3 and Source parsers ever emit - so on Frostbite, Homefront, Altitude, Ravaged and
   Frontline `reset_spree: yes` was a setting that did nothing, and a spree carried across maps until
   the player left. `reset_on` reads the map change as well, and can be told to reset per round for the
   titles where a round is the unit that matters.
 * **A message table with one bad line no longer loses the good ones.** `int(kills)` on a
-  non-numeric key raised at load, and a message with no `#` in it was dropped whole — start message
-  included — behind a warning that called a losing-spree message a "killingspree message". Each entry
+  non-numeric key raised at load, and a message with no `#` in it was dropped whole - start message
+  included - behind a warning that called a losing-spree message a "killingspree message". Each entry
   is refused on its own here, by name, and the `end` half is optional: an operator who wants an
   announcement only when a spree *starts* can have one.
 * **The tables are rebuilt on every config load**, where the classic's were class attributes it only
@@ -50,8 +50,8 @@ from b3.domain.client import Client
 
 log = logging.getLogger(__name__)
 
-#: What an operator may write in a spree message. `player` is whoever the line is *about* — the player
-#: on the spree when it starts, and the one who ended it when it ends — and `victim` is the other
+#: What an operator may write in a spree message. `player` is whoever the line is *about* - the player
+#: on the spree when it starts, and the one who ended it when it ends - and `victim` is the other
 #: party. Confusing read cold, and kept exactly as the classic had it, because these two names are the
 #: contract every existing spree config is written against.
 PLACEHOLDERS = ("player", "victim")
@@ -84,7 +84,7 @@ DEFAULTS: dict[str, object] = {
 #: The classic's shipped tables, and they are a sensible default: nothing until five, then every five.
 DEFAULT_KILLING_SPREES: dict[int, tuple[str, str]] = {
     5: (
-        "{player} is on a killing spree — 5 kills in a row",
+        "{player} is on a killing spree - 5 kills in a row",
         "{player} stopped the spree of {victim}",
     ),
     10: ("{player} is on fire! 10 kills in a row", "{player} iced {victim}"),
@@ -117,7 +117,7 @@ class Spree:
     kills, which is what makes "a spree" mean "without the other thing happening".
 
     The two messages are held rather than looked up again when the streak ends, because the threshold
-    that started it is no longer derivable from the count once it has moved on — and because it is the
+    that started it is no longer derivable from the count once it has moved on - and because it is the
     message the operator paired with *that* threshold that belongs with it.
     """
 
@@ -132,7 +132,7 @@ def parse_spree_messages(section: object, where: str) -> dict[int, tuple[str, st
 
     Two spellings are accepted, because operators have the first one already: the classic's compact
     `start # end` string, and a mapping with `start:` and an optional `end:`. A missing `end` means
-    the start of that spree is announced and its end is not, which the classic could not express — it
+    the start of that spree is announced and its end is not, which the classic could not express - it
     dropped the whole entry, start message included.
     """
     if not isinstance(section, dict):
@@ -222,7 +222,7 @@ class SpreePlugin(Plugin):
         # threshold taken out of the config kept firing until the bot was restarted.
         #
         # A section that is *present and empty* means the operator wants no announcements of that
-        # kind, and gets none. The defaults are for a section nobody wrote at all — which is what a
+        # kind, and gets none. The defaults are for a section nobody wrote at all - which is what a
         # plugin loaded with no config of its own looks like, and where saying nothing would be a
         # plugin that appears to do nothing.
         self.killing_sprees = (
@@ -279,7 +279,7 @@ class SpreePlugin(Plugin):
     def on_team_kill(self, event: Event) -> None:
         """The victim's spree ends; the killer's does not grow.
 
-        The classic saw neither half of this, listening only for `EVT_CLIENT_KILL` — so on the titles
+        The classic saw neither half of this, listening only for `EVT_CLIENT_KILL` - so on the titles
         where a chaotic round is mostly team kills, a spree survived being shot by your own side.
         """
         victim = event.target
@@ -287,7 +287,7 @@ class SpreePlugin(Plugin):
             self.record_death(victim, killer=event.client)
 
     def on_self_kill(self, event: Event) -> None:
-        """A suicide ends a spree, and ends it quietly — there is nobody to credit."""
+        """A suicide ends a spree, and ends it quietly - there is nobody to credit."""
         victim = event.target if event.target is not None else event.client
         if victim is not None:
             self.record_death(victim, killer=None)
@@ -314,7 +314,7 @@ class SpreePlugin(Plugin):
         record = self.spree(killer)
         record.kills += 1
         # Their own losing streak is over, and that is announced before the spree they may have just
-        # ended — the order the classic's tests pin, and the readable one: the two lines are about
+        # ended - the order the classic's tests pin, and the readable one: the two lines are about
         # different people.
         if record.end_loss_message:
             self.announce(record.end_loss_message, player=killer, other=victim)
@@ -343,7 +343,7 @@ class SpreePlugin(Plugin):
     def announce(self, message: str, *, player: Client, other: Client | None) -> None:
         """Say an operator's line, with the two names in it.
 
-        `{victim}` with nobody to put in it becomes empty rather than the word None — a message
+        `{victim}` with nobody to put in it becomes empty rather than the word None - a message
         written for a kill, reached by a death nobody caused, should read as clumsy English at worst.
         """
         self.console.say(

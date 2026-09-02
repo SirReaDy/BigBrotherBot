@@ -1,4 +1,4 @@
-# spree — announces killing sprees, and the deaths that end them.
+# spree - announces killing sprees, and the deaths that end them.
 #
 # Point at it from the main config:
 #
@@ -11,21 +11,21 @@
 #
 # Two placeholders, and they mean what the classic's `%player%` / `%victim%` meant:
 #
-#   {player}   whoever the line is about — the player on the spree in a `start` message, and the
+#   {player}   whoever the line is about - the player on the spree in a `start` message, and the
 #              player who *ended* one in an `end` message
-#   {victim}   the other party — who they killed, or whose spree they just ended
+#   {victim}   the other party - who they killed, or whose spree they just ended
 #
 # Anything else in braces is refused when this file is read, naming the entry, rather than being sent
 # to the server as literal text.
 #
 # A streak is kills *without dying*, so every kind of death breaks it: being shot, being team-killed,
-# and walking off a ledge. A team kill does not build one — a spree is something to be proud of.
+# and walking off a ledge. A team kill does not build one - a spree is something to be proud of.
 # A death nobody caused ends a spree silently, because the `end` message names who did it.
 
 settings:
   # When everybody's counts go back to zero:
   #   map     the end of a map or a change of map (the classic's behaviour)
-  #   round   also between rounds — for Frostbite, Source, Enemy Territory and the other round-based
+  #   round   also between rounds - for Frostbite, Source, Enemy Territory and the other round-based
   #           titles, where a round is the unit players think in
   #   never   sprees run until the player leaves
   reset_on: map
@@ -37,7 +37,7 @@ settings:
 # Kills in a row -> what to say. Either form works; the first is the classic's, kept because that is
 # what existing spree configs are written in.
 killing_sprees:
-  5: "{player} is on a killing spree — 5 kills in a row # {player} stopped the spree of {victim}"
+  5: "{player} is on a killing spree - 5 kills in a row # {player} stopped the spree of {victim}"
   10:
     start: "{player} is on fire! 10 kills in a row"
     end: "{player} iced {victim}"
@@ -47,7 +47,7 @@ killing_sprees:
   20:
     start: "{player} is UNSTOPPABLE! 20 kills in a row"
     # `end` may be left out, and then nothing is said when that spree ends. The classic dropped the
-    # whole entry — the start message with it — if the two halves were not both there.
+    # whole entry - the start message with it - if the two halves were not both there.
     end: "finally, {player} stopped {victim}"
 
 # Deaths in a row -> what to say. Keep this short: a player having a bad game does not need the whole

@@ -41,7 +41,7 @@ warn:
 # in order — the same convention the classic bot used.
 spamages:
   rule1: "^3Rule #1: ^7no racism of any kind"
-  rule2: "^3Rule #2: ^7no clan stacking — split evenly between the teams"
+  rule2: "^3Rule #2: ^7no clan stacking - split evenly between the teams"
   rule3: "^3Rule #3: ^7no arguing with admins"
   rule4: "^3Rule #4: ^7no abusive language"
   vent: "^3Voice chat: ^7vent.example.com ^3password ^2hunter2"
