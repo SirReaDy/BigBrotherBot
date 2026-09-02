@@ -317,3 +317,54 @@ def test_storage_without_an_engine_says_so_clearly():
     plugin.console = Console()
     with pytest.raises(RuntimeError, match="no SQLAlchemy engine"):
         plugin.storage_engine()
+
+
+# -- settings that name another plugin -------------------------------------
+
+
+class NeedsFriendPlugin(Plugin):
+    """A plugin whose *setting* — not its class — depends on another plugin being loaded.
+
+    The distinction is the point of `check_config`: `requires_plugins` would force `friend` on every
+    operator, when what actually needs it is one setting that most of them will never switch on.
+    """
+
+    @classmethod
+    def check_config(cls, config: object, configured: frozenset[str]) -> list[str]:
+        settings = config.get("settings", {}) if isinstance(config, dict) else {}
+        if settings.get("needs_friend") and "friend" not in configured:
+            return ["settings.needs_friend is on, but `friend` is not loaded"]
+        return []
+
+
+def _needy(tmp_path, on: bool = True) -> PluginEntry:  # noqa: ANN001
+    """The needy plugin, with a real config file — the whole chain, not a stubbed config."""
+    path = tmp_path / "plugin_needy.yaml"
+    path.write_text(f"settings:\n  needs_friend: {'yes' if on else 'no'}\n", encoding="utf-8")
+    return _entry("needy", NeedsFriendPlugin, config=str(path))
+
+
+def test_a_setting_that_names_a_missing_plugin_refuses_to_start(console, tmp_path):
+    """A quiet no-op is the one failure an operator cannot see from in the game."""
+    with pytest.raises(PluginLoadError) as raised:
+        load_plugins(console, _config(_needy(tmp_path)))
+
+    assert "friend" in str(raised.value) and "needy" in str(raised.value)
+
+
+def test_the_same_setting_is_fine_once_the_plugin_it_names_is_there(console, tmp_path):
+    loaded = load_plugins(console, _config(_needy(tmp_path), _entry("friend", AlphaPlugin)))
+    assert _by_name(loaded)["needy"].enabled
+
+
+def test_the_setting_switched_off_needs_nothing(console, tmp_path):
+    loaded = load_plugins(console, _config(_needy(tmp_path, on=False)))
+    assert _by_name(loaded)["needy"].enabled
+
+
+def test_a_plugin_switched_off_in_the_config_cannot_be_depended_on(console, tmp_path):
+    """`disabled: true` means it is not there, which is the whole point of the setting."""
+    with pytest.raises(PluginLoadError):
+        load_plugins(
+            console, _config(_needy(tmp_path), _entry("friend", AlphaPlugin, disabled=True))
+        )

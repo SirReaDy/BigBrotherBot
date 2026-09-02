@@ -116,6 +116,15 @@ class Client:
     #: read. The classic bot's `Client.lastVisit`, and `welcome` is what wants it.
     last_visit: int = 0
     authed: bool = False
+    #: Whether `guid` is the identity this title actually keys on, as opposed to whatever the log
+    #: happened to spell. It matters on one family and it matters a lot: CoD4X prints a per-machine
+    #: playerid in the log and the Steam64 id in its status table, and the profile names the second
+    #: as the identity (`GameProfile.identity_field`). Authenticating on the first creates a *second*
+    #: database record for the same person — no level, no history, none of their bans — and the two
+    #: then take turns, which is an admin losing their level for the first seconds of every join.
+    #: Set once the status table has confirmed who this is; always true where the log's guid is the
+    #: identity, which is every other title here.
+    identity_confirmed: bool = False
     rejected: bool = False  # a ban was re-applied on auth; do not serve this client
     # The server reported a name longer than the protocol allows (see GameProfile.name_max_length).
     # `name` has already been truncated to fit; this records that it happened, since the runtime

@@ -69,6 +69,13 @@ class EventType(Enum):
     CLIENT_UNBAN = auto()
     CLIENT_WARN = auto()
     CLIENT_NOTICE = auto()
+    #: One player told the bot that another is worth looking at. Carried like the penalties above —
+    #: `client` is the player being complained about, `target` whoever complained, `data` the reason —
+    #: so anything that already reads "who was this done to, and by whom" reads a report too. Not a
+    #: penalty, though: nothing happens to the player. That is the point of it. It is the only event
+    #: here carrying a *player's* judgement rather than an admin's, and it exists to reach somebody
+    #: who is not in the game to see it.
+    CLIENT_REPORT = auto()
 
     # --- voice comms and voting -------------------------------------------
     #

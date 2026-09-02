@@ -147,6 +147,11 @@ COD4X = GameProfile(
     # The status table carries a per-session guid *and* a Steam64 id. Keying on the guid would
     # create a new player record — losing their level and their bans — on every reconnect.
     identity_field="steam",
+    # An AI player reports "0" for both id columns, and the address column says `bot` outright.
+    # Exactly "0", not a prefix: as a prefix this would swallow every real id starting with a zero.
+    # Without it every bot on the server shares one database row — one level, one ban history —
+    # which is what Bot Warfare on CoD4X produces the moment somebody warns two of them.
+    bot_guids=frozenset({"0"}),
     kick_template="kick %(cid)s %(reason)s",
     ban_template="permban %(cid)s %(reason)s",
     tempban_template="tempban %(cid)s %(minutes)sm %(reason)s",

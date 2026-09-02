@@ -111,11 +111,49 @@ async def test_iamgod_disabled_when_superadmin_exists(console):
 
 
 @pytest.mark.asyncio
-async def test_help_lists_usable_commands(console):
+async def test_help_lists_one_group_and_says_where_the_rest_are(console):
+    """Sixty command names is several wrapped lines in a chat window that holds four."""
     _, proc = _setup(console)
     await proc.handle(_admin(), "!help")
-    listing = console.told[-1][1]
-    assert "kick" in listing and "ban" in listing and "iamgod" in listing
+    listing = console.told[-2][1]
+    tail = console.told[-1][1]
+
+    assert "iamgod" in listing, "guest commands are what !help on its own answers with"
+    assert "kick" not in listing, "and an admin command is not one of them"
+    assert "!help admin" in tail, "the tail is how you find the rest"
+
+
+@pytest.mark.asyncio
+async def test_help_for_a_group_lists_what_that_group_adds(console):
+    _, proc = _setup(console)
+    await proc.handle(_admin(), "!help admin")
+    listing = console.told[-2][1]
+    assert "kick" in listing and "ban" in listing
+    assert "iamgod" not in listing, "a guest command is not listed again under admin"
+
+
+@pytest.mark.asyncio
+async def test_help_never_lists_a_command_the_caller_cannot_run(console):
+    """The list is drawn from `usable_by`, so asking about a group above you shows nothing of it."""
+    _, proc = _setup(console)
+    guest = Client(guid="G", name="Guest")
+    await proc.handle(guest, "!help superadmin")
+    assert "no superadmin commands" in console.told[-1][1]
+
+
+@pytest.mark.asyncio
+async def test_help_for_one_command_answers_with_its_usage(console):
+    _, proc = _setup(console)
+    await proc.handle(_admin(), "!help kick")
+    assert "kick <player>" in console.told[-1][1]
+
+
+@pytest.mark.asyncio
+async def test_help_for_a_word_that_is_neither_says_so_and_points_somewhere(console):
+    _, proc = _setup(console)
+    await proc.handle(_admin(), "!help moderator")
+    reply = console.told[-1][1]
+    assert "moderator" in reply and "mod" in reply
 
 
 # -- penalty inspection / lifting ------------------------------------------

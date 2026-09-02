@@ -16,6 +16,10 @@ Two things the captures could not tell us, because the classic bot never met the
 
 from __future__ import annotations
 
+import pathlib
+
+import logging
+
 import pytest
 
 from b3.core.commands import CommandProcessor
@@ -39,7 +43,12 @@ def _client(name="Bob", cid="2", id_=7, bits=0):  # noqa: ANN001, ANN202
 
 def _tk(console, **settings):  # noqa: ANN001, ANN202
     """The plugin, plus the admin plugin it asks for warning keywords."""
-    admin = AdminPlugin(console, {"warn_reasons": {"sfire": "3h, do not shoot at spawn"}})
+    admin = AdminPlugin(
+        console,
+        # Both spellings, as the shipped admin config carries them: this bot's `spawnfire`, and
+        # `sfire` aliased to it for a config carried over from the classic bot.
+        {"warn_reasons": {"spawnfire": "3h, do not shoot at spawn", "sfire": "/spawnfire"}},
+    )
     admin.start()
     console.plugins = {"admin": admin}
     console.get_plugin = lambda name: console.plugins.get(name)  # noqa: ARG005
@@ -247,7 +256,7 @@ async def test_shooting_a_teammate_at_spawn_costs_triple(console):
 
 @pytest.mark.asyncio
 async def test_the_spawn_warning_is_the_operators_own_keyword(console):
-    """`sfire` is a `warn_reasons` key, not a sentence. Warning with the literal word would be
+    """`spawnfire` is a `warn_reasons` key, not a sentence. Warning with the literal word would be
     telling the player off in a language only the config file speaks."""
     _tk(console, round_grace=10)
     joe, mike = _players(console, "Joe", "Mike")
@@ -666,7 +675,9 @@ def _real_bot(tmp_path, **settings):  # noqa: ANN001, ANN202
 
     rcon = Rcon()
     bot = Bot(config, rcon=rcon, clock=FakeClock())
-    admin = AdminPlugin(bot, {"warn_reasons": {"sfire": "3h, do not shoot at spawn"}})
+    admin = AdminPlugin(
+        bot, {"warn_reasons": {"spawnfire": "3h, do not shoot at spawn", "sfire": "/spawnfire"}}
+    )
     bot.add_plugin(admin, "admin")
     tk = TkPlugin(bot, {"settings": {"round_grace": 0, **settings}})
     bot.add_plugin(tk, "tk")
@@ -721,3 +732,46 @@ async def test_the_ban_a_real_server_gets_is_a_tempban_command(tmp_path):
     assert bot.storage.get_active_penalties(joe.require_id(), PenaltyType.TEMPBAN)
     assert any("tempbanclient" in c or "banclient" in c for c in rcon.commands)
     bot.storage.close()
+
+
+def test_the_shipped_defaults_agree_with_the_shipped_admin_table():
+    """The two configs shipped disagreeing, and the symptom was a word in the game.
+
+    `tk` kept the classic bot's default keyword (`sfire`); this bot's admin config spells the same
+    entry `spawnfire`. Nothing failed — `_resolve_reason` falls back to the keyword — so a player
+    who shot a teammate at spawn was warned with the bare word "sfire". A test rather than a
+    comment, because the two files are edited by different hands at different times.
+    """
+    import yaml
+
+    from b3.plugins.tk import DEFAULTS
+
+    root = pathlib.Path(__file__).resolve().parent.parent
+    admin_config = yaml.safe_load((root / "examples" / "plugin_admin.yaml").read_text("utf-8"))
+    tk_config = yaml.safe_load((root / "examples" / "plugin_tk.yaml").read_text("utf-8"))
+    reasons = admin_config["warn_reasons"]
+
+    assert DEFAULTS["issue_warning"] in reasons, (
+        "the plugin default must name a keyword that exists"
+    )
+    assert tk_config["settings"]["issue_warning"] in reasons, "and so must the example config"
+    assert reasons["sfire"] == "/spawnfire", "the classic bot's spelling still resolves"
+
+
+@pytest.mark.asyncio
+async def test_a_keyword_that_is_not_in_the_table_is_said_out_loud(console, caplog):
+    """Warning somebody with a bare config keyword is baffling in the game and silent in the log."""
+    admin = AdminPlugin(console, {"warn_reasons": {"spawnfire": "3h, do not shoot at spawn"}})
+    admin.start()
+    console.plugins = {"admin": admin}
+    console.get_plugin = lambda name: console.plugins.get(name)  # noqa: ARG005
+    plugin = TkPlugin(console, {"settings": {"round_grace": 10, "issue_warning": "nosuchkeyword"}})
+    plugin.start()
+    joe, mike = _players(console, "Joe", "Mike")
+    console.game.start_round(console.clock.now())
+
+    with caplog.at_level(logging.WARNING):
+        await _kill(console, joe, mike)
+
+    assert "not in the admin plugin's warn_reasons" in caplog.text
+    assert [reason for _c, reason, _a in console.warned] == ["nosuchkeyword"]

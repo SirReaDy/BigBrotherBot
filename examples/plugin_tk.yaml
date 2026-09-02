@@ -19,8 +19,11 @@ settings:
   round_grace: 7
 
   # The warning for firing at spawn. This is a *keyword* from the admin plugin's `warn_reasons`
-  # table, so it means whatever your table says — leave it empty to warn for team damage only.
-  issue_warning: sfire
+  # table, so it means whatever your table says - leave it empty to warn for team damage only.
+  # Name one your table actually has: a keyword that is not there warns the player with the bare
+  # word, which is what `sfire` (the classic bot's spelling) used to do here. It is now an alias in
+  # the shipped admin config, so both spellings resolve.
+  issue_warning: spawnfire
 
   # `!grudge` marks an attacker you will not forgive, so `!forgiveall` and `!fp` leave them alone.
   # With grudges off the command still answers, saying they are off; only the level changes here.

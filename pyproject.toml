@@ -78,6 +78,11 @@ dev = [
     # upgrade a commit somebody made, with any resulting diff in it. Raise them on purpose.
     "pytest>=8.0,<10.0",
     "pytest-asyncio>=0.23,<2.0",
+    # A hung test must fail, not wait. This suite starts threads and opens sockets, so a test can
+    # stop making progress without failing - and a job killed by its own 20-minute limit prints
+    # nothing but the progress dots, so it cannot say which test it was. With a per-test timeout the
+    # answer is in the failure.
+    "pytest-timeout>=2.3,<3.0",
     # A linter changes what it enforces between releases.
     "ruff>=0.15,<0.17",
     # And a type checker changes what it can infer, which is the same thing with a longer diff.
@@ -118,6 +123,14 @@ b3 = ["data/*.mmdb", "data/*.md"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+# No test here takes a second; the whole suite is a few minutes. 60 is not a performance budget, it
+# is the line between slow and stopped - a test that reaches it is waiting on something that is not
+# coming, and the useful outcome is a named failure rather than a job killed by its own clock.
+timeout = 60
+# And before the timeout fires, dump every thread's stack. A hang in this suite is usually *not* in
+# the test's own frame: it is a worker thread inside `asyncio.to_thread`, or a socket read in a fake
+# server, and the test frame alone does not say which.
+faulthandler_timeout = 45
 
 [tool.ruff]
 line-length = 100

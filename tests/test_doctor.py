@@ -169,6 +169,66 @@ def test_a_missing_plugin_config_file_is_reported(tmp_path):
     assert "not found" in check.detail
 
 
+#: A `discord` config whose one interesting property is that it names another plugin.
+DISCORD_RELAYING_REPORTS = "settings:\n  webhook: https://x/y\n  reports: yes\n"
+
+#: What CoD4X answers `status` with — six preamble lines, not the three the count used to assume.
+COD4X_STATUS_REPLY = """hostname: Local COD4X Server
+version : CoD4 X - win_mingw-x86 build 1153
+udp/ip  : 0.0.0.0:28960
+os      : win_mingw
+type    : dedicated server
+map     : mp_crossfire
+
+num score ping playerid            steamid           name      lastmsg address        qport rate
+--- ----- ---- ------------------- ----------------- --------- ------- -------------- ----- ----
+  0     0    8 2310346614714116451 76561198137164452 SirReaDy        0 127.0.0.1:28961 13907 1048576
+"""
+
+
+def test_the_player_count_counts_players_and_not_header_lines(tmp_path):
+    """A server holding one player was reported as holding six: CoD4X's preamble is eight lines."""
+    check = _named(
+        run_checks(_config(tmp_path), tmp_path, rcon_factory=_rcon(COD4X_STATUS_REPLY)), "rcon"
+    )
+    assert check.status is Status.OK
+    assert "1 player(s)" in check.detail
+
+
+def test_an_empty_server_says_nobody_is_connected(tmp_path):
+    empty = COD4X_STATUS_REPLY.rsplit("\n", 2)[0] + "\n"
+    check = _named(run_checks(_config(tmp_path), tmp_path, rcon_factory=_rcon(empty)), "rcon")
+    assert "0 player(s)" in check.detail
+
+
+def test_a_setting_that_names_a_plugin_this_server_does_not_load_is_reported(tmp_path):
+    """`discord` relaying reports needs the `report` plugin; without it the channel is just quiet."""
+    conf = tmp_path / "plugin_discord.yaml"
+    conf.write_text(DISCORD_RELAYING_REPORTS, encoding="utf-8")
+    config = _config(tmp_path)
+    config.plugins = [PluginEntry(name="admin"), PluginEntry(name="discord", config=str(conf))]
+
+    check = _named(run_checks(config, tmp_path, rcon_factory=_rcon(STATUS_REPLY)), "plugin discord")
+
+    assert check.status is Status.FAIL
+    assert "report" in check.detail
+
+
+def test_the_same_settings_pass_once_the_plugin_they_name_is_loaded(tmp_path):
+    conf = tmp_path / "plugin_discord.yaml"
+    conf.write_text(DISCORD_RELAYING_REPORTS, encoding="utf-8")
+    config = _config(tmp_path)
+    config.plugins = [
+        PluginEntry(name="admin"),
+        PluginEntry(name="report"),
+        PluginEntry(name="discord", config=str(conf)),
+    ]
+
+    check = _named(run_checks(config, tmp_path, rcon_factory=_rcon(STATUS_REPLY)), "plugin discord")
+
+    assert check.status is Status.OK
+
+
 def test_no_plugins_configured_is_a_warning(tmp_path):
     config = _config(tmp_path)
     config.plugins = []

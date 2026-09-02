@@ -80,3 +80,30 @@ async def test_cancel_aborts_pending_auth():
 
     assert authed == []
     assert mgr.pending == set()
+
+
+@pytest.mark.asyncio
+async def test_cancel_all_stops_every_pending_poll():
+    """What a shutdown needs, and what stops a test leaving a timer behind.
+
+    A poller left running when the bot stops is sleeping on a retry against a socket that is about
+    to be closed under it. In a process that is exiting that is cosmetic; in the test suite, which
+    runs an event loop per test, a pending task owning a worker thread makes closing the loop wait
+    on that thread - five minutes of it on Python 3.12, indistinguishable from a hung test.
+    """
+    resolved = []
+    manager = AuthManager(
+        resolve=lambda cid: None,  # never resolvable, so every task retries to its limit
+        on_authed=lambda info, attempt: resolved.append(info),
+        initial_delay=30,
+        retry_delay=30,
+    )
+    for cid in ("0", "1", "2"):
+        manager.schedule(cid)
+    assert manager.pending == {"0", "1", "2"}
+
+    manager.cancel_all()
+
+    assert manager.pending == set()
+    await asyncio.sleep(0)  # let the cancellations land
+    assert resolved == []

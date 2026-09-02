@@ -1,0 +1,122 @@
+# discord - relays what happens on the server to a Discord channel.
+#
+# Point at it from the main config:
+#
+#   plugins:
+#     - name: discord
+#       config: "@conf/plugin_discord.yaml"
+#
+# OUTBOUND ONLY. Events go to Discord; nothing comes back. That is a decision rather than a gap:
+# reading messages back needs a bot token and a gateway websocket that must stay up, reconnect and
+# heartbeat, and - the real problem - a Discord message has no player behind it, so before `!ban`
+# could be typed in a channel somebody has to decide how a Discord account maps to a b3 identity and
+# a level. Otherwise the channel's permissions *are* your admin system and a stolen Discord account
+# is a stolen server. If what you want is to administer the server without being in the game, that is
+# what the web API and dashboard are for.
+#
+# GETTING A WEBHOOK: in Discord, Channel Settings -> Integrations -> Webhooks -> New Webhook, then
+# Copy Webhook URL. It is a secret in the sense that anybody holding it can post to that channel;
+# it grants nothing else, and it can be deleted from the same screen.
+#
+# ON PRIVACY. Nothing is sent until you paste a URL below, the webhook is yours, and it points at
+# your own Discord. That is why this exists while the classic bot's `translator` was dropped: that
+# one sent every chat line to a third party the operator had no relationship with, by default.
+# Chat relaying here is **off** by default for a smaller version of the same reason - a player
+# talking in a game they are playing has not agreed to being quoted somewhere else. Turn it on if
+# your community expects it; the players are yours to know.
+
+settings:
+  # Paste the webhook URL here. Empty (the default) means this plugin does nothing at all and says
+  # so once at startup, rather than complaining per event.
+  webhook: ""
+
+  # What the messages are posted as. Empty keeps whatever you named the webhook in Discord.
+  username: ""
+  avatar_url: ""
+
+  # HOW IT LOOKS. `embeds` posts a moderation event as a coloured card:
+  #
+  #   (icon) Your Server Name
+  #   Banned Player      By                          [map thumbnail]
+  #   Bob                SirReaDy
+  #   Reason
+  #   aimbot
+  #   today at 21:14
+  #
+  # Facts you can read a column at a time, so the channel is scanned rather than read. Chat,
+  # arrivals and map changes stay sentences - there is nothing to label about "Bob: hello
+  # everyone" - and those are the ones the templates below still write.
+  #
+  # `lines` posts everything as plain text instead, one line per event, for a compact channel or a
+  # webhook feeding something that parses it. There the templates are the whole message.
+  style: embeds
+
+  # The author line at the top of each card, and a small icon beside it. Empty uses your server's
+  # own sv_hostname. No table of game names ships here: the plugins that hardcode one cover five
+  # titles out of the thirty-eight this bot supports, and their icon URLs rot.
+  game_name: ""
+  icon_url: ""
+
+  # Extra text along the foot of every embed, after "banned by <admin>". Ignored by `lines`.
+  footer: ""
+
+  # WHAT TO RELAY. The moderation events are on, because an admin channel is what this is for.
+  bans: yes          # bans, temporary bans and unbans
+  kicks: yes
+  warnings: no       # every warning, which on a busy server is a lot of them
+  joins: no          # one line per arrival; useful on a small server, noise on a full one
+  leaves: no
+  chat: no           # see the note about consent above
+  map_changes: yes
+
+  # `!report`, which needs the `report` plugin loaded to produce anything at all. Switching this on
+  # without it is refused at startup rather than quietly relaying nothing, and `b3 doctor` says so
+  # without starting the bot.
+  reports: no
+
+  # Seconds between posts. Everything since the last one goes in a single message, and this is not
+  # tuning: Discord's webhook endpoint sends one message per request, so a busy server relaying one
+  # request per line is rate limited within a minute. Raise it on a busy server rather than lower it.
+  flush_seconds: 10
+
+  # How many lines to hold while Discord is unreachable. Past this the oldest are dropped and the
+  # next message that gets through says how many - the alternative is a queue that grows for as long
+  # as the outage lasts.
+  max_queue: 200
+
+  # A picture for the map, if you host pictures. `{map}` is the map's name:
+  #
+  #   map_image_url: "https://example.com/maps/{map}.jpg"
+  #
+  # In `embeds` this is the small thumbnail in the corner of every card (the *current* map), and the
+  # full-width picture on a map change. In `lines` it is a bare URL, which Discord renders itself.
+  # Empty means no picture, which is the default: nothing here ships screenshots of maps, and
+  # hosting one for every map of every supported title is not something this bot can do for you.
+  map_image_url: ""
+
+  # What to show when there is no picture for this map - one you have no shot of, or map_image_url
+  # left empty. Your own URL: a placeholder shipped here would be somebody else's hosting, fetched
+  # by every server running this bot, and broken the day it moves.
+  map_image_fallback: ""
+
+# THE LINES THEMSELVES. Reword them freely - these go to Discord, which is UTF-8 and renders
+# markdown, so unlike the in-game messages they are not limited to what a game console can print.
+#
+# Available fields: {name} the player, {admin} whoever did it (or "b3" when nobody did),
+# {reason}, {duration} on a temporary ban, {text} on a chat line, {map} on a map change.
+#
+# A player's name is escaped before it reaches these, so somebody calling themselves `@everyone`
+# cannot mention your channel and somebody called `**bold**` cannot embolden the rest of the line.
+#
+# {reason} on a report is what the player typed after the name.
+templates:
+  ban: "🔨 **{name}** was banned by {admin} - {reason}"
+  tempban: "⏳ **{name}** was banned for {duration} by {admin} - {reason}"
+  unban: "🕊️ **{name}** was unbanned by {admin}"
+  kick: "👢 **{name}** was kicked by {admin} - {reason}"
+  warn: "⚠️ **{name}** was warned by {admin} - {reason}"
+  join: "➡️ {name} joined"
+  leave: "⬅️ {name} left"
+  chat: "{name}: {text}"
+  map: "🗺️ map is now **{map}**"
+  report: "🚨 **{name}** was reported by {admin} - {reason}"

@@ -79,6 +79,18 @@ class AuthManager:
         if self._tasks:
             await asyncio.gather(*self._tasks.values(), return_exceptions=True)
 
+    def cancel_all(self) -> None:
+        """Abort every pending auth. For shutdown, where nobody is going to be resolved.
+
+        A poller left running when the bot stops is a task sleeping on a retry against a socket that
+        has just been closed. Harmless in a process that is exiting, and not harmless in one that is
+        not: the test suite runs an event loop per test, and closing a loop with a pending task that
+        owns a worker thread waits on that thread - which on Python 3.12 is a five-minute wait, and
+        looks exactly like a hung test.
+        """
+        for cid in list(self._tasks):
+            self.cancel(cid)
+
     @property
     def pending(self) -> set[str]:
         return set(self._tasks)

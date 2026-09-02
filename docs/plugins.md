@@ -35,6 +35,8 @@ list, each with an optional config of its own (see `examples/`):
 | `geolocation` | resolves where a player is connecting from, for the plugins that need it | — |
 | `location` | announces where arrivals are from, and answers for it | `!locate` `!distance` `!isp` |
 | `countryfilter` | refuses players from the countries a server does not accept | — |
+| `discord` | relays bans, kicks, reports and map changes to a Discord channel, as embeds | — |
+| `report` | lets a player raise a cheater when no admin is watching | `!report` |
 | `poweradminurt` | Urban Terror's admin commands, and the two balancers | `!paslap` `!panuke` `!pakill` `!pamute` `!pateams` `!pabalance` `!paskuffle` `!paforce` `!pabigtext` `!paset` `!paget` `!pavote` `!pactf` `!pabomb` `!pagear` … |
 | `codam` | a Call of Duty admin mod's own verbs, from a list you write | `!codam` plus `c` + every verb you list |
 | `poweradmincod7` | Black Ops's playlists, map exclusions, DLC packs and config files | `!pasetmap` `!paplaylist` `!pagetplaylists` `!pasetplaylist` `!paexcludemaps` `!paset` `!paget` `!pasetdlc` `!palistcfg` `!paload` `!pamaprestart` `!pafastrestart` `!pagametype` |
@@ -419,6 +421,86 @@ database cannot name is in **neither** list, so it is refused by a whitelist and
 blocklist: the classic matched with `str.find`, and an empty string is found in anything, so those
 players were refused by *any* deny list. `exempt_names` works but is spoofable — a name is whatever the
 player typed. Config: `examples/plugin_countryfilter.yaml`.
+
+### discord — an admin channel that sees what the server does
+
+Bans, kicks, unbans and map changes posted to a Discord webhook, so admins see what happened without
+being in the game. Warnings, joins, leaves and chat can be turned on too. Config:
+`examples/plugin_discord.yaml`.
+
+**Outbound only.** Events go to Discord and nothing comes back, which is a decision rather than a
+gap. The transport is the smaller half of the reason — a bot token, a gateway websocket that must
+stay up, reconnect and heartbeat, and a dependency. The real one is that **a Discord message has no
+player behind it**: before `!ban` could be typed in a channel, somebody has to decide how a Discord
+account maps to a b3 identity and a level, and until that is decided the channel's permissions *are*
+the admin system. If the want is to administer a server without being in the game, that is what the
+web API is for, and building it twice through Discord's gateway is the expensive way to get it.
+
+Three things it does that are easy to get wrong:
+
+* **It batches.** Discord's webhook endpoint sends one message per request, so relaying one request
+  per line rate limits a busy server within a minute. Every line since the last flush goes in one
+  message, up to Discord's 2000-character limit, and whatever does not fit waits for the next one.
+* **It obeys the rate limit Discord states**, from the `retry_after` in a 429, rather than a number
+  hardcoded here — Discord does not publish a fixed figure for webhooks.
+* **It cannot cost you a ban.** The request runs on a worker thread and every failure is swallowed
+  and logged; a Discord outage must never stall the bot or stop a penalty being applied. The queue
+  is bounded, and the next message that gets through says how many lines were dropped.
+
+A player's name is escaped before it reaches a channel, so somebody calling themselves `@everyone`
+cannot mention it and `**bold**` cannot reformat the rest of the line. Commands are never relayed
+even with chat on: `!login <password>` is typed in the same place as chat.
+
+**Chat is off by default** — a player talking in a game they are playing has not agreed to being
+quoted elsewhere — and nothing is sent at all until you paste in a webhook of your own. That is the
+difference from the classic bot's `translator`, which was dropped for sending every line to a third
+party the operator had no relationship with, by default.
+
+**Two shapes.** `style: embeds` (the default) posts a moderation event as a coloured card: an
+author line naming the server, the facts as labelled
+fields — **Banned Player**, **Server**, **Reason** — the current map as a thumbnail, and *banned by
+Admin* with a timestamp along the bottom. A channel of those is scanned; a channel of sentences has
+to be read. Chat, arrivals and map changes keep the sentence, because there is nothing to label
+about "Bob: hello everyone" — which is what keeps `templates` meaningful in this style: the events
+with no fields are exactly the ones whose whole content is your wording. `style: lines` posts
+everything as plain text instead. Discord takes ten embeds per message, so a busy flush sends ten
+and keeps the rest for the next one.
+
+**Reports** (`reports: yes`) relay `!report` from the `report` plugin, with the reporter named as
+prominently as the player reported — an admin reading the channel an hour later has to decide about
+both. The setting needs that plugin loaded: switch it on without it and the bot refuses to start,
+and `b3 doctor` says the same thing without starting anything. A setting that reads as though it
+does something and quietly does nothing is the one failure an operator cannot see from in the game.
+
+**Pictures:** none ship, and none are fetched. `map_image_url` is a template pointing at your own
+hosting; it becomes the thumbnail on every card and the full-width picture on a map change. Same for
+the author line — `game_name` and `icon_url` are yours. That is the difference from the Discord
+plugins in the wild, which hardcode a table of game names, icons and per-map wiki URLs: they cover
+five titles out of the thirty-eight here, and the URLs rot when somebody reorganises a wiki.
+
+### report — the cheater nobody with a kick was there to see
+
+`!report <player> <reason>` — a player naming somebody for the admins. Config:
+`examples/plugin_report.yaml`.
+
+**New here.** The classic bot has no `!report`, and the gap shows on every server that runs one: the
+way a player raises a cheater is to type it in chat and hope somebody is reading. Communities solve
+it outside the bot — a Discord channel, a forum thread — and then have to match "some guy called
+xX_sniper" to a player who left twenty minutes ago. This turns the complaint into an event carrying
+the identified player, so what comes out the other end is a name, a database id and a reason.
+
+**A report does nothing to the player.** Nothing at all. The moment it does, three players who
+dislike a fourth can remove them; so this records, announces and relays, and a human decides.
+
+It cannot be spammed (one per `cooldown` per reporter, and the same player twice inside
+`duplicate_gap` is answered rather than sent again — though two *different* players reporting the
+same one both get through), it resolves the name against the roster the way `!ban` does rather than
+reporting whoever the list happens to hold first, and it reaches admins in the game privately as
+well as whatever relays `CLIENT_REPORT`. **A reason is required** by default: "SirReaDy is
+aimbotting" can be acted on an hour later, "SirReaDy" cannot.
+
+Announcing a report to the whole server is off, deliberately — it tells the reported player who to
+shoot for the rest of the map.
 
 ### poweradminurt — Urban Terror's own commands
 

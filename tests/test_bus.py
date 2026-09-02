@@ -94,3 +94,43 @@ async def test_publish_soon_off_the_loop_is_reported_not_swallowed(caplog):
     assert result is None
     assert seen == []
     assert "off the event loop" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_drain_returns_when_a_finished_publish_is_still_tracked():
+    """The state that hung CI: a task that has completed but whose bookkeeping has not run.
+
+    `publish_soon` removes a task with `add_done_callback(discard)`, and a done-callback is queued
+    on the loop rather than run at completion - while awaiting an already-finished future does not
+    yield, so the loop never reaches the callback. `drain` therefore has to drop finished tasks
+    itself; without that it spins on this set forever, which is what `py3.12` did while every other
+    job passed.
+    """
+    bus = EventBus()
+    finished = asyncio.ensure_future(asyncio.sleep(0))
+    await finished
+    assert finished.done()
+    # Exactly what publish_soon leaves behind when the loop has not run the callback yet.
+    bus._background.add(finished)
+
+    await bus.drain()
+
+    assert bus._background == set()
+
+
+@pytest.mark.asyncio
+async def test_drain_still_waits_for_what_has_not_finished():
+    """The other half: dropping the finished ones must not skip the pending ones."""
+    bus = EventBus()
+    seen = []
+
+    async def slow() -> None:
+        await asyncio.sleep(0.01)
+        seen.append("done")
+
+    bus._background.add(asyncio.ensure_future(slow()))
+
+    await bus.drain()
+
+    assert seen == ["done"]
+    assert bus._background == set()
