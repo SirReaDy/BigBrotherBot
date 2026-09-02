@@ -21,6 +21,10 @@ BF3_ROTATION = ["MP_001", "MP_Subway", "XP1_002"]
 def _setup(console):  # noqa: ANN001, ANN202
     plugin = AdminPlugin(console)
     plugin.register_commands()
+    # `!map` waits before changing so its announcement can be read (see `cmd_map`). That wait is
+    # real seconds, and four tests in this file change a map: the pause has one test of its own
+    # below, and everything else here is about which map was chosen rather than when.
+    plugin.settings["map_announce_pause"] = 0
     return plugin, CommandProcessor(console.command_registry, console)
 
 
@@ -192,3 +196,47 @@ async def test_maps_and_nextmap_print_display_names(console):
 
     await proc.handle(_admin(), "!nextmap")
     assert "Gulf of Oman" in console.told[-1][1]
+
+
+@pytest.mark.asyncio
+async def test_the_announcement_gets_a_moment_before_the_map_changes(console, monkeypatch):
+    """A level change takes effect at once, so an unpaused announcement is never read.
+
+    Found on a live CoD4X server: the `say` and the `InitGame` landed in the same second, so nobody
+    saw the line on the map it was about - and Call of Duty replays recent chat once a client has
+    loaded, which put "changing map to shipment" in front of somebody already standing in shipment.
+    """
+    plugin, proc = _setup(console)
+    plugin.settings["map_announce_pause"] = 2
+    console.maps = ["mp_crash"]
+    when_it_slept = []
+
+    async def fake_sleep(seconds):  # noqa: ANN001, ANN202
+        # What had happened by the time it waited: the announcement, and not the map change.
+        when_it_slept.append((seconds, list(console.said), list(console.map_changes)))
+
+    monkeypatch.setattr("b3.plugins.admin.asyncio.sleep", fake_sleep)
+
+    await proc.handle(_admin(), "!map mp_crash")
+
+    assert len(when_it_slept) == 1, "it waited once"
+    seconds, said, changed = when_it_slept[0]
+    assert seconds == 2
+    assert said and "mp_crash" in said[-1], "the announcement went first"
+    assert changed == [], "and the map had not changed yet"
+    assert console.map_changes == ["mp_crash"], "then it did"
+
+
+@pytest.mark.asyncio
+async def test_a_pause_of_zero_changes_the_map_at_once(console, monkeypatch):
+    """For an operator who would rather have the map than the courtesy."""
+    plugin, proc = _setup(console)
+    plugin.settings["map_announce_pause"] = 0
+    console.maps = ["mp_crash"]
+    slept = []
+    monkeypatch.setattr("b3.plugins.admin.asyncio.sleep", lambda s: slept.append(s))
+
+    await proc.handle(_admin(), "!map mp_crash")
+
+    assert slept == [], "no wait at all, not a wait of zero"
+    assert console.map_changes == ["mp_crash"]

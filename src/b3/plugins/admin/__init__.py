@@ -7,6 +7,7 @@ The framework (registration, parsing, permission checks) lives in ``b3.core.comm
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from collections.abc import Callable
 
@@ -15,7 +16,7 @@ from b3.core.console import Console
 from b3.core.events import Event, EventType
 from b3.core.game import PlayerInfo
 from b3.core.plugin import Plugin
-from b3.core.util import duration_text, match_names, parse_duration
+from b3.core.util import as_float, duration_text, match_names, parse_duration
 from b3.domain.client import Client, NEVER_EXPIRES, Penalty, PenaltyType
 from b3.domain.permissions import DEFAULT_GROUPS, Group, find_group, group_by_keyword, max_group
 
@@ -34,6 +35,10 @@ DEFAULT_SETTINGS: dict[str, object] = {
     "long_tempban_level": 80,  # below this, tempbans are capped...
     "long_tempban_max_duration": "3h",  # ...at this
     "announce_registration": True,
+    # Seconds between `!map` announcing the change and the change happening. Not a delay for its
+    # own sake: a level change is immediate, so without it the announcement is never read on the map
+    # it is about - see `cmd_map`. 0 changes the map at once and accepts that.
+    "map_announce_pause": 2,
 }
 
 #: `!rules` reads these keys from `spamages`, in order — the legacy convention.
@@ -1150,7 +1155,7 @@ class AdminPlugin(Plugin):
     # -- server control -----------------------------------------------------
 
     @command(level=80)
-    def cmd_map(self, ctx: CommandContext) -> None:
+    async def cmd_map(self, ctx: CommandContext) -> None:
         """map <name> - change to another map (a partial name will do)"""
         text = ctx.args.strip()
         if not text:
@@ -1170,6 +1175,17 @@ class AdminPlugin(Plugin):
         if chosen is None:
             return
         self.console.say(self.message("map_changing", map=self.console.map_display(chosen)))
+        # Then a pause, because the announcement is otherwise unreadable. A level change takes
+        # effect at once, so the line lands in the same second as the load: nobody sees it on the
+        # old map, and Call of Duty replays its recent chat once a client has loaded, which puts
+        # "changing map to shipment" on the screen of somebody already standing in shipment.
+        #
+        # Awaited rather than scheduled, and the cost of that is worth naming: this handler runs in
+        # the line-processing chain, so the wait delays whatever the log says next. It lands in the
+        # one window where that is free - the server is loading a level and producing nothing.
+        pause = as_float(self.settings.get("map_announce_pause"), 2.0)
+        if pause > 0:
+            await asyncio.sleep(pause)
         self.console.change_map(chosen, request.extras)
 
     def _map_usage(self) -> str:
