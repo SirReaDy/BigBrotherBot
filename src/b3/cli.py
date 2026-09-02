@@ -443,6 +443,9 @@ async def _run_live(
         logging.info("stopping with exit code %d", bot.exit_code)
         return bot.exit_code
     finally:
+        # Before the socket goes: a pending auth poll would otherwise wake up and query an rcon
+        # that has been closed under it.
+        bot.auth.cancel_all()
         source.close()
         if not connection.shared:  # on a BattlEye game those were the same socket
             rcon.close()

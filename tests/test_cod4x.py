@@ -54,6 +54,12 @@ def _bot(tmp_path, game="cod4x", rcon=None, clock=None, forget_startup=False):  
     bot = Bot(config, rcon=rcon, clock=clock or FakeClock())
     bot.add_plugin(AdminPlugin(bot), "admin")
     bot.start()
+    # No real waiting, in any test in this file. The poller's shipped delays are 2s then 4s a retry,
+    # and a join now schedules one - so a test that did not zero them left a timer running past its
+    # own end, which is a hang waiting for the version of Python that joins executor threads on
+    # loop close. A test that wants to observe the retry behaviour sets its own numbers.
+    bot.auth._initial_delay = 0
+    bot.auth._retry_delay = 0
     if forget_startup and rcon is not None:
         rcon.commands.clear()
     return bot
