@@ -120,6 +120,25 @@ class EventBus:
         return task
 
     async def drain(self) -> None:
-        """Await all outstanding fire-and-forget publishes (including ones they spawn)."""
-        while self._background:
-            await asyncio.gather(*list(self._background), return_exceptions=True)
+        """Await all outstanding fire-and-forget publishes (including ones they spawn).
+
+        Finished tasks are dropped here rather than left to their done-callback, and that is the
+        whole of why this is not a two-line loop. `publish_soon` removes a task with
+        `add_done_callback(self._background.discard)`, and a done-callback is *queued* on the loop
+        rather than run when the task completes - while awaiting an already-finished future takes
+        asyncio's fast path and does not yield. So a set holding one finished task whose callback has
+        not been run yet never empties, and `while self._background` spins on it forever, burning a
+        core and printing nothing.
+
+        Whether the window is hit is pure timing, which is what made it look like somebody else's
+        bug: it hung `pytest (ubuntu-latest, py3.12)` in CI while 3.11, 3.13 and Windows passed.
+        """
+        while True:
+            tracked = list(self._background)
+            for task in tracked:
+                if task.done():
+                    self._background.discard(task)
+            pending = [task for task in tracked if not task.done()]
+            if not pending:
+                return
+            await asyncio.gather(*pending, return_exceptions=True)
