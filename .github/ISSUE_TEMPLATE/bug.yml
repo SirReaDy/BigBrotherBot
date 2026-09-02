@@ -1,0 +1,81 @@
+name: Bug report
+description: Something the bot does wrong on a server you run
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Four things make a report actionable here, and the form asks for each once so nobody has to
+        be asked twice.
+
+        **Before pasting a log:** game logs and B3's own output carry player addresses, and a
+        `b3 probe` paste can contain your RCON password unless you passed `--redact`. Scrub it.
+
+        If what you found lets somebody reach a command above their level, or reach RCON, or read a
+        password, it is a security report: use the
+        [advisory form](https://github.com/SirReaDy/BigBrotherBot/security/advisories/new) instead.
+
+  - type: input
+    id: title
+    attributes:
+      label: Game and engine
+      description: >
+        The title, and the build or mod if it matters - CoD4X 1.8, Urban Terror 4.3, BF3 with
+        procon, Plutonium T6. `server.game` from your config is the useful half.
+      placeholder: cod4x - CoD4X 1.8 build 1153, no mod
+    validations:
+      required: true
+
+  - type: dropdown
+    id: evidence
+    attributes:
+      label: What did you run it against?
+      description: >
+        This is the field that matters most, and the one nobody thinks to state. A fake server is
+        written from the same reading of the protocol as the code it tests, so both can be wrong
+        together - a report from a real server is different evidence, and is treated as such.
+      options:
+        - A real game server with players on it
+        - A real game server, empty or just me
+        - One of the fake servers under tools/fakeservers/
+        - b3 replay against a recorded log
+        - Not sure
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: The output of `b3 version`. If it came from git, the commit.
+      placeholder: b3 2.0.0a0
+    validations:
+      required: true
+
+  - type: textarea
+    id: what
+    attributes:
+      label: What you did, and what happened
+      description: >
+        What you typed or what a player did, what the bot did, and what you expected instead. If the
+        bot said nothing at all, say that - silence is a symptom and it narrows things down fast.
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Log excerpt
+      description: >
+        B3's own output around the moment, and the game's log lines if the bug is about reading them.
+        Scrubbed - see above. A few lines either side of the event beat a whole file.
+      render: text
+
+  - type: textarea
+    id: config
+    attributes:
+      label: Relevant config
+      description: >
+        The section of `b3.yaml` or the plugin config the bug touches. **Remove your rcon_password,
+        database URL and any FTP credentials.**
+      render: yaml
