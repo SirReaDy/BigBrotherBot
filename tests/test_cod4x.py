@@ -27,7 +27,8 @@ STEAM_ADMIN = "76561198000000001"
 STEAM_BOB = "76561198000000002"
 
 # CoD4X with `sv_usesteam64id 1`: an extra Steam64 column, and no `lastmsg`.
-COD4X_STATUS = f"""map: mp_crash
+COD4X_STATUS = f"""hostname: Local COD4X Server
+map: mp_crash
 num score ping guid              steamid           name            address
 --- ----- ---- ----------------- ----------------- --------------- --------------------
   0    12   47 1234567           {STEAM_ADMIN} Admin           192.0.2.44:28960
@@ -841,5 +842,45 @@ async def test_a_penalty_event_names_the_admin_and_how_long(tmp_path):
         assert all(e.target is admin for e in seen), "every one of them names who did it"
         tempban = next(e for e in seen if e.type is EventType.CLIENT_BAN_TEMP)
         assert tempban.extra["duration"] == 20160, "and a tempban says how long it is"
+    finally:
+        bot.storage.close()
+
+
+@pytest.mark.asyncio
+async def test_the_server_name_and_map_are_read_from_the_status_header(tmp_path):
+    """There is no other way to get them on this family, and the reply already carries both.
+
+    `server_info_command` is empty for every CoD title, so `read_server_info` returns without
+    asking and the bot never learns what the server is called or which map it is on. Anything that
+    reports rather than acts wants them: the Discord cards named the *parser* ("cod4x") where the
+    server's name belongs, and had no map to state at all.
+    """
+    bot = _bot(tmp_path, rcon=ScriptedRcon({"status": COD4X_STATUS}))
+    try:
+        assert bot.game.hostname == "" and bot.game.map_name == ""
+
+        bot.get_players()
+
+        assert bot.game.map_name == "mp_crash"
+        assert bot.game.hostname == "Local COD4X Server"
+    finally:
+        bot.storage.close()
+
+
+@pytest.mark.asyncio
+async def test_a_status_read_never_overwrites_the_map_the_log_is_tracking(tmp_path):
+    """Filling in what is unknown is safe; overwriting is not.
+
+    `_on_round_start` compares the new map against this field to decide whether a map *change* has
+    happened, so a sync landing between the change and the log line would swallow the event - a map
+    change nobody is told about, once in a while, for no gain.
+    """
+    bot = _bot(tmp_path, rcon=ScriptedRcon({"status": COD4X_STATUS}))
+    try:
+        bot.game.map_name = "mp_backlot"  # what the log last said
+
+        bot.get_players()
+
+        assert bot.game.map_name == "mp_backlot", "the status reply said mp_crash and was ignored"
     finally:
         bot.storage.close()

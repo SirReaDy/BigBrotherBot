@@ -139,6 +139,10 @@ DEFAULT_MESSAGES: dict[str, str] = {
     "unpaused": "back on duty",
     "shutting_down": "shutting down",
     "restarting": "restarting",
+    # Said to the whole server once the bot is up and reading. The classic bot did this from
+    # `parser.start()` and it is worth having: on a server whose players know what b3 is, the line
+    # is how they find out it is watching again after a restart. Set it empty to say nothing.
+    "b3_online": "^2{name} {version} online",
     "reconfigured": "configuration reloaded",
     "reconfig_unavailable": "cannot reload the configuration: {reason}",
     "rebuilt": "player list synchronised: {count} player(s)",

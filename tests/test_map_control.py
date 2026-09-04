@@ -148,6 +148,9 @@ def test_a_title_with_no_extras_is_rendered_positionally_exactly_as_before() -> 
 def _setup(console):
     plugin = AdminPlugin(console)
     plugin.register_commands()
+    # No wait between `!map`'s announcement and the change: this file is about what reaches the
+    # server, and the pause has its own tests in `test_maps.py`.
+    plugin.settings["map_announce_pause"] = 0
     return plugin, CommandProcessor(console.command_registry, console)
 
 
