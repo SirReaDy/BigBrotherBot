@@ -234,8 +234,16 @@ inside, so nothing else needs installing. It comes two ways:
 | `b3ng-<version>-windows-x64.zip` | A folder: `b3.exe`, its `_internal` folder, and the example configs. **Prefer this one** - it starts quickly, and `b3 init` finds the examples beside it. |
 | `b3ng-<version>-windows-x64.exe` | The same program as one file. It unpacks itself to a temporary folder on every start, so it is slower to start. |
 
-Use it exactly like the `b3` command - `b3.exe init C:\b3\cod4_1`, then
-`b3.exe -c C:\b3\cod4_1\b3.yaml run --supervise`. MySQL, PostgreSQL and `sftp://` are built in.
+**Double-click `b3.exe`** and it sets a server up: it asks the `b3 init` questions - which game, the
+server's address, port and RCON password, where its log is - writes the server to
+`%USERPROFILE%\b3\<name>`, and offers to start the bot in that window. Double-click it again later
+and it offers to start that server, or to set up another. The window always waits for Enter before
+it closes, so an error stays on screen long enough to read. Servers live in your profile rather than
+beside the exe so that replacing the folder with a newer release keeps them.
+
+From cmd or PowerShell it is exactly the `b3` command - `b3.exe init C:\b3\cod4_1`, then
+`b3.exe -c C:\b3\cod4_1\b3.yaml run --supervise` - and asks nothing it was not asked to. MySQL,
+PostgreSQL and `sftp://` are built in.
 
 Three things differ from a pip install:
 

@@ -389,7 +389,7 @@ def _ravaged_client(config: Config) -> PushClient:
     )
 
 
-def _supervise() -> int:
+def _supervise(child: list[str] | None = None) -> int:
     """Run the bot in a child process, and start it again when `!restart` stops it.
 
     `!restart` sets exit code 221 and stops; **it does not re-exec**, and that is deliberate - a
@@ -402,9 +402,12 @@ def _supervise() -> int:
     and two things restarting one bot is one too many.
 
     The child is the same command line minus this flag - taken from `sys.orig_argv`, so it works
-    whether the bot was started through the `b3` console script or as `python -m`.
+    whether the bot was started through the `b3` console script or as `python -m`. A caller whose
+    own command line is not the bot's - a double-clicked `b3.exe` has none at all - names the child
+    instead.
     """
-    child = [arg for arg in sys.orig_argv if arg != "--supervise"]
+    if child is None:
+        child = [arg for arg in sys.orig_argv if arg != "--supervise"]
     restarts = 0
     while True:
         status = subprocess.call(child)
@@ -714,6 +717,14 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
+    # Double-clicked on Windows, with nothing on the command line: be an application rather than
+    # print a usage line into a window that closes before it can be read. See b3.core.doubleclick.
+    if argv is None:
+        from b3.core import doubleclick
+
+        if doubleclick.started_by_double_click(sys.argv[1:]):
+            return doubleclick.run()
+
     parser = build_parser()
 
     # Before parse_args, and only when the shell is asking: argcomplete reads the parser, writes its

@@ -183,11 +183,16 @@ def ask(
     directory: Path,
     prompter: Prompter | None = None,
     defaults: InstanceSpec | None = None,
+    *,
+    ask_name: bool = True,
 ) -> Answers:
     """Walk an operator through one game server. Returns what to create.
 
     The order is theirs, not the schema's: which game, where it is, how to talk to it, where its log
     is, where to keep the data, what to run.
+
+    `ask_name=False` takes the name from `defaults`, for a caller that has already asked it - the
+    double-clicked `b3.exe` asks for the name first, because the name is what picks the folder.
     """
     ask_it = prompter or Prompter()
     base = defaults or InstanceSpec(directory=directory)
@@ -196,7 +201,11 @@ def ask(
     ask_it.say("Press enter to take the default in brackets.")
     ask_it.say()
 
-    name = ask_it.ask("A name for this instance (appears in logs)", base.name or directory.name)
+    name = (
+        ask_it.ask("A name for this instance (appears in logs)", base.name or directory.name)
+        if ask_name
+        else base.name or directory.name
+    )
     game = ask_it.ask("Which game (`b3 games` lists them all)", base.game, validate=valid_game)
     host = ask_it.ask("Game server address", base.host)
     port = ask_it.ask("Game server RCON port", str(base.port), validate=valid_port)
