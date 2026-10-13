@@ -63,9 +63,18 @@ def plugins(prefix: str = "", **_: Any) -> list[str]:
 
 
 def bundled(prefix: str = "", **_: Any) -> list[str]:
-    """The plugins that ship with the bot, read from the package rather than from a list."""
-    package = Path(__file__).resolve().parent.parent / "plugins"
-    return sorted(name for name in _plugin_names_in(package) if name.startswith(prefix))
+    """The plugins that ship with the bot, read from the package rather than from a list.
+
+    Asked of the import system, not the disk. In the Windows build the plugins are compiled into
+    an archive and there is no `plugins` folder to list - so reading the folder found none, and `b3
+    init` offered its six suggestions as if they were everything there was.
+    """
+    import pkgutil
+
+    import b3.plugins
+
+    names = (module.name for module in pkgutil.iter_modules(b3.plugins.__path__) if module.ispkg)
+    return sorted(name for name in names if name.startswith(prefix))
 
 
 def installed(prefix: str = "", **_: Any) -> list[str]:
