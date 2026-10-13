@@ -1,7 +1,7 @@
 # Build the package on a version tag and attach it to the GitHub release.
 #
-# There is no PyPI, by decision: the source of truth is this repository, and installing is
-# `pip install git+https://github.com/SirReaDy/BigBrotherBot@v2.1.0`. So what this workflow is *for*
+# No PyPI until the first stable release (2.0.0): until then the source of truth is this repository,
+# and installing is `pip install git+https://github.com/SirReaDy/BigBrotherBot@v2.1.0`. So what this workflow is *for*
 # is not publishing — it is proving, on every tag, that the package builds at all, and leaving a
 # wheel and an sdist attached to the release so an install needs no git checkout and no build step.
 #

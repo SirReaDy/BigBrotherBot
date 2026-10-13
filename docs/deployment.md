@@ -25,7 +25,7 @@ process you can start, stop and read the logs of on its own.
 
 ```bash
 python3 -m venv /opt/b3/venv
-/opt/b3/venv/bin/pip install b3ng
+/opt/b3/venv/bin/pip install "git+https://github.com/SirReaDy/BigBrotherBot@v2.0.0b1"
 ln -s /opt/b3/venv/bin/b3 /usr/local/bin/b3
 
 b3 init /srv/cod4_1/b3 \
@@ -46,7 +46,7 @@ sudo systemctl enable --now b3-cod4_1
 
 This is also the layout tab completion is written for: the symlink above means `b3` on `PATH` is a
 console script inside a virtualenv, and `b3 completion <shell>` prints a registration that runs `b3`
-itself to ask what comes next, so it works there. `pip install 'b3ng[completion]'`, then
+itself to ask what comes next, so it works there. `pip install "b3ng[completion] @ git+https://github.com/SirReaDy/BigBrotherBot@v2.0.0b1"`, then
 [the CLI page](cli.md#tab-completion).
 
 ## Several game servers on one machine
@@ -88,7 +88,7 @@ untouched — they do not know about each other.
 
 ```
 /opt/b3/
-    venv/                    the code. Upgrade once: /opt/b3/venv/bin/pip install -U b3ng
+    venv/                    the code. Upgrade once: b3 update
     plugins/                 optional shared plugin pool (bot.shared_plugins_dir)
 /srv/cod4_1/b3/
     b3.yaml                  this server's settings — the RCON password lives here
@@ -148,7 +148,7 @@ explicit rather than implied by a path.
 Point several instances at one MySQL/Postgres `database:` URL and they share one identity namespace: a
 ban on any server applies everywhere, your admins are admins everywhere, and alias/IP history is merged
 — because `guid` is the natural key. Keep the URLs separate to keep the servers independent. (Shared
-means MySQL or Postgres — `pip install b3ng[mysql]` — not SQLite on a file share.)
+means MySQL or Postgres — `pip install "b3ng[mysql] @ git+https://github.com/SirReaDy/BigBrotherBot@v2.0.0b1"` — not SQLite on a file share.)
 
 When you do share one, set **`bot.server_id`** in each instance so the table records *which* server
 issued each penalty:
@@ -220,7 +220,7 @@ server you have no shell on (the classic bot's `ftpytail` / `sftpytail` / `httpy
 | *(a path)* | Local file. No polling delay, no extra dependencies. |
 | `ftp://user:pass@host[:port]/path/games_mp.log` | Resumes with `REST`, binary mode, passive (game hosts are behind NAT). |
 | `ftps://…` | Same, over implicit TLS, with the data connection encrypted too. |
-| `sftp://user:pass@host[:port]/path/games_mp.log` | Needs `paramiko`: `pip install b3ng[sftp]`. With no password in the URL it uses your agent and `~/.ssh` keys. An unknown host key is accepted with a warning. |
+| `sftp://user:pass@host[:port]/path/games_mp.log` | Needs `paramiko`: `pip install "b3ng[sftp] @ git+https://github.com/SirReaDy/BigBrotherBot@v2.0.0b1"`. With no password in the URL it uses your agent and `~/.ssh` keys. An unknown host key is accepted with a warning. |
 | `http://…`, `https://…` | Polls `HEAD` for the size, then a ranged `GET`. Credentials in the URL become a basic-auth header. Servers that ignore `Range` still work. Asks for **no compression** — see below. |
 
 All of them tail by **byte offset**, so:

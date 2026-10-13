@@ -179,7 +179,7 @@ a plugin added tomorrow completes without anybody remembering:
 | `b3 plugin remove <name>` | only what was installed — a bundled name is what that command exists to reject | `conf/plugins/`, `plugins/` |
 | `b3 db … --revision` | every revision, plus `head` and `base` | the packaged migration scripts — no database, which is exactly when you are typing a revision by hand |
 
-Completion is an extra, not a dependency: `pip install 'b3ng[completion]'`. Without it the bot behaves
+Completion is an extra, not a dependency: `pip install "b3ng[completion] @ git+https://github.com/SirReaDy/BigBrotherBot@v2.0.0b1"`. Without it the bot behaves
 identically and `b3 completion` says that one line instead of a traceback — a bot that would not start
 without a completion library is a poor trade. Registration runs `b3` itself to ask what comes next, so
 it works with the layout [deployment](deployment.md) recommends, where `b3` is a console script inside
