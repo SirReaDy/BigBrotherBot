@@ -347,15 +347,18 @@ its own record when the player returns.
 Getting this wrong is loud, not silent: pointing `cod4x` at a server that is not reporting Steam64
 ids makes the bot log *"ignoring guid … Nobody will be authenticated while this is the case"* rather
 than quietly failing to recognise anybody. The player list is read whether or not that cvar is
-honoured — a CoD4X server with `sv_usesteam64id` off prints one numeric id column instead of two, and
-that shape is parsed too, rather than being mistaken for part of the player's name.
+honoured. With `sv_usesteam64id` off the server prints Steam3 ids (`[U:1:12345]`), which are read as
+the Steam64 the same player has with it on, so flipping the cvar does not orphan anybody's record.
+With `sv_legacymode 1` - common on a server that used to run classic B3 - it prints the stock CoD4
+table instead, and players are keyed on its 32-character guid. Builds that print a single numeric id
+column, and players connecting over IPv6, are read too.
 
 **On CoD4X the bot asks `b3status` before `status`.** Servers running the `b3hide` mod — the usual way
 admins hide themselves — leave hidden players out of `status` altogether and answer `b3status` with the
 whole table, so asking the fuller question first is what stops the bot losing sight of the very people
 using it. A server without the mod does not know that command; the bot notices, falls back to `status`,
 and remembers which one worked. Load the mod later and it finds `b3status` again without a restart.
-If a table shape turns up that neither pattern fits, the bot says so and quotes the row, instead of
+If a table shape turns up that none of these fits, the bot says so and quotes the row, instead of
 reporting an empty server.
 
 A tempban longer than CoD4X allows is still recorded in full — the engine gets its 30-day maximum,

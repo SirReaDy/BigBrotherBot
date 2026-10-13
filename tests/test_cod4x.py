@@ -173,6 +173,166 @@ def test_an_empty_server_is_not_confused_with_an_unreadable_one():
     assert sp.unparsed_rows(empty, COD4X.status_patterns) == []
 
 
+# -- the tables a real CoD4X server prints ---------------------------------------------------
+#
+# The fixtures above were written by hand, and a hand-written table passes against whatever shape
+# its author imagined. These are built the way the server builds them - `SV_Status_f` in
+# callofduty4x/CoD4x_Server's `src/sv_cmds.c`, column for column and pad for pad - which is how a
+# server reporting every one of its rows as unreadable was traced to the layouts below: none of
+# them was a shape this bot had ever been shown.
+
+
+def _pad(text: str, width: int) -> str:
+    """CoD4X's padding loop: at least one space, then up to `width`."""
+    return text + " " * max(1, width - len(text))
+
+
+def cod4x_row(
+    slot: int,
+    name: str,
+    address: str,
+    *,
+    playerid: str = "",
+    steamid: str = "",
+    pbguid: str = "",
+    score: int = 0,
+    ping: int = 50,
+) -> str:
+    """One row of a CoD4X `status`, as the server prints it. `pbguid` means `sv_legacymode 1`."""
+    row = f"{slot:3d} {score:5d} {ping:4d} "
+    if pbguid:
+        row += _pad(pbguid, 33) + name + "^7" + " " * max(1, 16 - len(name))
+    else:
+        row += _pad(playerid, 20) + _pad(steamid, 18) + name + "^7" + " " * max(1, 33 - len(name))
+    return row + f"{100:7d} " + _pad(address, 52) + f" {12345:5d} {25000:5d}"
+
+
+def cod4x_status(*rows: str, legacy: bool = False) -> str:
+    """A whole reply: the header the mode prints, then the rows."""
+    if legacy:
+        head = (
+            "map: mp_crash\n"
+            "num score ping guid                             name            lastmsg address"
+            "                                              qport rate\n"
+        )
+    else:
+        head = (
+            "hostname: Local COD4X Server\n"
+            "version : 1.8\n"
+            "map     : mp_crash\n"
+            "\n"
+            "num score ping playerid            steamid           name"
+            "                             lastmsg address"
+            "                                              qport rate\n"
+        )
+    return head + "".join(row + "\n" for row in rows)
+
+
+PB_ADMIN = "0123456789abcdef0123456789abcdef"
+
+
+def test_the_default_table_reads_with_every_column_the_server_prints():
+    text = cod4x_status(
+        cod4x_row(0, "Admin", "192.0.2.44:28960", playerid="1100001012345678", steamid=STEAM_ADMIN),
+        cod4x_row(1, "bot0", "bot", playerid="0", steamid="0"),
+    )
+    _map, players = sp.parse_status(text, COD4X.status_patterns, COD4X.identity_field)
+
+    assert [p.cid for p in players] == ["0", "1"]
+    assert players[0].guid == STEAM_ADMIN
+    assert players[0].ip == "192.0.2.44"
+    assert players[0].port == 28960
+    assert sp.unparsed_rows(text, COD4X.status_patterns) == []
+
+
+def test_legacy_mode_reads_the_stock_table_and_keys_on_its_guid():
+    """`sv_legacymode 1` prints the stock CoD4 table for classic B3 - and every row was unreadable."""
+    text = cod4x_status(
+        cod4x_row(0, "Admin", "192.0.2.44:28960", pbguid=PB_ADMIN, score=7, ping=90),
+        cod4x_row(3, "Bob the Builder", "198.51.100.88:28961", pbguid="f" * 32, score=-2),
+        legacy=True,
+    )
+    _map, players = sp.parse_status(text, COD4X.status_patterns, COD4X.identity_field)
+
+    assert [p.cid for p in players] == ["0", "3"]
+    assert [p.name for p in players] == ["Admin^7", "Bob the Builder^7"]
+    assert [p.guid for p in players] == [PB_ADMIN, "f" * 32]  # no Steam column, so the guid
+    assert players[0].steam_id == ""
+    assert players[1].score == -2
+    assert sp.unparsed_rows(text, COD4X.status_patterns) == []
+
+
+def test_the_legacy_shape_never_reads_an_id_into_a_name():
+    """It is last in line and exact about its guid, so a short hex guid is still reported, not guessed."""
+    text = cod4x_status(cod4x_row(0, "Admin", "192.0.2.44:28960", pbguid="abc123"), legacy=True)
+
+    assert sp.parse_status(text, COD4X.status_patterns, COD4X.identity_field)[1] == []
+    assert len(sp.unparsed_rows(text, COD4X.status_patterns)) == 1
+
+
+def test_steam3_ids_are_read_as_the_steam64_the_same_player_has_with_the_cvar_on():
+    """`sv_usesteam64id 0` prints `[U:1:N]`. Stored as written, flipping the cvar would orphan
+    every player's record - their level and their bans - so it is converted to the Steam64."""
+    steam3 = "[U:1:39734273]"  # STEAM_ADMIN's account number
+    text = cod4x_status(
+        cod4x_row(0, "Admin", "192.0.2.44:28960", playerid=steam3, steamid=steam3),
+    )
+    _map, players = sp.parse_status(text, COD4X.status_patterns, COD4X.identity_field)
+
+    assert len(players) == 1
+    assert players[0].guid == "76561198000000001"
+    assert players[0].steam_id == "76561198000000001"
+
+
+def test_a_steam3_no_id_is_nobody_rather_than_one_shared_identity():
+    """`[I:0:0]` is CoD4X for "no id". Two such players must not become one database row."""
+    text = cod4x_status(
+        cod4x_row(0, "Ann", "192.0.2.44:28960", playerid="[I:0:0]", steamid="[I:0:0]"),
+        cod4x_row(1, "Ben", "192.0.2.45:28960", playerid="[I:0:0]", steamid="[I:0:0]"),
+    )
+    _map, players = sp.parse_status(text, COD4X.status_patterns, COD4X.identity_field)
+
+    assert [p.name for p in players] == ["Ann^7", "Ben^7"]
+    assert [p.guid for p in players] == ["", ""]
+    assert [p.steam_id for p in players] == ["", ""]
+
+
+def test_an_ipv6_player_is_read_with_a_bare_address():
+    text = cod4x_status(
+        cod4x_row(2, "Bob", "[2001:db8::1]:28961", playerid="1100001012345679", steamid=STEAM_BOB)
+    )
+    _map, players = sp.parse_status(text, COD4X.status_patterns, COD4X.identity_field)
+
+    assert players[0].ip == "2001:db8::1"  # no brackets: what `ipaddress` and geolocation expect
+    assert players[0].port == 28961
+    assert players[0].guid == STEAM_BOB
+
+    legacy = cod4x_status(cod4x_row(5, "Old", "[2001:db8::2]:28960", pbguid=PB_ADMIN), legacy=True)
+    _map, players = sp.parse_status(legacy, COD4X.status_patterns, COD4X.identity_field)
+    assert players[0].ip == "2001:db8::2"
+
+
+def test_a_legacy_mode_server_keeps_its_roster(tmp_path, caplog):
+    """The report this came from, end to end: every row unreadable, so nobody was ever seen."""
+    rcon = ScriptedRcon(
+        {
+            "status": cod4x_status(
+                cod4x_row(0, "Admin", "192.0.2.44:28960", pbguid=PB_ADMIN),
+                cod4x_row(1, "Bob", "198.51.100.88:28961", pbguid="f" * 32),
+                legacy=True,
+            )
+        }
+    )
+    bot = _bot(tmp_path, rcon=rcon, forget_startup=True)
+
+    with caplog.at_level("WARNING"):
+        players = bot.get_players()
+
+    assert [p.guid for p in players] == [PB_ADMIN, "f" * 32]
+    assert "cannot read" not in caplog.text
+    bot.storage.close()
+
+
 # -- asking the right question: b3status, then status ----------------------------------------
 
 
