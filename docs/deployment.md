@@ -223,6 +223,31 @@ it: `chown -R 10001:10001 /srv/cod4_1/b3`.
 **`b3 update` does not work in a container, and says so.** The image is the version: a `pip install`
 inside a container is thrown away with the container. Build or pull a new image instead.
 
+## On Windows, without Python
+
+Every release from `v2.0.0b2` on attaches a Windows build to its
+[release page](https://github.com/SirReaDy/BigBrotherBot/releases): `b3.exe` with its own Python
+inside, so nothing else needs installing. It comes two ways:
+
+| File | What it is |
+|---|---|
+| `b3ng-<version>-windows-x64.zip` | A folder: `b3.exe`, its `_internal` folder, and the example configs. **Prefer this one** - it starts quickly, and `b3 init` finds the examples beside it. |
+| `b3ng-<version>-windows-x64.exe` | The same program as one file. It unpacks itself to a temporary folder on every start, so it is slower to start. |
+
+Use it exactly like the `b3` command - `b3.exe init C:\b3\cod4_1`, then
+`b3.exe -c C:\b3\cod4_1\b3.yaml run --supervise`. MySQL, PostgreSQL and `sftp://` are built in.
+
+Three things differ from a pip install:
+
+* **The files are not code-signed**, so Windows SmartScreen warns the first time you run one ("More
+  info", then "Run anyway"), and some antivirus products flag PyInstaller builds in general. The
+  wheel and the container image are the same code without that problem.
+* **`b3 update` cannot update it** - there is no pip inside. It tells you so, and names the release
+  to download; replace the folder (or the file) with the new one. Instance directories live
+  elsewhere and are untouched.
+* **A plugin that needs a package not already in the build cannot be installed.** Plugins written
+  in plain Python, using what the bot itself uses, work.
+
 ## Tailing a hosted server's log
 
 `server.game_log` is normally a path, which means the bot runs on the game server's own box. Point it

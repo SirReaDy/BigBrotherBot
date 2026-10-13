@@ -1090,6 +1090,10 @@ def _run_update(config: Config, check_only: bool, to: str, yes: bool) -> int:
         # pip in the running environment is the wrong operation here: the image *is* the version.
         print("this is a container — pull a new image rather than updating in place")
         return 2
+    if selfupdate.is_frozen():
+        # The Windows build carries its own Python and no pip, and `sys.executable` is the bot.
+        print(f"this is the Windows build - download {tag} from {selfupdate.RELEASES_URL}")
+        return 2
     command = selfupdate.install_command(remote, tag)
     print(f"installing {tag}: {' '.join(command)}")
     # Said before anything happens, because it is the surprising part: one code install serves every
@@ -1155,7 +1159,10 @@ def _run_version(config_path: str, refresh: bool) -> int:
         return 0
     print(f"latest release: {info.latest or 'none published yet'}")
     if info.available:
-        print(f"run `b3 update` to install {info.latest}")
+        if selfupdate.is_frozen():
+            print(f"download {info.latest} from {selfupdate.RELEASES_URL}")
+        else:
+            print(f"run `b3 update` to install {info.latest}")
     return 0
 
 

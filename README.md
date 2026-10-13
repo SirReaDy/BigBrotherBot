@@ -41,7 +41,7 @@ straight answers when something is misconfigured.
 **Where it stands today.** All 59 classic admin commands at the classic levels, 38 game titles across
 thirteen parser families — 34 of the classic bot's 37, plus four it never had — and every core service the
 old bot offered, plus remote log tailing, PunkBuster, per-server deployment and pre-flight checks it
-never had. 3,152 tests, `mypy --strict` clean.
+never had. 3,154 tests, `mypy --strict` clean.
 
 ## What was deleted, and what was rebuilt
 
@@ -126,7 +126,8 @@ No `git` on the machine? Every [release](https://github.com/SirReaDy/BigBrotherB
 wheel attached; download it and `python -m pip install b3ng-2.0.0b1-py3-none-any.whl`.
 
 Running in Docker? From `v2.0.0b2` on every release is also an image, `ghcr.io/sirready/b3ng` - see
-[In a container](docs/deployment.md#in-a-container).
+[In a container](docs/deployment.md#in-a-container). On Windows with no Python installed, each
+release has a `b3.exe` build too - see [On Windows, without Python](docs/deployment.md#on-windows-without-python).
 
 Then `b3 init` sets a server up, and `b3 doctor` checks it before the first run. Coming from the
 classic bot, start with [Migrating](docs/migrating.md).
