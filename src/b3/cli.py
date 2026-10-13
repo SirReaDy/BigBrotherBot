@@ -918,21 +918,10 @@ def _run_games() -> int:
     Needs no config on purpose: it answers "what may I write in the config?", which is a question
     asked before there is one.
     """
-    from b3.parsers.games import FILE_RCON_FAMILIES, PROFILES, PUSH_FAMILIES, by_family
+    from b3.parsers.games import PROFILES, listing
 
-    grouped = by_family()
-    width = max(len(family) for family in grouped)
-    for family, titles in grouped.items():
-        # What the operator has to configure is the one thing a family decides for them, so it belongs
-        # in the listing rather than only in the README: a log to point at, an rcon port that carries
-        # the events instead, or a log *and* a command file for an engine with no rcon at all.
-        if family in PUSH_FAMILIES:
-            source = "events over rcon"
-        elif family in FILE_RCON_FAMILIES:
-            source = "log + command file"
-        else:
-            source = "reads a game log"
-        print(f"{family:<{width}}  {source:<18}  {'  '.join(titles)}")
+    for line in listing():
+        print(line)
     print(f"\n{len(PROFILES)} titles. Set one as `server.game` in the config, or `b3 init --game`.")
     return 0
 

@@ -101,15 +101,23 @@ class Prompter:
         return answer in ("y", "yes")
 
 
+#: What lists the games, answered to the game question. Offered in the question itself rather than
+#: pointing at `b3 games`: a double-clicked `b3.exe` asks this in a window with no shell to type it.
+LIST_GAMES = "?"
+
+
 def valid_game(answer: str) -> str | None:
-    from b3.parsers.games import PROFILES, suggest
+    from b3.parsers.games import PROFILES, listing, suggest
 
     if answer in PROFILES:
         return None
+    if answer == LIST_GAMES:
+        # The listing *is* the complaint: the question is asked again underneath it.
+        return "\n  ".join(listing())
     near = suggest(answer)
     if near:
-        return f"no such game. Did you mean {' or '.join(near)}?"
-    return f"no such game. `b3 games` lists all {len(PROFILES)} of them"
+        return f"no such game. Did you mean {' or '.join(near)}? Type {LIST_GAMES} to see them all"
+    return f"no such game. Type {LIST_GAMES} to see all {len(PROFILES)} of them"
 
 
 def valid_port(answer: str) -> str | None:
@@ -206,7 +214,9 @@ def ask(
         if ask_name
         else base.name or directory.name
     )
-    game = ask_it.ask("Which game (`b3 games` lists them all)", base.game, validate=valid_game)
+    game = ask_it.ask(
+        f"Which game (type {LIST_GAMES} to list them)", base.game, validate=valid_game
+    )
     host = ask_it.ask("Game server address", base.host)
     port = ask_it.ask("Game server RCON port", str(base.port), validate=valid_port)
 
@@ -267,6 +277,7 @@ def unknown_plugins(names: Sequence[str]) -> list[str]:
 
 __all__ = [
     "SUGGESTED_PLUGINS",
+    "LIST_GAMES",
     "Answers",
     "Prompter",
     "ask",

@@ -57,6 +57,21 @@ def test_a_game_that_does_not_exist_is_refused_with_the_nearest_one():
     assert complaint is not None and "cod4" in complaint
 
 
+def test_a_question_mark_lists_the_games_and_asks_again():
+    """A double-clicked `b3.exe` asks this in a window with no shell to type `b3 games` into."""
+    script = Script(["?", "urt43", "iourt43"])
+
+    game = Prompter(reader=script.read, writer=script.write).ask(
+        "Which game", "cod4", validate=valid_game
+    )
+
+    assert game == "iourt43"
+    assert len(script.asked) == 3  # asked again after the list, and after the typo
+    listed = "\n".join(script.said)
+    assert "cod4x" in listed and "iourt43" in listed and "bf3" in listed
+    assert "Did you mean iourt43" in listed and "Type ? to see them all" in listed
+
+
 def test_a_port_is_a_port():
     assert valid_port("28960") is None
     assert valid_port("0") is not None
@@ -137,7 +152,7 @@ def test_the_questions_are_asked_in_the_operators_order(tmp_path):
     asked = [question.split(" [")[0].rstrip(": ") for question in script.asked]
     assert asked == [
         "A name for this instance (appears in logs)",
-        "Which game (`b3 games` lists them all)",
+        "Which game (type ? to list them)",
         "Game server address",
         "Game server RCON port",
         "RCON password",
