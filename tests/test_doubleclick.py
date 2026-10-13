@@ -143,7 +143,6 @@ def test_a_first_run_asks_the_init_questions_and_writes_the_server(tmp_path):
             "secret",  # rcon password
             str(log),
             f"sqlite:///{(tmp_path / 'b3.sqlite').as_posix()}",
-            "",  # plugins: the suggested ones
             "n",  # no doctor - there is no game server to ask
             "n",  # do not start it
             "",  # press Enter to close

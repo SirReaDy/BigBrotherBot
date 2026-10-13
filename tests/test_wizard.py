@@ -17,6 +17,7 @@ from b3.core.instance import InstanceSpec, create_instance, plugin_lines
 from b3.core.wizard import (
     Prompter,
     ask,
+    default_plugins,
     bundled_plugins,
     unknown_plugins,
     valid_database,
@@ -208,7 +209,6 @@ def test_the_questions_are_asked_in_the_operators_order(tmp_path):
             "hunter2",  # rcon password
             str(log),  # game log
             f"sqlite:///{tmp_path / 'b3.sqlite'}",  # database
-            "admin censor",  # plugins
             "n",  # do not run doctor
         ]
     )
@@ -224,13 +224,12 @@ def test_the_questions_are_asked_in_the_operators_order(tmp_path):
         "RCON password",
         "Game log (a path here, or an ftp/sftp/http URL)",
         "Database URL (type ? for examples)",
-        "Which ones (space separated)",
         "Check the server answers when this is written?",
     ]
     spec = answers.spec
     assert (spec.name, spec.game, spec.host, spec.port) == ("cod4_1", "cod4", "10.0.0.5", 28960)
     assert spec.rcon_password == "hunter2"
-    assert spec.plugins == ("admin", "censor")
+    assert spec.plugins == default_plugins("cod4")  # not asked: all that work with the game
     assert answers.run_doctor is False
 
 
@@ -248,7 +247,6 @@ def test_a_bad_answer_is_asked_again_rather_than_written(tmp_path):
             "pw",
             str(log),
             f"sqlite:///{tmp_path / 'b3.sqlite'}",
-            "admin",
             "n",
         ]
     )
@@ -261,29 +259,38 @@ def test_a_bad_answer_is_asked_again_rather_than_written(tmp_path):
     assert any("1 to 65535" in line for line in script.said)
 
 
-def test_admin_is_always_first_however_the_answer_was_typed(tmp_path):
-    """It is the command framework's only consumer and every other plugin's dependency: an operator
-    who leaves it out has not asked for a bot with no commands."""
+def test_a_new_server_starts_with_every_plugin_that_works_with_its_game():
+    """Asked, the question had one answer anybody gave - Enter - and it took six of the 36."""
+    from b3.core.wizard import bundled_plugins
+
+    cod = default_plugins("cod4x")
+    urt = default_plugins("iourt43")
+
+    assert cod[0] == "admin" and urt[0] == "admin"  # every other plugin's dependency, first
+    assert "codam" in cod and "codam" not in urt  # each game's own plugins, and only there
+    assert "jumper" in urt and "poweradminurt" in urt and "poweradminurt" not in cod
+    assert {"censor", "spamcontrol", "tk", "stats", "welcome", "discord"} <= set(cod)
+    assert set(cod) <= set(bundled_plugins())
+
+
+def test_login_is_never_switched_on_for_somebody():
+    """It demotes every admin until they log in with a password, and a new install has none: the
+    owner would connect to their own server with no powers."""
+    assert all("login" not in default_plugins(game) for game in ("cod4x", "iourt43", "bf3"))
+
+
+def test_the_wizard_says_what_it_switched_on_and_what_it_left_off(tmp_path):
     log = tmp_path / "games_mp.log"
     log.write_text("", encoding="utf-8")
     script = Script(
-        [
-            "srv",
-            "cod4",
-            "127.0.0.1",
-            "28960",
-            "pw",
-            str(log),
-            f"sqlite:///{tmp_path / 'b3.sqlite'}",
-            "tk, censor",  # commas, and no admin
-            "y",
-        ]
+        ["srv", "cod4x", "", "", "pw", str(log), f"sqlite:///{tmp_path / 'b3.sqlite'}", "n"]
     )
 
-    answers = ask(tmp_path, script.prompter())
+    ask(tmp_path, script.prompter())
 
-    assert answers.spec.plugins == ("admin", "tk", "censor")
-    assert answers.run_doctor is True
+    said = "\n".join(script.said)
+    assert f"all {len(default_plugins('cod4x'))} plugins that work with cod4x" in said
+    assert "Left off: login" in said and "!setpassword" in said
 
 
 def test_a_title_with_no_rcon_password_is_not_asked_for_one(tmp_path):
@@ -300,7 +307,6 @@ def test_a_title_with_no_rcon_password_is_not_asked_for_one(tmp_path):
             str(tmp_path / "commands.txt"),  # command file, in place of the password
             str(log),
             f"sqlite:///{tmp_path / 'b3.sqlite'}",
-            "admin",
             "n",
         ]
     )
@@ -324,7 +330,7 @@ def test_an_empty_answer_takes_the_default(tmp_path):
         game_log=str(log),
         database=f"sqlite:///{tmp_path / 'b3.sqlite'}",
     )
-    script = Script([""] * 8 + ["n"])
+    script = Script([""] * 7 + ["n"])
 
     answers = ask(tmp_path, script.prompter(), defaults=defaults)
 

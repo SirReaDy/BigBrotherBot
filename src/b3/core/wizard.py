@@ -32,9 +32,8 @@ from b3.core.instance import InstanceSpec
 #: What a plugin is called. Only used to refuse a typo before it reaches the config.
 PLUGIN_NAME_RE = re.compile(r"^[a-z][a-z0-9_]*$")
 
-#: Offered when the operator does not name their own. Not "all of them": every one of these does
-#: something on any title, and a new operator turning on twelve plugins at once cannot tell which of
-#: them is responsible for what.
+#: What `bundled_plugins` falls back to if the package cannot be listed at all. A new server starts
+#: with every plugin that works with its game - see `default_plugins`.
 SUGGESTED_PLUGINS = ("admin", "censor", "spamcontrol", "tk", "stats", "welcome")
 
 #: A log that is neither a path on this machine nor one of these is a typo, not a remote log.
@@ -277,6 +276,49 @@ def bundled_plugins() -> list[str]:
     return bundled() or list(SUGGESTED_PLUGINS)
 
 
+#: Bundled, works on every game, and still never switched on for somebody - with the reason, which
+#: the wizard prints. One entry, and it is here because of what it does to the person setting up:
+#: `login` demotes every admin until they type a password, and on a new install nobody has one yet,
+#: so the owner would connect to their own server with no powers.
+NOT_BY_DEFAULT = {
+    "login": "it takes admins' powers away until they log in with a password, and nobody has one "
+    "yet. Set yours with !setpassword, then add it",
+}
+
+#: Plugins for one engine family that do not say so in `requires_parsers`, so the loader would start
+#: them anywhere. `poweradminurt` would send Urban Terror's rcon commands to any server it was
+#: pointed at.
+FAMILY_ONLY = {"poweradminurt": "urt"}
+
+
+def default_plugins(game: str) -> tuple[str, ...]:
+    """Every bundled plugin that works with `game` - what a new server starts with.
+
+    Read from the plugins themselves (`requires_parsers`, the same declaration the loader checks),
+    so a plugin added tomorrow is in the list without anybody remembering to add it here. A plugin
+    for another game is left out rather than listed and switched off at every start.
+    """
+    from b3.config.schema import PluginEntry
+    from b3.core.pluginmgr import PluginLoadError, resolve_plugin_class
+    from b3.parsers.games import PROFILES
+
+    family = PROFILES[game].family if game in PROFILES else ""
+    chosen = ["admin"]  # first and always: every other plugin's dependency
+    for name in bundled_plugins():
+        if name in chosen or name in NOT_BY_DEFAULT:
+            continue
+        if name in FAMILY_ONLY and FAMILY_ONLY[name] != family:
+            continue
+        try:
+            parsers = resolve_plugin_class(PluginEntry(name=name)).requires_parsers
+        except PluginLoadError:
+            continue
+        if parsers is not None and game not in parsers:
+            continue
+        chosen.append(name)
+    return tuple(chosen)
+
+
 def ask(
     directory: Path,
     prompter: Prompter | None = None,
@@ -333,15 +375,16 @@ def ask(
         validate=lambda answer: valid_database(answer, directory),
     )
 
+    # Not asked: every plugin that works with this game is switched on, and the list is in b3.yaml to
+    # trim. A question here only ever had one answer anybody gave - Enter - and it took six of 36.
+    plugins = default_plugins(game)
     ask_it.say()
-    ask_it.say(f"Plugins to start with. Available: {', '.join(bundled_plugins())}")
-    chosen = ask_it.ask(
-        "Which ones (space separated)", " ".join(SUGGESTED_PLUGINS), validate=valid_plugins
+    ask_it.say(
+        style.ok(f"Switching on all {len(plugins)} plugins that work with {game}.")
+        + " Change the list under `plugins:` in b3.yaml."
     )
-    # `admin` first and once, whatever was typed: it is every other plugin's dependency, and an
-    # operator who leaves it out has not asked for a bot without commands.
-    named = [name for name in re.split(r"[\s,]+", chosen.strip()) if name]
-    plugins = tuple(dict.fromkeys(["admin", *named]))
+    for left_off, reason in NOT_BY_DEFAULT.items():
+        ask_it.say(style.quiet(f"  Left off: {left_off} - {reason}."))
 
     run_doctor = ask_it.confirm("Check the server answers when this is written?", True)
 
@@ -370,6 +413,8 @@ def unknown_plugins(names: Sequence[str]) -> list[str]:
 
 
 __all__ = [
+    "FAMILY_ONLY",
+    "NOT_BY_DEFAULT",
     "SUGGESTED_PLUGINS",
     "DATABASE_EXAMPLES",
     "LIST_GAMES",
@@ -379,6 +424,7 @@ __all__ = [
     "Prompter",
     "ask",
     "bundled_plugins",
+    "default_plugins",
     "unknown_plugins",
     "valid_database",
     "valid_game",
