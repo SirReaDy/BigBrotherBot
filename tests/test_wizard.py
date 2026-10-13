@@ -146,6 +146,32 @@ def test_a_sqlite_file_where_nothing_can_be_written_is_refused(tmp_path, monkeyp
     assert complaint is not None and "cannot be written to" in complaint
 
 
+def test_a_question_mark_lists_database_urls_and_asks_again(tmp_path):
+    """Nobody types `mysql+pymysql://` from memory, and the default hints at nothing but SQLite."""
+    script = Script(["?", "sqlite:///b3.sqlite"])
+
+    database = Prompter(reader=script.read, writer=script.write).ask(
+        "Database URL", "sqlite:///b3.sqlite", validate=lambda a: valid_database(a, tmp_path)
+    )
+
+    assert database == "sqlite:///b3.sqlite"
+    listed = "\n".join(script.said)
+    assert "mysql+pymysql://" in listed and "postgresql+psycopg://" in listed
+    assert "%40" in listed  # how to write an @ in a password, the usual way a URL goes wrong
+
+
+def test_every_database_example_is_a_url_sqlalchemy_reads():
+    """An example that does not parse is worse than none: it is copied exactly as shown."""
+    from sqlalchemy.engine import make_url
+
+    from b3.core.wizard import DATABASE_EXAMPLES
+
+    urls = [line.split()[0] for line in DATABASE_EXAMPLES if "://" in line]
+    assert len(urls) == 7
+    for url in urls:
+        assert make_url(url).get_backend_name() in ("sqlite", "mysql", "postgresql")
+
+
 def test_an_empty_answer_where_one_is_needed_says_what_it_is_for():
     assert "no events" in (valid_log("") or "")
     assert "SQLAlchemy" in (valid_database("") or "")
@@ -197,7 +223,7 @@ def test_the_questions_are_asked_in_the_operators_order(tmp_path):
         "Game server RCON port",
         "RCON password",
         "Game log (a path here, or an ftp/sftp/http URL)",
-        "Database URL",
+        "Database URL (type ? for examples)",
         "Which ones (space separated)",
         "Check the server answers when this is written?",
     ]

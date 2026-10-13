@@ -104,6 +104,8 @@ class Prompter:
 #: What lists the games, answered to the game question. Offered in the question itself rather than
 #: pointing at `b3 games`: a double-clicked `b3.exe` asks this in a window with no shell to type it.
 LIST_GAMES = "?"
+#: The same answer, to the database question - where it lists URL examples rather than games.
+SHOW_EXAMPLES = LIST_GAMES
 
 
 def valid_game(answer: str) -> str | None:
@@ -146,6 +148,24 @@ def valid_log(answer: str) -> str | None:
     )
 
 
+#: What `?` answers to the database question. Nobody types `mysql+pymysql://` from memory, and the
+#: default alone gives no hint that anything but SQLite is on offer.
+DATABASE_EXAMPLES = (
+    "SQLite - a file, nothing to set up (the default):",
+    "  sqlite:///b3.sqlite                    in this server's own folder",
+    "  sqlite:///C:/b3/data/b3.sqlite         anywhere else, on Windows",
+    "  sqlite:////srv/b3/data/b3.sqlite       anywhere else, on Linux (four slashes)",
+    "MySQL or MariaDB:",
+    "  mysql+pymysql://user:password@host/b3",
+    "  mysql+pymysql://user:password@host:3306/b3?charset=utf8mb4",
+    "PostgreSQL:",
+    "  postgresql+psycopg://user:password@host/b3",
+    "  postgresql+psycopg://user:password@host:5432/b3",
+    "In a password, write @ as %40, : as %3A and / as %2F.",
+    "Several servers can share one MySQL or PostgreSQL database, and with it their bans and admins.",
+)
+
+
 def valid_database(answer: str, directory: Path | None = None) -> str | None:
     """Checked by *opening* it, which is the only way to tell a URL from a working database.
 
@@ -163,6 +183,9 @@ def valid_database(answer: str, directory: Path | None = None) -> str | None:
     """
     if not answer:
         return "a SQLAlchemy URL, e.g. sqlite:///b3.sqlite"
+    if answer == SHOW_EXAMPLES:
+        # As for the game question: the examples are the complaint, and it is asked again below them.
+        return "\n  ".join(DATABASE_EXAMPLES)
     url = answer
     if directory is not None:
         from b3.config.loader import resolve_sqlite_url
@@ -279,17 +302,8 @@ def ask(
     game_log = ask_it.ask(
         "Game log (a path here, or an ftp/sftp/http URL)", base.game_log, validate=valid_log
     )
-    # The URL forms, said once: nobody types `mysql+pymysql://` from memory, and the default gives no
-    # hint that anything but SQLite is on offer.
-    ask_it.say(
-        "  Database: the default is a SQLite file in this server's folder, which needs nothing set up."
-    )
-    ask_it.say(
-        "  MySQL: mysql+pymysql://user:password@host/b3"
-        "   PostgreSQL: postgresql+psycopg://user:password@host/b3"
-    )
     database = ask_it.ask(
-        "Database URL",
+        f"Database URL (type {SHOW_EXAMPLES} for examples)",
         base.database,
         validate=lambda answer: valid_database(answer, directory),
     )
@@ -332,7 +346,9 @@ def unknown_plugins(names: Sequence[str]) -> list[str]:
 
 __all__ = [
     "SUGGESTED_PLUGINS",
+    "DATABASE_EXAMPLES",
     "LIST_GAMES",
+    "SHOW_EXAMPLES",
     "Answers",
     "Prompter",
     "ask",
