@@ -19,6 +19,13 @@ RUN apt-get update \
     && apt-get install --no-install-recommends -y git \
     && rm -rf /var/lib/apt/lists/*
 
+# The optional backends, installed into the image rather than left to the operator: nobody can
+# `pip install` into a published image, so an extra left out here is one its users cannot have at
+# all - and sharing one MySQL database between servers is a documented deployment. `completion` and
+# `api` are absent on purpose: a container has no interactive shell to complete in, and the API is
+# not a released feature yet. `docker build --build-arg EXTRAS= .` builds the bare bot.
+ARG EXTRAS="mysql,postgres,sftp"
+
 WORKDIR /src
 COPY pyproject.toml README.md ./
 COPY src ./src
@@ -26,7 +33,7 @@ COPY src ./src
 # toolchain and the pip cache never reach it.
 RUN python -m venv /opt/b3 \
     && /opt/b3/bin/pip install --no-cache-dir --upgrade pip \
-    && /opt/b3/bin/pip install --no-cache-dir .
+    && /opt/b3/bin/pip install --no-cache-dir ".${EXTRAS:+[$EXTRAS]}"
 
 
 FROM python:3.13-slim

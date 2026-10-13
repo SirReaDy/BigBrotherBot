@@ -168,6 +168,20 @@ def install_command(remote: str, tag: str) -> list[str]:
     return [sys.executable, "-m", "pip", "install", "--upgrade", f"git+{remote}@{ref}"]
 
 
+def is_frozen() -> bool:
+    """Whether this is the Windows build - one `b3.exe` with its own Python inside, and no pip.
+
+    `install_command` would be wrong there twice over: `sys.executable` is the bot itself, not an
+    interpreter, so `-m pip` is an argument it does not know; and there is no environment to install
+    into. Upgrading that build is downloading the next one, as upgrading an image is pulling it.
+    """
+    return bool(getattr(sys, "frozen", False))
+
+
+#: Where a frozen build is told to get the next one.
+RELEASES_URL = "https://github.com/SirReaDy/BigBrotherBot/releases"
+
+
 def in_container() -> bool:
     """Whether this is running in a container, where updating in place is the wrong operation."""
     if DOCKER_MARKER.exists():
@@ -283,6 +297,11 @@ def notice(info: UpdateInfo | None) -> str:
     """
     if info is None or not info.available:
         return ""
+    if is_frozen():
+        return (
+            f"b3 {info.latest} is available (running {info.current}) - download it from "
+            f"{RELEASES_URL}"
+        )
     return f"b3 {info.latest} is available (running {info.current}) — run `b3 update` to install it"
 
 
@@ -332,6 +351,7 @@ __all__ = [
     "NOTICE_INTERVAL",
     "NOTICE_TIMEOUT",
     "QUIET_ENV",
+    "RELEASES_URL",
     "RELEASE_TAG_RE",
     "TOKEN_ENV",
     "UpdateChecker",
@@ -340,6 +360,7 @@ __all__ = [
     "cached_check",
     "check",
     "in_container",
+    "is_frozen",
     "install_command",
     "notice",
     "notices_wanted",

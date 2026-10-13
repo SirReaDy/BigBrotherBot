@@ -182,8 +182,22 @@ task or service per instance directory, each with its own `-c`.
 
 ## In a container
 
-There is a `Dockerfile` in the repository. It builds one image that runs any of the 38 titles — the
-image carries the code, the instance directory carries everything about a server:
+Every release from `v2.0.0b2` on publishes an image to the GitHub container registry,
+`ghcr.io/sirready/b3ng`, for amd64 and arm64. It runs any of the 38 titles - the image carries the
+code, the instance directory carries everything about a server:
+
+```bash
+docker pull ghcr.io/sirready/b3ng:2.0.0b2
+docker run -d --name cod4_1 --restart unless-stopped   -v /srv/cod4_1/b3:/data   ghcr.io/sirready/b3ng:2.0.0b2
+```
+
+Each release is tagged with its exact version. `latest`, and the `2.0` / `2` series tags, move on
+**final releases only**, so pulling `latest` never hands you a beta. Pin a version in anything you
+deploy, and upgrading is changing that one tag. The MySQL, PostgreSQL and `sftp://` backends are
+installed in the image, because nothing can be `pip install`ed into it afterwards.
+
+To build it yourself instead, the `Dockerfile` is in the repository (`--build-arg EXTRAS=` leaves the
+optional backends out):
 
 ```bash
 docker build -t b3ng .
@@ -208,6 +222,31 @@ it: `chown -R 10001:10001 /srv/cod4_1/b3`.
 
 **`b3 update` does not work in a container, and says so.** The image is the version: a `pip install`
 inside a container is thrown away with the container. Build or pull a new image instead.
+
+## On Windows, without Python
+
+Every release from `v2.0.0b2` on attaches a Windows build to its
+[release page](https://github.com/SirReaDy/BigBrotherBot/releases): `b3.exe` with its own Python
+inside, so nothing else needs installing. It comes two ways:
+
+| File | What it is |
+|---|---|
+| `b3ng-<version>-windows-x64.zip` | A folder: `b3.exe`, its `_internal` folder, and the example configs. **Prefer this one** - it starts quickly, and `b3 init` finds the examples beside it. |
+| `b3ng-<version>-windows-x64.exe` | The same program as one file. It unpacks itself to a temporary folder on every start, so it is slower to start. |
+
+Use it exactly like the `b3` command - `b3.exe init C:\b3\cod4_1`, then
+`b3.exe -c C:\b3\cod4_1\b3.yaml run --supervise`. MySQL, PostgreSQL and `sftp://` are built in.
+
+Three things differ from a pip install:
+
+* **The files are not code-signed**, so Windows SmartScreen warns the first time you run one ("More
+  info", then "Run anyway"), and some antivirus products flag PyInstaller builds in general. The
+  wheel and the container image are the same code without that problem.
+* **`b3 update` cannot update it** - there is no pip inside. It tells you so, and names the release
+  to download; replace the folder (or the file) with the new one. Instance directories live
+  elsewhere and are untouched.
+* **A plugin that needs a package not already in the build cannot be installed.** Plugins written
+  in plain Python, using what the bot itself uses, work.
 
 ## Tailing a hosted server's log
 
