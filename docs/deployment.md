@@ -182,8 +182,22 @@ task or service per instance directory, each with its own `-c`.
 
 ## In a container
 
-There is a `Dockerfile` in the repository. It builds one image that runs any of the 38 titles — the
-image carries the code, the instance directory carries everything about a server:
+Every release from `v2.0.0b2` on publishes an image to the GitHub container registry,
+`ghcr.io/sirready/b3ng`, for amd64 and arm64. It runs any of the 38 titles - the image carries the
+code, the instance directory carries everything about a server:
+
+```bash
+docker pull ghcr.io/sirready/b3ng:2.0.0b2
+docker run -d --name cod4_1 --restart unless-stopped   -v /srv/cod4_1/b3:/data   ghcr.io/sirready/b3ng:2.0.0b2
+```
+
+Each release is tagged with its exact version. `latest`, and the `2.0` / `2` series tags, move on
+**final releases only**, so pulling `latest` never hands you a beta. Pin a version in anything you
+deploy, and upgrading is changing that one tag. The MySQL, PostgreSQL and `sftp://` backends are
+installed in the image, because nothing can be `pip install`ed into it afterwards.
+
+To build it yourself instead, the `Dockerfile` is in the repository (`--build-arg EXTRAS=` leaves the
+optional backends out):
 
 ```bash
 docker build -t b3ng .

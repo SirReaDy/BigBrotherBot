@@ -125,6 +125,9 @@ python -m pip install "b3ng[mysql] @ git+https://github.com/SirReaDy/BigBrotherB
 No `git` on the machine? Every [release](https://github.com/SirReaDy/BigBrotherBot/releases) has a
 wheel attached; download it and `python -m pip install b3ng-2.0.0b1-py3-none-any.whl`.
 
+Running in Docker? From `v2.0.0b2` on every release is also an image, `ghcr.io/sirready/b3ng` - see
+[In a container](docs/deployment.md#in-a-container).
+
 Then `b3 init` sets a server up, and `b3 doctor` checks it before the first run. Coming from the
 classic bot, start with [Migrating](docs/migrating.md).
 

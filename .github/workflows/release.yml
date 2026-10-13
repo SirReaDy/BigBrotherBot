@@ -5,6 +5,10 @@
 # is not publishing — it is proving, on every tag, that the package builds at all, and leaving a
 # wheel and an sdist attached to the release so an install needs no git checkout and no build step.
 #
+# Each tag also publishes a container image, `ghcr.io/sirready/b3ng`, built from the `Dockerfile`.
+# It is the one artefact here that is a release channel and not only a file: `docker pull` is how an
+# operator running in a container upgrades, because `b3 update` refuses to pip-install inside one.
+#
 # The version check is the first job on purpose. `b3 update` compares the running `b3.__version__`
 # against the highest tag on this remote, so a tag whose name disagrees with the version inside it
 # would make the bot either miss an update or offer one that installs the same code.
@@ -31,7 +35,13 @@ jobs:
           python-version: "3.11"
       - name: Compare
         shell: bash
+        # A manual run on a branch has no tag to compare, and comparing the branch's name instead
+        # failed every such run here - so the build it exists to exercise never ran.
         run: |
+          if [[ "$GITHUB_REF" != refs/tags/v* ]]; then
+            echo "not a release tag ($GITHUB_REF); nothing to compare"
+            exit 0
+          fi
           tag="${GITHUB_REF_NAME#v}"
           pkg=$(python -c "import tomllib,pathlib;print(tomllib.loads(pathlib.Path('pyproject.toml').read_text())['project']['version'])")
           mod=$(python -c "import pathlib,re;print(re.search(r'__version__\s*=\s*\"([^\"]+)\"', pathlib.Path('src/b3/__init__.py').read_text()).group(1))")
@@ -74,3 +84,84 @@ jobs:
         # `--clobber` so re-running this workflow on the same tag replaces the files rather than
         # failing, which is what happens when a release is edited by hand first.
         run: gh release upload "${GITHUB_REF_NAME}" dist/* --clobber
+
+  image:
+    name: container image
+    # After `build`, not beside it: an image of a package whose wheel would not install is not a
+    # release anybody should be able to pull.
+    needs: [version, build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write # to push to ghcr.io; nothing else in this workflow needs it
+    steps:
+      - uses: actions/checkout@v4
+      # Which tags this image gets. Every release gets its exact version. `latest`, `2.0` and `2` move
+      # only on a final release - the same rule `b3 update` applies (`RELEASE_TAG_RE` in
+      # `b3.core.selfupdate`) - so a beta never becomes what somebody pulling `latest` runs.
+      # Computed here rather than by docker/metadata-action because that action reads tags as semver,
+      # and a PEP 440 pre-release like `2.0.0b1` is not one: it would be skipped.
+      - name: Tags
+        id: tags
+        shell: bash
+        run: |
+          image="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/b3ng"
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            version="${GITHUB_REF_NAME#v}"
+          else
+            version="dev-${GITHUB_SHA::7}"
+          fi
+          tags="$image:$version"
+          if [[ "$version" =~ ^([0-9]+)\.([0-9]+)(\.[0-9]+)*$ ]]; then
+            tags+=",$image:${BASH_REMATCH[1]}.${BASH_REMATCH[2]},$image:${BASH_REMATCH[1]},$image:latest"
+          fi
+          echo "image=$image" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tags=$tags" >> "$GITHUB_OUTPUT"
+          echo "tags: $tags"
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      # Built once for this runner and loaded, so it can be run before anything is pushed: the same
+      # reasoning as installing the wheel above. The push below reuses its layers from the cache.
+      - name: Build for the smoke test
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          tags: b3ng:smoke
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Run it
+        shell: bash
+        # `--entrypoint b3`, because the image's own entry point names a config at /data/b3.yaml
+        # that a smoke test has no reason to provide. The import lines are the extras the image
+        # promises, which an install that silently dropped them would not have.
+        run: |
+          docker run --rm --entrypoint b3 b3ng:smoke games | head -5
+          docker run --rm --entrypoint python b3ng:smoke -c "import b3, pymysql, psycopg, paramiko; print('image', b3.__version__)"
+      - name: Log in to ghcr.io
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      # amd64 for nearly every game host, arm64 for the ARM VPSes and single-board machines a bot
+      # for one small server tends to end up on. A manual run builds both and pushes neither.
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: ${{ startsWith(github.ref, 'refs/tags/v') }}
+          tags: ${{ steps.tags.outputs.tags }}
+          # `source` is what attaches the package to this repository on GitHub, and with it the
+          # repository's visibility and its README.
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.version=${{ steps.tags.outputs.version }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.licenses=GPL-2.0-or-later
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
