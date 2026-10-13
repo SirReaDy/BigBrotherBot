@@ -142,12 +142,16 @@ jobs:
             "$exe" -c "$work/srv/b3.yaml" db upgrade
             "$exe" -c "$work/srv/b3.yaml" plugins | head -2
           done
+      # One artifact each, matching the two separate files the release gets: an artifact downloads
+      # as a single zip, so one artifact holding both read as if they were one asset.
       - uses: actions/upload-artifact@v7
         with:
-          name: windows
-          path: |
-            dist/${{ env.NAME }}.zip
-            dist/${{ env.NAME }}.exe
+          name: ${{ env.NAME }}.zip
+          path: dist/${{ env.NAME }}.zip
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ${{ env.NAME }}.exe
+          path: dist/${{ env.NAME }}.exe
       - name: Attach to the release
         if: startsWith(github.ref, 'refs/tags/v')
         env:
