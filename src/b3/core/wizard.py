@@ -146,23 +146,65 @@ def valid_log(answer: str) -> str | None:
     )
 
 
-def valid_database(answer: str) -> str | None:
+def valid_database(answer: str, directory: Path | None = None) -> str | None:
     """Checked by *opening* it, which is the only way to tell a URL from a working database.
 
     A missing driver is the usual answer here — `mysql+pymysql://` with no PyMySQL installed — and it
     is much better heard now than at the first start.
+
+    A relative SQLite path is checked **where the bot will use it**: in `directory`, the server's own
+    folder, the way `b3.config.loader.resolve_sqlite_url` anchors it at startup. Opened as written,
+    it was resolved against wherever `b3 init` was run instead - which tested a file the bot would
+    never read, and left an empty `b3.sqlite` behind there (beside the exe, on a double-click).
+
+    And a SQLite file that is not there yet is **not created** to prove it could be: the folder it
+    would go in is checked instead, and the bot creates the file on first use. Connecting would have
+    made it, and the server's folder does not exist yet at this point in the questions anyway.
     """
     if not answer:
         return "a SQLAlchemy URL, e.g. sqlite:///b3.sqlite"
-    try:
-        from sqlalchemy import create_engine
+    url = answer
+    if directory is not None:
+        from b3.config.loader import resolve_sqlite_url
 
-        engine = create_engine(answer)
-        with engine.connect():
-            pass
+        url = resolve_sqlite_url(answer, directory)
+    try:
+        from sqlalchemy import create_engine, text
+        from sqlalchemy.engine import make_url
+
+        parsed = make_url(url)
+        if parsed.get_backend_name() == "sqlite" and parsed.database not in (None, "", ":memory:"):
+            path = Path(parsed.database)
+            if not path.exists():
+                return _sqlite_folder_complaint(path)
+        engine = create_engine(url)
+        with engine.connect() as connection:
+            # Reads the file's header on SQLite, where connecting alone does not: a file that exists
+            # but is not a database is refused here rather than at the first start.
+            connection.execute(
+                text(
+                    "SELECT 1" if parsed.get_backend_name() != "sqlite" else "PRAGMA schema_version"
+                )
+            )
         engine.dispose()
     except Exception as exc:  # noqa: BLE001 - the complaint is the whole point
         return f"could not open it: {exc}"
+    return None
+
+
+def _sqlite_folder_complaint(path: Path) -> str | None:
+    """Whether a SQLite file could be created at `path`, without creating it - None if it could."""
+    import os
+
+    folder = path.parent
+    # The folder may not exist yet - the server's own is made only once the questions are done - so
+    # what has to be writable is the nearest part of the path that does.
+    while not folder.exists() and folder != folder.parent:
+        folder = folder.parent
+    if not folder.is_dir():
+        return f"could not open it: {folder} is not a folder"
+    if not os.access(folder, os.W_OK):
+        return f"could not open it: {folder} cannot be written to"
     return None
 
 
@@ -237,7 +279,20 @@ def ask(
     game_log = ask_it.ask(
         "Game log (a path here, or an ftp/sftp/http URL)", base.game_log, validate=valid_log
     )
-    database = ask_it.ask("Database URL", base.database, validate=valid_database)
+    # The URL forms, said once: nobody types `mysql+pymysql://` from memory, and the default gives no
+    # hint that anything but SQLite is on offer.
+    ask_it.say(
+        "  Database: the default is a SQLite file in this server's folder, which needs nothing set up."
+    )
+    ask_it.say(
+        "  MySQL: mysql+pymysql://user:password@host/b3"
+        "   PostgreSQL: postgresql+psycopg://user:password@host/b3"
+    )
+    database = ask_it.ask(
+        "Database URL",
+        base.database,
+        validate=lambda answer: valid_database(answer, directory),
+    )
 
     ask_it.say()
     ask_it.say(f"Plugins to start with. Available: {', '.join(bundled_plugins())}")

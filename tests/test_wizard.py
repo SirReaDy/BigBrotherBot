@@ -106,6 +106,46 @@ def test_a_database_is_checked_by_opening_it(tmp_path):
     assert complaint is not None and "could not open it" in complaint
 
 
+def test_a_relative_sqlite_path_is_checked_in_the_servers_folder_and_not_created(
+    tmp_path, monkeypatch
+):
+    """Opened as written it resolved against wherever `b3 init` ran - a file the bot never reads,
+    left behind empty (beside the exe, on a double-click). The bot creates it on first use."""
+    started_in = tmp_path / "started-here"
+    started_in.mkdir()
+    monkeypatch.chdir(started_in)
+    server = tmp_path / "b3" / "cod4_1"  # not created yet: the questions come first
+
+    assert valid_database("sqlite:///b3.sqlite", server) is None
+
+    assert list(tmp_path.rglob("*.sqlite")) == []  # nothing made, anywhere
+    assert not server.exists()
+
+
+def test_an_existing_file_that_is_not_a_database_is_refused(tmp_path):
+    (tmp_path / "b3.sqlite").write_text("this is a text file, not a database", encoding="utf-8")
+
+    complaint = valid_database("sqlite:///b3.sqlite", tmp_path)
+
+    assert complaint is not None and "could not open it" in complaint
+
+
+def test_an_existing_database_in_the_servers_folder_is_opened(tmp_path):
+    import sqlite3
+
+    sqlite3.connect(tmp_path / "b3.sqlite").close()
+    assert valid_database("sqlite:///b3.sqlite", tmp_path) is None
+
+
+def test_a_sqlite_file_where_nothing_can_be_written_is_refused(tmp_path, monkeypatch):
+    import os
+
+    monkeypatch.setattr(os, "access", lambda path, mode: False)  # noqa: ARG005
+    complaint = valid_database("sqlite:///b3.sqlite", tmp_path / "server")
+
+    assert complaint is not None and "cannot be written to" in complaint
+
+
 def test_an_empty_answer_where_one_is_needed_says_what_it_is_for():
     assert "no events" in (valid_log("") or "")
     assert "SQLAlchemy" in (valid_database("") or "")
