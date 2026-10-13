@@ -733,9 +733,13 @@ def main(argv: list[str] | None = None) -> int:
     # that will not start without it would be a poor trade.
     _autocomplete(parser)
     args = parser.parse_args(argv)
-    logging.basicConfig(
-        level=logging.DEBUG if args.verbose else logging.INFO,
-        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+    from b3.core.style import configure_logging
+
+    # The level names coloured on a colour terminal - a WARNING or an ERROR in a running bot's log is
+    # what somebody scrolling it is looking for.
+    configure_logging(
+        logging.DEBUG if args.verbose else logging.INFO,
+        "%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
     try:
         return _dispatch(args)
@@ -970,14 +974,14 @@ def _run_probe(config: Config, conf_dir: Path | None, lines: int, cvar: str, hid
 
     Always exits 0: this reports, it does not judge. `b3 doctor` is the command with a verdict.
     """
-    from b3.core.probe import run_probe
+    from b3.core.probe import colour, run_probe
 
     # The checks talk to things, which is chatty, and the report *is* the output here.
     for noisy in ("b3.net.logsource", "b3.net.rcon"):
         logging.getLogger(noisy).setLevel(logging.ERROR)
 
     for line in run_probe(config, conf_dir, lines=lines, cvar=cvar, hide=hide):
-        print(line)
+        print(colour(line))
     return 0
 
 
@@ -989,24 +993,31 @@ def _run_doctor(config: Config, conf_dir: Path | None) -> int:
     for noisy in ("alembic", "b3.core.plugininstall", "b3.net.logsource"):
         logging.getLogger(noisy).setLevel(logging.WARNING)
 
-    marks = {Status.OK: "  ok  ", Status.WARN: " warn ", Status.FAIL: " FAIL "}
+    from b3.core import style
+
+    # Coloured inside the brackets only, so the columns line up whether or not there is colour.
+    marks = {
+        Status.OK: style.ok("  ok  "),
+        Status.WARN: style.warn(" warn "),
+        Status.FAIL: style.fail(" FAIL "),
+    }
     checks = run_checks(config, conf_dir, check_update=True)
     width = max(len(c.name) for c in checks)
     for check in checks:
-        print(f"[{marks[check.status]}] {check.name:<{width}}  {check.detail}")
+        print(f"[{marks[check.status]}] {style.heading(f'{check.name:<{width}}')}  {check.detail}")
         if check.hint and check.status is not Status.OK:
-            print(f"{'':>{width + 11}}-> {check.hint}")
+            print(f"{'':>{width + 11}}{style.hint('-> ' + check.hint)}")
 
     failed = [c for c in checks if c.failed]
     warned = [c for c in checks if c.status is Status.WARN]
     print()
     if failed:
-        print(f"{len(failed)} problem(s) to fix before this bot will work properly.")
+        print(style.fail(f"{len(failed)} problem(s) to fix before this bot will work properly."))
         return 1
     if warned:
-        print(f"ready to run, with {len(warned)} thing(s) worth a look.")
+        print(style.warn(f"ready to run, with {len(warned)} thing(s) worth a look."))
         return 0
-    print("everything checks out. Start it with `b3 run`.")
+    print(style.ok("everything checks out. Start it with `b3 run`."))
     return 0
 
 

@@ -182,9 +182,9 @@ def run(ask: Prompter | None = None, home: Path | None = None) -> int:
     import traceback
 
     prompter = ask or Prompter()
-    logging.basicConfig(
-        level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s"
-    )
+    from b3.core.style import configure_logging
+
+    configure_logging(logging.INFO, "%(asctime)s %(levelname)s %(name)s: %(message)s")
     status = 0
     try:
         from b3 import __version__

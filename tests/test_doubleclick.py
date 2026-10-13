@@ -41,7 +41,12 @@ def _no_network(monkeypatch):  # noqa: ANN001, ANN202
 
 @pytest.fixture(autouse=True)
 def _a_console(monkeypatch):  # noqa: ANN001, ANN202
-    """A double-click hands the program a real console for input and output; pytest does not."""
+    """A double-click hands the program a real console for input and output; pytest does not.
+
+    And no colour: these tests compare what was printed, and pretending to be a console would
+    otherwise switch it on.
+    """
+    monkeypatch.setenv("NO_COLOR", "1")
     monkeypatch.setattr(sys.stdin, "isatty", lambda: True, raising=False)
     monkeypatch.setattr(sys.stdout, "isatty", lambda: True, raising=False)
 

@@ -82,6 +82,28 @@ def _rule(title: str) -> str:
     return f"-- {title} " + "-" * max(0, _RULE_WIDTH - len(title) - 4)
 
 
+def colour(line: str) -> str:
+    """One report line as it should look on a colour terminal. The report itself stays plain text.
+
+    Coloured by what the line *is* - a heading, a failure, a row nothing could read - so the eye
+    finds the part that matters in a report that is mostly raw data. Plain when printed anywhere
+    else, which is where a report goes to be pasted.
+    """
+    from b3.core import style
+
+    if line.startswith("-- "):
+        return style.paint(line, style.BOLD, style.CYAN)
+    if line.startswith(("FAILED", "  ! ")):
+        return style.fail(line)
+    if line.startswith(("skipped", "parsed 0 players")) or (
+        line.startswith("UNMATCHED") and not line.endswith(" 0")
+    ):
+        return style.warn(line)
+    if line.startswith(("parsed ", "matched ", "UNMATCHED")):
+        return style.ok(line)
+    return line
+
+
 def redact(text: str) -> str:
     """Mask addresses and ids in a line of report output."""
     text = _IP_RE.sub("x.x.x.x", text)

@@ -26,6 +26,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass, replace
 from pathlib import Path
 
+from b3.core import style
 from b3.core.instance import InstanceSpec
 
 #: What a plugin is called. Only used to refuse a typo before it reaches the config.
@@ -46,6 +47,26 @@ class Answers:
 
     spec: InstanceSpec
     run_doctor: bool = True
+
+
+class Info(str):
+    """What a validator returns when the answer asked for something rather than being wrong.
+
+    `?` is the case: the answer is not accepted, so the question is asked again - but what is shown
+    above it is the list that was asked for, not a complaint, and it is shown as such.
+    """
+
+
+#: The `(type ? ...)` part of a question, picked out so it is the first thing the eye finds.
+_HINT_RE = re.compile(r"\(type \? [^)]*\)")
+
+
+def _shown(question: str, default: str) -> str:
+    """A question as printed: the `?` hint picked out, and the default quieter than the question."""
+    text = _HINT_RE.sub(lambda match: style.hint(match.group(0)), question)
+    if not default:
+        return f"{text}: "
+    return f"{text} {style.quiet(f'[{default}]')}: "
 
 
 class Prompter:
@@ -84,18 +105,22 @@ class Prompter:
         difference between a form and a conversation.
         """
         while True:
-            shown = f"{question} [{default}]: " if default else f"{question}: "
-            answer = self._reader()(shown).strip() or default
+            answer = self._reader()(_shown(question, default)).strip() or default
             if validate is None:
                 return answer
             complaint = validate(answer)
             if complaint is None:
                 return answer
-            self.say(f"  {complaint}")
+            if isinstance(complaint, Info):
+                # What `?` asked for: a block of reference, set apart from the questions around it.
+                for line in complaint.splitlines():
+                    self.say(style.hint(f"  {line}"))
+            else:
+                self.say(style.warn(f"  {complaint}"))
 
     def confirm(self, question: str, default: bool = True) -> bool:
         suffix = "Y/n" if default else "y/N"
-        answer = self._reader()(f"{question} [{suffix}]: ").strip().lower()
+        answer = self._reader()(_shown(question, suffix)).strip().lower()
         if not answer:
             return default
         return answer in ("y", "yes")
@@ -114,8 +139,8 @@ def valid_game(answer: str) -> str | None:
     if answer in PROFILES:
         return None
     if answer == LIST_GAMES:
-        # The listing *is* the complaint: the question is asked again underneath it.
-        return "\n  ".join(listing())
+        # Not a game, so the question is asked again - underneath the list that was asked for.
+        return Info("\n".join(listing()))
     near = suggest(answer)
     if near:
         return f"no such game. Did you mean {' or '.join(near)}? Type {LIST_GAMES} to see them all"
@@ -184,8 +209,8 @@ def valid_database(answer: str, directory: Path | None = None) -> str | None:
     if not answer:
         return "a SQLAlchemy URL, e.g. sqlite:///b3.sqlite"
     if answer == SHOW_EXAMPLES:
-        # As for the game question: the examples are the complaint, and it is asked again below them.
-        return "\n  ".join(DATABASE_EXAMPLES)
+        # As for the game question: the examples, then the question again below them.
+        return Info("\n".join(DATABASE_EXAMPLES))
     url = answer
     if directory is not None:
         from b3.config.loader import resolve_sqlite_url
@@ -270,8 +295,8 @@ def ask(
     ask_it = prompter or Prompter()
     base = defaults or InstanceSpec(directory=directory)
 
-    ask_it.say(f"Setting up a bot for one game server, in {directory}.")
-    ask_it.say("Press enter to take the default in brackets.")
+    ask_it.say(style.heading(f"Setting up a bot for one game server, in {directory}."))
+    ask_it.say(style.quiet("Press enter to take the default in brackets."))
     ask_it.say()
 
     name = (
@@ -350,6 +375,7 @@ __all__ = [
     "LIST_GAMES",
     "SHOW_EXAMPLES",
     "Answers",
+    "Info",
     "Prompter",
     "ask",
     "bundled_plugins",
