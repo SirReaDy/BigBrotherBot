@@ -149,7 +149,8 @@ the newest **final** release, and nothing else. That is deliberate: a candidate 
 would go on being offered after the release it was a candidate for had shipped. The same ordering runs
 the other way, so somebody running `2.0.0a0` *is* offered `2.0.0` when it lands.
 
-**There is no PyPI**, by decision: the source of truth is this repository, and installing is
-`pip install git+https://github.com/SirReaDy/BigBrotherBot@v2.1.0` — which needs nobody's permission
-and is the same distribution story as `b3 plugin install`, which pins plugins by tag from git. The
-built files exist so an install needs no git checkout, not because anything is published elsewhere.
+**PyPI starts at the first stable release.** Until 2.0.0, the source of truth is this repository and
+installing is `pip install git+https://github.com/SirReaDy/BigBrotherBot@v2.1.0` — which needs nobody's
+permission and is the same distribution story as `b3 plugin install`, which pins plugins by tag from
+git. From 2.0.0 on, final releases are published to PyPI as `b3ng` as well; the tags here stay the
+truth `b3 update` reads, and pre-releases stay on GitHub only.

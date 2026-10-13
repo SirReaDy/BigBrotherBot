@@ -103,7 +103,43 @@ faithfully, with a regression test each, because they *are* the fifteen years of
 **In active development.** Every plugin worth porting is ported; next is a web API and a dashboard
 over several servers at once.
 
-## Try it
+## Install
+
+**2.0 is in beta.** The current build is `v2.0.0b1`: everything above is in it, but so far it has
+been run against real Call of Duty and Battlefield servers only. If you run another title, you are
+exactly who this beta is for — see [testing the beta](#testing-the-beta).
+
+Install it straight from this repository, pinned to the release tag:
+
+```bash
+python -m pip install "git+https://github.com/SirReaDy/BigBrotherBot@v2.0.0b1"
+b3 --version
+```
+
+With extras, name them in front of the URL — `mysql`, `postgres`, `sftp` and `completion`:
+
+```bash
+python -m pip install "b3ng[mysql] @ git+https://github.com/SirReaDy/BigBrotherBot@v2.0.0b1"
+```
+
+No `git` on the machine? Every [release](https://github.com/SirReaDy/BigBrotherBot/releases) has a
+wheel attached; download it and `python -m pip install b3ng-2.0.0b1-py3-none-any.whl`.
+
+Then `b3 init` sets a server up, and `b3 doctor` checks it before the first run. Coming from the
+classic bot, start with [Migrating](docs/migrating.md).
+
+**PyPI comes with the stable release.** Once 2.0.0 is out it will be published to PyPI as well, and
+`pip install b3ng` will be all it takes. Until then the package is not on PyPI under any name —
+anything there calling itself B3 2.0 is not this.
+
+### Testing the beta
+
+Most faults found so far were found by running the bot against a real server, not by reading the
+code. If you try it on a title that is not Call of Duty or Battlefield, or something breaks on one
+that is, [open an issue](https://github.com/SirReaDy/BigBrotherBot/issues) with the output of
+`b3 doctor` and `b3 probe` — that is usually everything needed to find the cause.
+
+## Try it without a server
 
 ```bash
 python -m pip install -e ".[dev]"
@@ -200,7 +236,7 @@ family of its own:
 ## Requirements
 
 - Python 3.11+
-- `git` on `PATH` (only for `b3 plugin install/update`)
+- `git` on `PATH`, to install from this repository and for `b3 plugin install/update`
 - No system time-zone database needed; `tzdata` is installed as a dependency
 
 ## Sponsors
