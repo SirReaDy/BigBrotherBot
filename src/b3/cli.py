@@ -389,7 +389,7 @@ def _ravaged_client(config: Config) -> PushClient:
     )
 
 
-def _supervise() -> int:
+def _supervise(child: list[str] | None = None) -> int:
     """Run the bot in a child process, and start it again when `!restart` stops it.
 
     `!restart` sets exit code 221 and stops; **it does not re-exec**, and that is deliberate - a
@@ -402,9 +402,12 @@ def _supervise() -> int:
     and two things restarting one bot is one too many.
 
     The child is the same command line minus this flag - taken from `sys.orig_argv`, so it works
-    whether the bot was started through the `b3` console script or as `python -m`.
+    whether the bot was started through the `b3` console script or as `python -m`. A caller whose
+    own command line is not the bot's - a double-clicked `b3.exe` has none at all - names the child
+    instead.
     """
-    child = [arg for arg in sys.orig_argv if arg != "--supervise"]
+    if child is None:
+        child = [arg for arg in sys.orig_argv if arg != "--supervise"]
     restarts = 0
     while True:
         status = subprocess.call(child)
@@ -714,6 +717,14 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
+    # Double-clicked on Windows, with nothing on the command line: be an application rather than
+    # print a usage line into a window that closes before it can be read. See b3.core.doubleclick.
+    if argv is None:
+        from b3.core import doubleclick
+
+        if doubleclick.started_by_double_click(sys.argv[1:]):
+            return doubleclick.run()
+
     parser = build_parser()
 
     # Before parse_args, and only when the shell is asking: argcomplete reads the parser, writes its
@@ -722,9 +733,13 @@ def main(argv: list[str] | None = None) -> int:
     # that will not start without it would be a poor trade.
     _autocomplete(parser)
     args = parser.parse_args(argv)
-    logging.basicConfig(
-        level=logging.DEBUG if args.verbose else logging.INFO,
-        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+    from b3.core.style import configure_logging
+
+    # The level names coloured on a colour terminal - a WARNING or an ERROR in a running bot's log is
+    # what somebody scrolling it is looking for.
+    configure_logging(
+        logging.DEBUG if args.verbose else logging.INFO,
+        "%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
     try:
         return _dispatch(args)
@@ -836,10 +851,17 @@ def _should_ask(args: argparse.Namespace) -> bool:
 
 
 def _spec_from_flags(args: argparse.Namespace, directory: Path) -> InstanceSpec:
+    from b3.core.wizard import default_plugins
+
+    game = args.game or "cod4"
     return InstanceSpec(
         directory=directory,
         name=args.name,
-        game=args.game or "cod4",
+        game=game,
+        # The same plugins the questions give: every one that works with this game. `b3 init` with
+        # flags used to start with `admin` alone, so a scripted install was a bot with commands and
+        # nothing else, and none of the other plugins' config files to edit.
+        plugins=default_plugins(game),
         host=args.host,
         port=args.port,
         rcon_password=args.rcon_password,
@@ -853,13 +875,12 @@ def _spec_from_flags(args: argparse.Namespace, directory: Path) -> InstanceSpec:
 def _create(args: argparse.Namespace, spec: InstanceSpec, *, run_doctor: bool) -> int:
     import sys
 
-    from b3.core.instance import InstanceError, create_instance
+    from b3.core.instance import InstanceError, _default_examples_dir, create_instance
 
-    examples = Path(__file__).resolve().parent.parent.parent / "examples"
     try:
         written = create_instance(
             spec,
-            examples_dir=examples if examples.is_dir() else None,
+            examples_dir=_default_examples_dir(),
             service=args.service,
             python=sys.executable,
             user=args.service_user,
@@ -907,21 +928,10 @@ def _run_games() -> int:
     Needs no config on purpose: it answers "what may I write in the config?", which is a question
     asked before there is one.
     """
-    from b3.parsers.games import FILE_RCON_FAMILIES, PROFILES, PUSH_FAMILIES, by_family
+    from b3.parsers.games import PROFILES, listing
 
-    grouped = by_family()
-    width = max(len(family) for family in grouped)
-    for family, titles in grouped.items():
-        # What the operator has to configure is the one thing a family decides for them, so it belongs
-        # in the listing rather than only in the README: a log to point at, an rcon port that carries
-        # the events instead, or a log *and* a command file for an engine with no rcon at all.
-        if family in PUSH_FAMILIES:
-            source = "events over rcon"
-        elif family in FILE_RCON_FAMILIES:
-            source = "log + command file"
-        else:
-            source = "reads a game log"
-        print(f"{family:<{width}}  {source:<18}  {'  '.join(titles)}")
+    for line in listing():
+        print(line)
     print(f"\n{len(PROFILES)} titles. Set one as `server.game` in the config, or `b3 init --game`.")
     return 0
 
@@ -970,14 +980,14 @@ def _run_probe(config: Config, conf_dir: Path | None, lines: int, cvar: str, hid
 
     Always exits 0: this reports, it does not judge. `b3 doctor` is the command with a verdict.
     """
-    from b3.core.probe import run_probe
+    from b3.core.probe import colour, run_probe
 
     # The checks talk to things, which is chatty, and the report *is* the output here.
     for noisy in ("b3.net.logsource", "b3.net.rcon"):
         logging.getLogger(noisy).setLevel(logging.ERROR)
 
     for line in run_probe(config, conf_dir, lines=lines, cvar=cvar, hide=hide):
-        print(line)
+        print(colour(line))
     return 0
 
 
@@ -989,24 +999,31 @@ def _run_doctor(config: Config, conf_dir: Path | None) -> int:
     for noisy in ("alembic", "b3.core.plugininstall", "b3.net.logsource"):
         logging.getLogger(noisy).setLevel(logging.WARNING)
 
-    marks = {Status.OK: "  ok  ", Status.WARN: " warn ", Status.FAIL: " FAIL "}
+    from b3.core import style
+
+    # Coloured inside the brackets only, so the columns line up whether or not there is colour.
+    marks = {
+        Status.OK: style.ok("  ok  "),
+        Status.WARN: style.warn(" warn "),
+        Status.FAIL: style.fail(" FAIL "),
+    }
     checks = run_checks(config, conf_dir, check_update=True)
     width = max(len(c.name) for c in checks)
     for check in checks:
-        print(f"[{marks[check.status]}] {check.name:<{width}}  {check.detail}")
+        print(f"[{marks[check.status]}] {style.heading(f'{check.name:<{width}}')}  {check.detail}")
         if check.hint and check.status is not Status.OK:
-            print(f"{'':>{width + 11}}-> {check.hint}")
+            print(f"{'':>{width + 11}}{style.hint('-> ' + check.hint)}")
 
     failed = [c for c in checks if c.failed]
     warned = [c for c in checks if c.status is Status.WARN]
     print()
     if failed:
-        print(f"{len(failed)} problem(s) to fix before this bot will work properly.")
+        print(style.fail(f"{len(failed)} problem(s) to fix before this bot will work properly."))
         return 1
     if warned:
-        print(f"ready to run, with {len(warned)} thing(s) worth a look.")
+        print(style.warn(f"ready to run, with {len(warned)} thing(s) worth a look."))
         return 0
-    print("everything checks out. Start it with `b3 run`.")
+    print(style.ok("everything checks out. Start it with `b3 run`."))
     return 0
 
 

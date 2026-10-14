@@ -158,7 +158,7 @@ The mask is stored, so it survives a reconnect.
 
 ## Rules, spam messages and reason keywords
 
-The admin plugin takes an optional config file of its own (`examples/plugin_admin.yaml`), pointed at
+The admin plugin takes an optional config file of its own (`src/b3/examples/plugin_admin.yaml`), pointed at
 from the main config with `config: "@conf/plugin_admin.yaml"`. Everything in it is optional.
 
 ```yaml

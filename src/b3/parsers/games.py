@@ -160,6 +160,29 @@ def by_family() -> dict[str, list[str]]:
     return {family: sorted(ids) for family, ids in sorted(grouped.items())}
 
 
+def listing() -> list[str]:
+    """Every title, one line per engine family - the table `b3 games` prints.
+
+    Also what `b3 init`'s game question shows when it is answered with `?`, which is the only way
+    to see it from a double-clicked `b3.exe`: there is no shell there to type `b3 games` into.
+    """
+    grouped = by_family()
+    width = max(len(family) for family in grouped)
+    lines = []
+    for family, titles in grouped.items():
+        # What the operator has to configure is the one thing a family decides for them, so it belongs
+        # in the listing rather than only in the README: a log to point at, an rcon port that carries
+        # the events instead, or a log *and* a command file for an engine with no rcon at all.
+        if family in PUSH_FAMILIES:
+            source = "events over rcon"
+        elif family in FILE_RCON_FAMILIES:
+            source = "log + command file"
+        else:
+            source = "reads a game log"
+        lines.append(f"{family:<{width}}  {source:<18}  {'  '.join(titles)}")
+    return lines
+
+
 def parser_for(profile: GameProfile, clients: ClientManager | None = None, port: int = 0) -> Parser:
     """Build the parser this profile's family needs.
 

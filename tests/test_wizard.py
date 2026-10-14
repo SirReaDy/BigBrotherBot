@@ -17,6 +17,7 @@ from b3.core.instance import InstanceSpec, create_instance, plugin_lines
 from b3.core.wizard import (
     Prompter,
     ask,
+    default_plugins,
     bundled_plugins,
     unknown_plugins,
     valid_database,
@@ -57,6 +58,21 @@ def test_a_game_that_does_not_exist_is_refused_with_the_nearest_one():
     assert complaint is not None and "cod4" in complaint
 
 
+def test_a_question_mark_lists_the_games_and_asks_again():
+    """A double-clicked `b3.exe` asks this in a window with no shell to type `b3 games` into."""
+    script = Script(["?", "urt43", "iourt43"])
+
+    game = Prompter(reader=script.read, writer=script.write).ask(
+        "Which game", "cod4", validate=valid_game
+    )
+
+    assert game == "iourt43"
+    assert len(script.asked) == 3  # asked again after the list, and after the typo
+    listed = "\n".join(script.said)
+    assert "cod4x" in listed and "iourt43" in listed and "bf3" in listed
+    assert "Did you mean iourt43" in listed and "Type ? to see them all" in listed
+
+
 def test_a_port_is_a_port():
     assert valid_port("28960") is None
     assert valid_port("0") is not None
@@ -89,6 +105,72 @@ def test_a_database_is_checked_by_opening_it(tmp_path):
 
     complaint = valid_database("nonsense://host/db")
     assert complaint is not None and "could not open it" in complaint
+
+
+def test_a_relative_sqlite_path_is_checked_in_the_servers_folder_and_not_created(
+    tmp_path, monkeypatch
+):
+    """Opened as written it resolved against wherever `b3 init` ran - a file the bot never reads,
+    left behind empty (beside the exe, on a double-click). The bot creates it on first use."""
+    started_in = tmp_path / "started-here"
+    started_in.mkdir()
+    monkeypatch.chdir(started_in)
+    server = tmp_path / "b3" / "cod4_1"  # not created yet: the questions come first
+
+    assert valid_database("sqlite:///b3.sqlite", server) is None
+
+    assert list(tmp_path.rglob("*.sqlite")) == []  # nothing made, anywhere
+    assert not server.exists()
+
+
+def test_an_existing_file_that_is_not_a_database_is_refused(tmp_path):
+    (tmp_path / "b3.sqlite").write_text("this is a text file, not a database", encoding="utf-8")
+
+    complaint = valid_database("sqlite:///b3.sqlite", tmp_path)
+
+    assert complaint is not None and "could not open it" in complaint
+
+
+def test_an_existing_database_in_the_servers_folder_is_opened(tmp_path):
+    import sqlite3
+
+    sqlite3.connect(tmp_path / "b3.sqlite").close()
+    assert valid_database("sqlite:///b3.sqlite", tmp_path) is None
+
+
+def test_a_sqlite_file_where_nothing_can_be_written_is_refused(tmp_path, monkeypatch):
+    import os
+
+    monkeypatch.setattr(os, "access", lambda path, mode: False)  # noqa: ARG005
+    complaint = valid_database("sqlite:///b3.sqlite", tmp_path / "server")
+
+    assert complaint is not None and "cannot be written to" in complaint
+
+
+def test_a_question_mark_lists_database_urls_and_asks_again(tmp_path):
+    """Nobody types `mysql+pymysql://` from memory, and the default hints at nothing but SQLite."""
+    script = Script(["?", "sqlite:///b3.sqlite"])
+
+    database = Prompter(reader=script.read, writer=script.write).ask(
+        "Database URL", "sqlite:///b3.sqlite", validate=lambda a: valid_database(a, tmp_path)
+    )
+
+    assert database == "sqlite:///b3.sqlite"
+    listed = "\n".join(script.said)
+    assert "mysql+pymysql://" in listed and "postgresql+psycopg://" in listed
+    assert "%40" in listed  # how to write an @ in a password, the usual way a URL goes wrong
+
+
+def test_every_database_example_is_a_url_sqlalchemy_reads():
+    """An example that does not parse is worse than none: it is copied exactly as shown."""
+    from sqlalchemy.engine import make_url
+
+    from b3.core.wizard import DATABASE_EXAMPLES
+
+    urls = [line.split()[0] for line in DATABASE_EXAMPLES if "://" in line]
+    assert len(urls) == 7
+    for url in urls:
+        assert make_url(url).get_backend_name() in ("sqlite", "mysql", "postgresql")
 
 
 def test_an_empty_answer_where_one_is_needed_says_what_it_is_for():
@@ -127,7 +209,6 @@ def test_the_questions_are_asked_in_the_operators_order(tmp_path):
             "hunter2",  # rcon password
             str(log),  # game log
             f"sqlite:///{tmp_path / 'b3.sqlite'}",  # database
-            "admin censor",  # plugins
             "n",  # do not run doctor
         ]
     )
@@ -137,19 +218,18 @@ def test_the_questions_are_asked_in_the_operators_order(tmp_path):
     asked = [question.split(" [")[0].rstrip(": ") for question in script.asked]
     assert asked == [
         "A name for this instance (appears in logs)",
-        "Which game (`b3 games` lists them all)",
+        "Which game (type ? to list them)",
         "Game server address",
         "Game server RCON port",
         "RCON password",
         "Game log (a path here, or an ftp/sftp/http URL)",
-        "Database URL",
-        "Which ones (space separated)",
+        "Database URL (type ? for examples)",
         "Check the server answers when this is written?",
     ]
     spec = answers.spec
     assert (spec.name, spec.game, spec.host, spec.port) == ("cod4_1", "cod4", "10.0.0.5", 28960)
     assert spec.rcon_password == "hunter2"
-    assert spec.plugins == ("admin", "censor")
+    assert spec.plugins == default_plugins("cod4")  # not asked: all that work with the game
     assert answers.run_doctor is False
 
 
@@ -167,7 +247,6 @@ def test_a_bad_answer_is_asked_again_rather_than_written(tmp_path):
             "pw",
             str(log),
             f"sqlite:///{tmp_path / 'b3.sqlite'}",
-            "admin",
             "n",
         ]
     )
@@ -180,29 +259,38 @@ def test_a_bad_answer_is_asked_again_rather_than_written(tmp_path):
     assert any("1 to 65535" in line for line in script.said)
 
 
-def test_admin_is_always_first_however_the_answer_was_typed(tmp_path):
-    """It is the command framework's only consumer and every other plugin's dependency: an operator
-    who leaves it out has not asked for a bot with no commands."""
+def test_a_new_server_starts_with_every_plugin_that_works_with_its_game():
+    """Asked, the question had one answer anybody gave - Enter - and it took six of the 36."""
+    from b3.core.wizard import bundled_plugins
+
+    cod = default_plugins("cod4x")
+    urt = default_plugins("iourt43")
+
+    assert cod[0] == "admin" and urt[0] == "admin"  # every other plugin's dependency, first
+    assert "codam" in cod and "codam" not in urt  # each game's own plugins, and only there
+    assert "jumper" in urt and "poweradminurt" in urt and "poweradminurt" not in cod
+    assert {"censor", "spamcontrol", "tk", "stats", "welcome", "discord"} <= set(cod)
+    assert set(cod) <= set(bundled_plugins())
+
+
+def test_login_is_never_switched_on_for_somebody():
+    """It demotes every admin until they log in with a password, and a new install has none: the
+    owner would connect to their own server with no powers."""
+    assert all("login" not in default_plugins(game) for game in ("cod4x", "iourt43", "bf3"))
+
+
+def test_the_wizard_says_what_it_switched_on_and_what_it_left_off(tmp_path):
     log = tmp_path / "games_mp.log"
     log.write_text("", encoding="utf-8")
     script = Script(
-        [
-            "srv",
-            "cod4",
-            "127.0.0.1",
-            "28960",
-            "pw",
-            str(log),
-            f"sqlite:///{tmp_path / 'b3.sqlite'}",
-            "tk, censor",  # commas, and no admin
-            "y",
-        ]
+        ["srv", "cod4x", "", "", "pw", str(log), f"sqlite:///{tmp_path / 'b3.sqlite'}", "n"]
     )
 
-    answers = ask(tmp_path, script.prompter())
+    ask(tmp_path, script.prompter())
 
-    assert answers.spec.plugins == ("admin", "tk", "censor")
-    assert answers.run_doctor is True
+    said = "\n".join(script.said)
+    assert f"all {len(default_plugins('cod4x'))} plugins that work with cod4x" in said
+    assert "Left off: login" in said and "!setpassword" in said
 
 
 def test_a_title_with_no_rcon_password_is_not_asked_for_one(tmp_path):
@@ -219,7 +307,6 @@ def test_a_title_with_no_rcon_password_is_not_asked_for_one(tmp_path):
             str(tmp_path / "commands.txt"),  # command file, in place of the password
             str(log),
             f"sqlite:///{tmp_path / 'b3.sqlite'}",
-            "admin",
             "n",
         ]
     )
@@ -243,7 +330,7 @@ def test_an_empty_answer_takes_the_default(tmp_path):
         game_log=str(log),
         database=f"sqlite:///{tmp_path / 'b3.sqlite'}",
     )
-    script = Script([""] * 8 + ["n"])
+    script = Script([""] * 7 + ["n"])
 
     answers = ask(tmp_path, script.prompter(), defaults=defaults)
 

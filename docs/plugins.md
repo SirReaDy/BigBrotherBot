@@ -6,7 +6,7 @@
 ## Bundled plugins
 
 `admin` is always there. These are ported from the classic tree and switched on in the `plugins:`
-list, each with an optional config of its own (see `examples/`):
+list, each with an optional config of its own (see `src/b3/examples/`):
 
 | Plugin | What it does | Adds |
 |---|---|---|
@@ -59,7 +59,7 @@ one. It is a `mute:` section here: minutes of silence escalating per offence, an
 `warn_after` after which the word's own penalty applies as well. It needs the engine to have a `mute`
 verb (`GameProfile.player_verbs`, which today means Urban Terror); on any other title the section is
 refused at startup with a reason rather than silently doing nothing.
-Config: `examples/plugin_censor.yaml`.
+Config: `src/b3/examples/plugin_censor.yaml`.
 
 ### spamcontrol — chat, and the radio
 
@@ -77,7 +77,7 @@ scored on the **gap** since the last one, which is what marks out somebody abusi
 answered with a **mute** rather than a warning, because the radio is a menu of buttons — telling
 somebody to stop does not stop them, and they are not reading the chat a warning arrives in. That needs
 the engine's `mute` verb; where there is none the section is refused at startup with a reason and radio
-spam is warned about like chat. Config: `examples/plugin_spamcontrol.yaml`.
+spam is warned about like chat. Config: `src/b3/examples/plugin_spamcontrol.yaml`.
 
 ### pingwatch — the connection that is ruining it for everybody
 
@@ -92,7 +92,7 @@ the server after each rotation is worse than one that misses a lagger. Players a
 
 The poll is a scheduled coroutine rather than the classic's thread, and it reads the player list the
 bot already keeps warm, so a short interval does not hammer the server.
-Config: `examples/plugin_pingwatch.yaml`.
+Config: `src/b3/examples/plugin_pingwatch.yaml`.
 
 ### tk — team damage
 
@@ -109,7 +109,7 @@ levels table also decides who is exempt — nobody above its top entry is scored
 
 Team damage has to be reported by the engine, and four families state no damage *figure* (Source,
 Frostbite, Homefront, Ravaged): a kill there is scored as the 100 damage a kill is, and hits of
-unknown size are not scored at all rather than guessed at. Config: `examples/plugin_tk.yaml`.
+unknown size are not scored at all rather than guessed at. Config: `src/b3/examples/plugin_tk.yaml`.
 
 ### stats — the session's figures
 
@@ -125,7 +125,7 @@ read. Set `show_awards` to announce them at the end of each map.
 
 Nothing is stored: these are figures about the session, and a player who reconnects starts again.
 Lasting statistics were the classic bot's `xlrstats`, which is a project of its own rather than a
-plugin. Config: `examples/plugin_stats.yaml`.
+plugin. Config: `src/b3/examples/plugin_stats.yaml`.
 
 ### welcome — the first thing a new player sees
 
@@ -143,7 +143,7 @@ one — nor does the next player to take their slot.
 `!greeting <text>` (mod by default) sets a line announced when its owner joins; it may use `{name}`,
 `{group}`, `{level}` and `{connections}`, and a placeholder that does not exist is refused when it is
 typed rather than failing later in front of the server. `!greeting none` clears it. Wording for every
-message lives in the main config's `messages:` section. Config: `examples/plugin_welcome.yaml`.
+message lives in the main config's `messages:` section. Config: `src/b3/examples/plugin_welcome.yaml`.
 
 **Where they are from.** If `geolocation` is loaded and has placed the player, the two server
 announcements are replaced by variants naming their country — `announce_first_geo` and
@@ -166,7 +166,7 @@ Nobody is asked who cannot answer or should not be: bots, spectators, players at
 fresh join, a map change and a bot restart safe without a special case for each. A round or map change
 clears every record, so the slowest computer on the server is not the first thing this kicks. And no
 kick ever takes the server below `min_ingame_humans` playing people, re-counted at the moment it is
-due. Config: `examples/plugin_afk.yaml`.
+due. Config: `src/b3/examples/plugin_afk.yaml`.
 
 ### banlist — somebody else's ban list
 
@@ -183,7 +183,7 @@ list you do not control can never remove one of your own regulars. A player at o
 Lists are checked at authentication **and when a player's address turns up**, which on the Call of Duty
 and Quake 3 engines is not the same moment: their log lines carry no IP, and the status poll resolves
 one seconds later. An IP list checked only at auth matches nobody at all on those titles.
-Config: `examples/plugin_banlist.yaml`.
+Config: `src/b3/examples/plugin_banlist.yaml`.
 
 ### cmdmanager — who may run what, without a restart
 
@@ -197,7 +197,7 @@ An admin can never change a command they cannot run themselves. Everything set t
 plugin's own tables, so it survives a restart *and* leaves your config files alone — the classic wrote
 the new level back into the owning plugin's `.ini`, comments and all. Overrides are re-applied when a
 plugin is enabled again, which would otherwise reset its commands to the levels in their code.
-Config: `examples/plugin_cmdmanager.yaml` (documentation only — there is nothing to set).
+Config: `src/b3/examples/plugin_cmdmanager.yaml` (documentation only - there is nothing to set).
 
 ### customcommands — your own commands, from config
 
@@ -212,7 +212,7 @@ whoever they last killed. One argument per command, since that is all a command 
 untouched, so a player called `bob"; quit` could turn an admin's `!slap` into two commands. A
 placeholder this bot does not recognise is also refused when the command is *loaded* rather than sent
 to the server as literal text — the classic's version of that was a command which looked configured
-and did nothing on every use. Config: `examples/plugin_customcommands.yaml`.
+and did nothing on every use. Config: `src/b3/examples/plugin_customcommands.yaml`.
 
 ### status — the roster, where a web page can read it
 
@@ -226,7 +226,7 @@ the bot, and credentials in the URL never reach the log. Two deliberate differen
 masked admin is masked here too (this file is usually public, and that is what `!mask` is for), and
 player IP addresses are left out unless `include_ip` asks for them. On shutdown the last write says the
 server is empty — without it a page shows the players who were here when the bot stopped.
-Config: `examples/plugin_status.yaml`.
+Config: `src/b3/examples/plugin_status.yaml`.
 
 ### login — proving an admin is that admin
 
@@ -241,7 +241,7 @@ An imported classic database keeps working — a 32-character digest is recognis
 hash, and replaced with a modern one the first time its owner logs in — but the wider column needs
 **migration 0003**, so run `b3 db upgrade` before enabling it on an existing database. Three wrong
 passwords stop the guessing for a minute, which the classic did not do at all.
-Config: `examples/plugin_login.yaml`.
+Config: `src/b3/examples/plugin_login.yaml`.
 
 ### ipban — the ban a new guid does not escape
 
@@ -251,7 +251,7 @@ address becomes known, since on Call of Duty and Quake 3 the log line that authe
 carries no address. There is no list to maintain: the addresses come from the bans already issued, so
 lifting a ban stops keeping that address out. Players above `max_level` (a registered user, by default)
 are exempt, because a household address shared with somebody banned is the case this exists not to
-punish. Config: `examples/plugin_ipban.yaml`.
+punish. Config: `src/b3/examples/plugin_ipban.yaml`.
 
 ### nickreg — the name that belongs to somebody
 
@@ -264,7 +264,7 @@ Names are compared as players see them: colour codes stripped, trimmed, lower-ca
 `admin` are the same nickname. Registrations live in the plugin's own table and outlive the session,
 which is the point — the trick is played when the owner is away. Nothing is checked for a moment after a
 map change, because a player still loading has whatever name the engine gave them.
-Config: `examples/plugin_nickreg.yaml`.
+Config: `src/b3/examples/plugin_nickreg.yaml`.
 
 ### makeroom — a slot for the people who pay for the server
 
@@ -280,7 +280,7 @@ It removes players who have done nothing wrong, so what it refuses matters more 
 a bot (the engine refills it, so nothing is freed), never an admin wearing a mask (a mask hides rank, it
 does not remove it), never the admin who asked, and — unless you set `only_when_full: no` — never on a
 server that still has a free slot. "Newest" means the newest *arrival*, not the newest database record.
-Config: `examples/plugin_makeroom.yaml`.
+Config: `src/b3/examples/plugin_makeroom.yaml`.
 
 ### callvote — the one power a player has over everybody
 
@@ -312,7 +312,7 @@ vote for two minutes of its own accord: a protected player's engine ban is lifte
 kicked, with the engine's own verb rather than the bot's `!unban` — which would also drop whatever ban
 the bot holds on them. **It is off until you set `protect.level`**, because this plugin runs on every family
 with votes while the plugin it comes from ran on one title, and an upgrade should not start punishing
-players for votes an operator has allowed for years. Config: `examples/plugin_callvote.yaml`.
+players for votes an operator has allowed for years. Config: `src/b3/examples/plugin_callvote.yaml`.
 
 ### spree — the server saying a player's name
 
@@ -325,7 +325,7 @@ A streak is kills *without dying*, so every kind of death breaks it: shot, team-
 ledge. Team-killing does not build one. A death nobody caused ends a spree in silence, because the `end`
 message names who did it and there is nobody. Counts reset at the end of a map, or per round if you ask
 for it, or never. `!spree [player]` reports the streak somebody is on.
-Config: `examples/plugin_spree.yaml`.
+Config: `src/b3/examples/plugin_spree.yaml`.
 
 ### firstkill — first blood
 
@@ -338,7 +338,7 @@ The headshot line needs the engine to have said where the shot landed: Call of D
 on every kill, Source sets a headshot flag, and Urban Terror states it on the `Hit:` line before the kill
 (threaded onto the kill by the parser, since a UrT `Kill:` line names only the weapon). On the families
 that report a weapon and nothing else it never fires, and nothing needs configuring for that.
-Config: `examples/plugin_firstkill.yaml`.
+Config: `src/b3/examples/plugin_firstkill.yaml`.
 
 ### netblocker — a network nobody may connect from
 
@@ -349,7 +349,7 @@ everybody behind a listed address is refused whether they have done anything or 
 
 Checked at authentication *and* when an address first becomes known, since on Call of Duty and Quake 3
 the line that authenticates somebody carries no address at all. A bad entry in the list is refused at
-startup by name and the rest still load. Config: `examples/plugin_netblocker.yaml`.
+startup by name and the rest still load. Config: `src/b3/examples/plugin_netblocker.yaml`.
 
 ### duel — two players settling something
 
@@ -362,7 +362,7 @@ Every kind of kill between the two counts, **including a team kill**: two people
 commonest duel there is, and the classic plugin watched ordinary kills only, so those duels stayed 0:0
 forever. A challenge nobody answers expires (the classic's waited indefinitely), and one player may have
 `max_duels` running at once, because each of them messages both players after every kill.
-Config: `examples/plugin_duel.yaml`.
+Config: `src/b3/examples/plugin_duel.yaml`.
 
 ### spawnkill — shooting somebody who cannot shoot back yet
 
@@ -376,7 +376,7 @@ The plugin needs the engine to report spawns (the Quake 3 family and Frostbite d
 nothing is recorded and nobody is punished, with no game names anywhere in the plugin. `warn`, `kick` and
 `tempban` are the penalties; the classic's `slap`, `nuke` and `kill` were game-server verbs this bot has
 no seam for, and configuring one is refused at startup rather than silently doing nothing.
-Config: `examples/plugin_spawnkill.yaml`.
+Config: `src/b3/examples/plugin_spawnkill.yaml`.
 
 ### geolocation — where a player is connecting from
 
@@ -392,7 +392,7 @@ and `b3 init` fetches the current country and ASN files into `~/.b3`, shared by 
 machine. DB-IP's free city edition adds city, region and coordinates; it is 58 MB, so it is a download
 you make rather than one made for you.
 Place names are folded to ASCII by default, because a Quake 3 console cannot draw `Córdoba` and a row of
-question marks is worse than "Cordoba". Config: `examples/plugin_geolocation.yaml`.
+question marks is worse than "Cordoba". Config: `src/b3/examples/plugin_geolocation.yaml`.
 
 ### location — where everybody is
 
@@ -406,7 +406,7 @@ coordinates, so a city file; `!isp` reads the ASN file `b3 init` fetches. Missin
 fields produce the message that says so — the classic substituted them as `--`, so a country-level
 database answered "Bob is connected from -- (Germany)". Nothing is announced for the first few minutes
 after the bot starts, since a restart mid-match authenticates everybody at once.
-Config: `examples/plugin_location.yaml`.
+Config: `src/b3/examples/plugin_location.yaml`.
 
 ### countryfilter — which countries may play here
 
@@ -420,13 +420,13 @@ list**, so `allow_from: all` — which the classic shipped as its default — ma
 database cannot name is in **neither** list, so it is refused by a whitelist and admitted by a
 blocklist: the classic matched with `str.find`, and an empty string is found in anything, so those
 players were refused by *any* deny list. `exempt_names` works but is spoofable — a name is whatever the
-player typed. Config: `examples/plugin_countryfilter.yaml`.
+player typed. Config: `src/b3/examples/plugin_countryfilter.yaml`.
 
 ### discord — an admin channel that sees what the server does
 
 Bans, kicks, unbans and map changes posted to a Discord webhook, so admins see what happened without
 being in the game. Warnings, joins, leaves and chat can be turned on too. Config:
-`examples/plugin_discord.yaml`.
+`src/b3/examples/plugin_discord.yaml`.
 
 **Outbound only.** Events go to Discord and nothing comes back, which is a decision rather than a
 gap. The transport is the smaller half of the reason — a bot token, a gateway websocket that must
@@ -481,7 +481,7 @@ five titles out of the thirty-eight here, and the URLs rot when somebody reorgan
 ### report — the cheater nobody with a kick was there to see
 
 `!report <player> <reason>` — a player naming somebody for the admins. Config:
-`examples/plugin_report.yaml`.
+`src/b3/examples/plugin_report.yaml`.
 
 **New here.** The classic bot has no `!report`, and the gap shows on every server that runs one: the
 way a player raises a cheater is to type it in chat and hope somebody is reading. Communities solve
@@ -598,7 +598,7 @@ digits, sent to the admin privately and never written to the log.
 One immunity rule covers all four player commands — you cannot use them on somebody at or above your own
 level. The classic had `slap_safe_level` on `!paslap`, a different comparison on `!pamute`, and *nothing*
 on `!panuke`. `!paveto` is not here: `callvote`'s `!veto` is that command, and it works on any engine
-that can cancel a vote. Config: `examples/plugin_poweradminurt.yaml`.
+that can cancel a vote. Config: `src/b3/examples/plugin_poweradminurt.yaml`.
 
 ### poweradminbf3 — Battlefield 3's teams, and the two lists its server keeps
 
@@ -638,7 +638,7 @@ which turned up two more: this engine's centre-screen message (`admin.yell`) was
 every `say_big` on all six Frostbite titles was an ordinary chat line, and `Console.set_cvar` sent
 `set <name> "<value>"` where Frostbite takes the setting's name as the command — so every setting
 written on this family was answered `UnknownCommand` in silence.
-Config: `examples/plugin_poweradminbf3.yaml`.
+Config: `src/b3/examples/plugin_poweradminbf3.yaml`.
 
 ### poweradminbfbc2 — Bad Company 2, and a team balancer that never balanced
 
@@ -675,7 +675,7 @@ Writing it turned up three faults below the plugin. This title's rotate verb is
 one command that loads it. Its centre-screen message counts **milliseconds**, so the ten seconds the
 profile asked for was ten milliseconds: every `say_big` on Bad Company 2 was a flash nobody could
 see. And neither Frostbite 1 title had a single round or yell verb declared, which is what this
-plugin was waiting on. Config: `examples/plugin_poweradminbfbc2.yaml`.
+plugin was waiting on. Config: `src/b3/examples/plugin_poweradminbfbc2.yaml`.
 
 ### poweradminmoh — Medal of Honor, and a move the server always refused
 
@@ -711,7 +711,7 @@ message** — the classic's own parser overrides `saybig` to call `say`, which i
 there is no `admin.yell` here — so everything this plugin says is chat, and `say_big` falls back
 rather than being answered `UnknownCommand`. And **team 3 is the spectators**, which is why the
 balancer does not count the people watching as a side. Config:
-`examples/plugin_poweradminmoh.yaml`.
+`src/b3/examples/plugin_poweradminmoh.yaml`.
 
 ### poweradminhf — Homefront, and a match manager for the wrong game
 
@@ -747,7 +747,7 @@ server's `autobalance` and `cyclemap`), which is what let the plugin be written 
 command inside it. One of those is worth knowing: **`switch_team` takes no team.**
 `admin forceteamswitch` puts a player on the other side and cannot be asked for a particular one, so
 the balancer moves players *off* the bigger side — the same thing on a two-sided game, and the only
-thing offered. Config: `examples/plugin_poweradminhf.yaml`.
+thing offered. Config: `src/b3/examples/plugin_poweradminhf.yaml`.
 
 ### urtserversidedemo — evidence an admin can collect
 
@@ -779,7 +779,7 @@ was waiting for.
 The verbs belong to the title: `record_demo`/`record_stop` and `record_all`/`record_stop_all` are
 declared on 4.2 and 4.3 and **not on 4.1**, so the plugin asks the profile rather than the server and
 switches itself off with a reason on the older build. Config:
-`examples/plugin_urtserversidedemo.yaml`.
+`src/b3/examples/plugin_urtserversidedemo.yaml`.
 
 ### jumper — a leaderboard for an obstacle course
 
@@ -817,7 +817,7 @@ versions of all three, by reading their level and alias out of the command table
 and registering its own, so they would skip the stock maps. Two plugins owning one command name is
 what the registry exists to prevent, and `skip_standard_maps` already cycles a stock map off the
 server within seconds — at most five in a row, since a rotation full of them would otherwise cycle for
-ever. Config: `examples/plugin_jumper.yaml`.
+ever. Config: `src/b3/examples/plugin_jumper.yaml`.
 
 ### poweradmincod7 — Black Ops, where you cannot just load a map
 
@@ -851,7 +851,7 @@ every value at 128 characters, the length that suits a ban reason, so a twenty-f
 
 `!paversion` is not here (`!plugin info` answers it) and neither is `!paident`, which showed a
 player's IP and guid at level 40 and would broadcast them with `@paident`; `!clientinfo` is that
-command, at level 80 and private. Config: `examples/plugin_poweradmincod7.yaml`.
+command, at level 80 and private. Config: `src/b3/examples/plugin_poweradmincod7.yaml`.
 
 ### codam — a Call of Duty admin mod's commands
 
@@ -870,7 +870,7 @@ was not installed. It also put the player *after* the free text (`kick spamming 
 as a player called "spamming"), pasted an admin's typing into a quoted rcon argument unescaped, and let
 `!ckick` reach a level the bot's own `!kick` refuses to touch. It shipped no config file and is named
 nowhere in the classic's own distribution config, which is how all of that went unnoticed.
-Config: `examples/plugin_codam.yaml`.
+Config: `src/b3/examples/plugin_codam.yaml`.
 
 Anything else is a git install — see [Plugins](cli.md#plugins) and
 [Writing an installable plugin](#writing-an-installable-plugin).

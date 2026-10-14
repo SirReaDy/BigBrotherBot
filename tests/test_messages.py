@@ -203,7 +203,7 @@ def test_every_shipped_message_can_be_printed_by_the_game():
 
 
 def test_every_shipped_example_config_can_be_printed_by_the_game():
-    """The operator's copy comes from `examples/`, so every message ships twice.
+    """The operator's copy comes from `src/b3/examples/`, so every message ships twice.
 
     Fixing a plugin default and leaving the example fixes nothing: `b3 init` copies these files, and
     what an operator has in front of them is what their server says. The spree em dash was in both,
@@ -214,7 +214,7 @@ def test_every_shipped_example_config_can_be_printed_by_the_game():
     """
     import yaml
 
-    root = pathlib.Path(__file__).resolve().parent.parent / "examples"
+    root = pathlib.Path(__file__).resolve().parent.parent / "src" / "b3" / "examples"
     # Only the sections whose values are *said in the game*. Comments are not loaded by yaml at all,
     # so the prose explaining each setting stays free to use whatever punctuation reads best.
     spoken = ("messages", "spamages", "warn_reasons", "sprees", "killing_sprees", "losing_sprees")
