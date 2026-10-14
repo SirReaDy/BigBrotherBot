@@ -84,7 +84,7 @@ dev = [
     # answer is in the failure.
     "pytest-timeout>=2.3,<3.0",
     # A linter changes what it enforces between releases.
-    "ruff>=0.15,<0.17",
+    "ruff>=0.15,<0.18",
     # And a type checker changes what it can infer, which is the same thing with a longer diff.
     "mypy>=1.9,<3.0",
     # The completion extra, here as well, so CI exercises both halves of it: the tests cover what
