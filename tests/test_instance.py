@@ -7,6 +7,7 @@ what `init` writes must actually load and run.
 
 from __future__ import annotations
 
+from pathlib import Path
 
 import pytest
 
@@ -248,3 +249,25 @@ def test_the_online_announcement_names_the_bot_and_its_version():
     assert Messages({"b3_online": ""}).get("b3_online", name="x", version="y") == "", (
         "and an operator who wants it quiet sets it empty"
     )
+
+
+def test_init_writes_an_editable_config_for_every_plugin_that_has_one(tmp_path, monkeypatch):
+    """Found inside the package, so a wheel, the Windows build and the image all write them. They
+    used to sit outside it, and a server set up any of those ways had no plugin config to edit."""
+    import b3
+    from b3.cli import main
+    from b3.core.instance import EXAMPLES_DIR
+    from b3.core.wizard import default_plugins
+
+    monkeypatch.chdir(tmp_path)
+    assert EXAMPLES_DIR.parent == Path(b3.__file__).resolve().parent  # inside the package
+
+    assert main(["init", "srv", "--game", "cod4x", "--rcon-password", "pw", "--no-geoip"]) == 0
+
+    written = {path.name for path in (tmp_path / "srv").glob("plugin_*.yaml")}
+    shipped = {f"plugin_{name}.yaml" for name in default_plugins("cod4x")}
+    expected = {name for name in shipped if (EXAMPLES_DIR / name).is_file()}
+    assert written == expected
+    assert {"plugin_admin.yaml", "plugin_codam.yaml", "plugin_discord.yaml"} <= written
+    config = (tmp_path / "srv" / "b3.yaml").read_text(encoding="utf-8")
+    assert 'config: "@conf/plugin_discord.yaml"' in config

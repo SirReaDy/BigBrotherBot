@@ -74,6 +74,10 @@ jobs:
           /tmp/smoke/bin/python -m pip install --quiet dist/*.whl
           /tmp/smoke/bin/b3 games | head -5
           /tmp/smoke/bin/python -c "import b3; print('installed', b3.__version__)"
+          # The plugin configs `b3 init` copies for the operator to edit, which a wheel left out
+          # while they lived outside the package.
+          /tmp/smoke/bin/b3 init /tmp/smoke-srv --game cod4x --rcon-password pw --no-geoip
+          test -f /tmp/smoke-srv/plugin_admin.yaml
       - uses: actions/upload-artifact@v7
         with:
           name: dist
@@ -118,12 +122,10 @@ jobs:
         run: |
           python -m PyInstaller packaging/windows/b3.spec --noconfirm
           python -m PyInstaller packaging/windows/b3.spec --noconfirm -- --onefile
-      # The folder build gets the example configs beside the exe, where `b3 init` looks for them -
-      # which a wheel cannot carry and a folder can.
       - name: Package
         run: |
           name="b3ng-${{ steps.version.outputs.version }}-windows-x64"
-          cp -r examples README.md LICENSE dist/b3/
+          cp README.md LICENSE dist/b3/
           mv dist/b3 "dist/$name"
           pwsh -NoProfile -Command "Compress-Archive -Path 'dist/$name' -DestinationPath 'dist/$name.zip'"
           mv dist/b3.exe "dist/$name.exe"
@@ -139,6 +141,9 @@ jobs:
             "$exe" --version
             "$exe" games | head -3
             "$exe" init "$work/srv" --game cod4x --rcon-password pw --no-geoip
+            # The plugin configs an operator edits, written into the server's folder - from inside
+            # the build, which is the only place a single-file exe has to keep them.
+            test -f "$work/srv/plugin_admin.yaml"
             "$exe" -c "$work/srv/b3.yaml" db upgrade
             "$exe" -c "$work/srv/b3.yaml" plugins | head -2
           done

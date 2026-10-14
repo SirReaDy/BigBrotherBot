@@ -851,10 +851,17 @@ def _should_ask(args: argparse.Namespace) -> bool:
 
 
 def _spec_from_flags(args: argparse.Namespace, directory: Path) -> InstanceSpec:
+    from b3.core.wizard import default_plugins
+
+    game = args.game or "cod4"
     return InstanceSpec(
         directory=directory,
         name=args.name,
-        game=args.game or "cod4",
+        game=game,
+        # The same plugins the questions give: every one that works with this game. `b3 init` with
+        # flags used to start with `admin` alone, so a scripted install was a bot with commands and
+        # nothing else, and none of the other plugins' config files to edit.
+        plugins=default_plugins(game),
         host=args.host,
         port=args.port,
         rcon_password=args.rcon_password,
@@ -868,13 +875,12 @@ def _spec_from_flags(args: argparse.Namespace, directory: Path) -> InstanceSpec:
 def _create(args: argparse.Namespace, spec: InstanceSpec, *, run_doctor: bool) -> int:
     import sys
 
-    from b3.core.instance import InstanceError, create_instance
+    from b3.core.instance import InstanceError, _default_examples_dir, create_instance
 
-    examples = Path(__file__).resolve().parent.parent.parent / "examples"
     try:
         written = create_instance(
             spec,
-            examples_dir=examples if examples.is_dir() else None,
+            examples_dir=_default_examples_dir(),
             service=args.service,
             python=sys.executable,
             user=args.service_user,

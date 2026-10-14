@@ -3,9 +3,9 @@
 #   pyinstaller packaging/windows/b3.spec              -> dist/b3/b3.exe and its _internal folder
 #   pyinstaller packaging/windows/b3.spec -- --onefile -> dist/b3.exe, one file
 #
-# The folder build is what the release zips, with `examples/` beside the exe. The one-file build is
-# the same program unpacked into a temporary directory at every start, which is slower to start and
-# what antivirus software is most suspicious of. It is offered because one file is what people
+# The folder build is what the release zips. The one-file build is the same program unpacked into a
+# temporary directory at every start, which is slower to start and what antivirus software is most
+# suspicious of. It is offered because one file is what people
 # expect a download to be.
 #
 # Three things PyInstaller cannot work out on its own, and every one of them fails only at run time:
@@ -44,6 +44,8 @@ datas = [
     # `include_py_files`, because these are the migration scripts Alembic reads as files.
     *collect_data_files("b3", include_py_files=True, includes=["storage/migrations/**/*"]),
     *collect_data_files("b3", includes=["data/*"]),
+    # The plugin configs `b3 init` copies into a new server's folder for the operator to edit.
+    *collect_data_files("b3", includes=["examples/*.yaml"]),
     # Windows ships no time zone database; `zoneinfo` reads this package's files instead.
     *collect_data_files("tzdata"),
 ]

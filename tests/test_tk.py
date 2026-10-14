@@ -747,8 +747,12 @@ def test_the_shipped_defaults_agree_with_the_shipped_admin_table():
     from b3.plugins.tk import DEFAULTS
 
     root = pathlib.Path(__file__).resolve().parent.parent
-    admin_config = yaml.safe_load((root / "examples" / "plugin_admin.yaml").read_text("utf-8"))
-    tk_config = yaml.safe_load((root / "examples" / "plugin_tk.yaml").read_text("utf-8"))
+    admin_config = yaml.safe_load(
+        (root / "src" / "b3" / "examples" / "plugin_admin.yaml").read_text("utf-8")
+    )
+    tk_config = yaml.safe_load(
+        (root / "src" / "b3" / "examples" / "plugin_tk.yaml").read_text("utf-8")
+    )
     reasons = admin_config["warn_reasons"]
 
     assert DEFAULTS["issue_warning"] in reasons, (

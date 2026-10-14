@@ -159,14 +159,18 @@ NAME_LINE = "  - name: {name}\n"
 CONFIG_LINE = '    config: "@conf/plugin_{name}.yaml"\n'
 
 
-def _default_examples_dir() -> Path | None:
-    """Where the shipped example configs are, when a caller did not say.
+#: The annotated config for each bundled plugin, which `b3 init` copies into a new server's folder
+#: for the operator to edit. **Inside the package**, so every way of installing carries them: a
+#: source checkout, a wheel, the Windows build (folder and single file alike) and the image. They
+#: used to sit at the top of the repository, which only a source checkout and the zipped folder had -
+#: so a server set up any other way got no plugin config files at all, nothing to edit, and an
+#: operator had no way to tell that one existed.
+EXAMPLES_DIR = Path(__file__).resolve().parent.parent / "examples"
 
-    A source checkout has them beside the package; an installed wheel does not ship them at all, and
-    then a plugin simply gets no `config:` line — which is correct, since there would be no file.
-    """
-    candidate = Path(__file__).resolve().parent.parent.parent.parent / "examples"
-    return candidate if candidate.is_dir() else None
+
+def _default_examples_dir() -> Path | None:
+    """Where the shipped example configs are, when a caller did not say."""
+    return EXAMPLES_DIR if EXAMPLES_DIR.is_dir() else None
 
 
 def plugin_lines(names: Iterable[str], examples_dir: Path | None) -> str:
