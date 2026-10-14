@@ -196,6 +196,11 @@ Each release is tagged with its exact version. `latest`, and the `2.0` / `2` ser
 deploy, and upgrading is changing that one tag. The MySQL, PostgreSQL and `sftp://` backends are
 installed in the image, because nothing can be `pip install`ed into it afterwards.
 
+So is the geolocation data. Each image carries DB-IP's country and network databases as they were
+the month it was built - the download `b3 init` does on a host, which a container never runs. A
+newer image brings newer data; on an image you keep for months, players' countries drift out of
+date with it, which is one more reason to move to each release.
+
 To build it yourself instead, the `Dockerfile` is in the repository (`--build-arg EXTRAS=` leaves the
 optional backends out):
 
