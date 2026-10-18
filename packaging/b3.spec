@@ -1,7 +1,7 @@
 # PyInstaller spec for the standalone builds: `b3` (`b3.exe` on Windows), with its own Python inside.
 #
 #   pyinstaller packaging/b3.spec              -> dist/b3/b3 and its _internal folder
-#   pyinstaller packaging/b3.spec -- --onefile -> dist/b3, one file
+#   pyinstaller packaging/b3.spec --distpath onefile -- --onefile -> onefile/b3, one file
 #
 # The same spec on Windows, Linux and macOS. PyInstaller does not cross-compile, so the release
 # workflow runs it once on each.

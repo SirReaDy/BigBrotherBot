@@ -124,7 +124,9 @@ jobs:
       - name: Build
         run: |
           python -m PyInstaller packaging/b3.spec --noconfirm
-          python -m PyInstaller packaging/b3.spec --noconfirm -- --onefile
+          # A separate directory: outside Windows the one file is `b3`, the folder's own name, and
+          # building it into `dist` would replace the folder.
+          python -m PyInstaller packaging/b3.spec --noconfirm --distpath onefile -- --onefile
       # The folder goes out as a zip on Windows and a tar.gz elsewhere, which keeps the executable
       # bit; the directory inside carries the version, so two releases unpack side by side.
       - name: Package
@@ -137,7 +139,7 @@ jobs:
           else
             tar -C dist -czf "out/$NAME.tar.gz" "$NAME"
           fi
-          mv "dist/b3$EXE" "out/$NAME$EXE"
+          mv "onefile/b3$EXE" "out/$NAME$EXE"
       # Run, not only built: a module PyInstaller missed is an ImportError at run time and nothing
       # before it. `init` and `db upgrade` reach the bundled plugins, the migration scripts Alembic
       # reads from disk, and the database layer - the three things the spec exists for.
