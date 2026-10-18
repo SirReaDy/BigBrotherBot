@@ -139,6 +139,22 @@ def test_the_systemd_unit_treats_the_restart_code_as_a_restart(tmp_path):
     assert "User=b3" in unit
 
 
+def test_a_standalone_build_runs_itself_in_the_unit(tmp_path, monkeypatch):
+    """A frozen `b3` is its own interpreter: `b3 -m b3.cli` would not parse."""
+    import sys
+
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    create_instance(
+        InstanceSpec(directory=tmp_path / "b3", name="cod4_1"),
+        service=True,
+        python="/opt/b3/b3",
+        user="b3",
+    )
+
+    unit = (tmp_path / "b3" / "b3-cod4_1.service").read_text(encoding="utf-8")
+    assert "ExecStart=/opt/b3/b3 -c" in unit
+
+
 def test_no_unit_file_unless_asked(tmp_path):
     create_instance(InstanceSpec(directory=tmp_path / "b3", name="x"))
     assert not (tmp_path / "b3" / "b3-x.service").exists()

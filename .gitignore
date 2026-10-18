@@ -33,3 +33,4 @@ htmlcov/
 # yourself before `mkdocs serve`.
 /docs/index.md
 /site/
+release/

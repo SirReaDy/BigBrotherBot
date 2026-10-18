@@ -1090,6 +1090,10 @@ def _run_update(config: Config, check_only: bool, to: str, yes: bool) -> int:
         # pip in the running environment is the wrong operation here: the image *is* the version.
         print("this is a container — pull a new image rather than updating in place")
         return 2
+    if selfupdate.frozen():
+        # Same reasoning, a different artefact: a standalone build has no pip and no site-packages.
+        print(f"this is a standalone build — download {tag} from {selfupdate.RELEASES_URL}")
+        return 2
     command = selfupdate.install_command(remote, tag)
     print(f"installing {tag}: {' '.join(command)}")
     # Said before anything happens, because it is the surprising part: one code install serves every

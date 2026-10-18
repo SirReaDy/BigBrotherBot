@@ -62,6 +62,9 @@ RELEASE_TAG_RE = re.compile(r"^v?\d+(\.\d+)*$")
 #: the image *is* the version.
 DOCKER_MARKER = Path("/.dockerenv")
 
+#: Where a standalone build is replaced from. There is no Python environment inside one to `pip` into.
+RELEASES_URL = "https://github.com/SirReaDy/BigBrotherBot/releases"
+
 #: How stale the remembered answer may get before a *command* asks again. A week, not a day: the bot
 #: has its own `bot.update_check_interval` while it runs, and this is the path for a machine where no
 #: bot is running at the moment — somebody at a terminal, who does not need to pay for a network
@@ -166,6 +169,11 @@ def install_command(remote: str, tag: str) -> list[str]:
     """
     ref = tag if tag.startswith("v") else f"v{tag}"
     return [sys.executable, "-m", "pip", "install", "--upgrade", f"git+{remote}@{ref}"]
+
+
+def frozen() -> bool:
+    """Whether this is a standalone build (PyInstaller), which is updated by replacing the file."""
+    return bool(getattr(sys, "frozen", False))
 
 
 def in_container() -> bool:

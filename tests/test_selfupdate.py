@@ -408,3 +408,26 @@ def test_the_package_version_and_the_module_version_agree():
     source = root.joinpath("src", "b3", "__init__.py").read_text(encoding="utf-8")
     found = re.search(r'__version__\s*=\s*"([^"]+)"', source)
     assert found is not None and found.group(1) == b3.__version__
+
+
+def test_a_standalone_build_is_told_to_download_rather_than_pip(tmp_path, monkeypatch, capsys):
+    """A PyInstaller build has no pip and no site-packages; the new version is a new file."""
+    import sys
+
+    from b3.cli import main
+    from b3.core import selfupdate
+
+    monkeypatch.chdir(tmp_path)
+    main(["init", "srv", "--rcon-password", "pw"])
+    monkeypatch.setattr(
+        selfupdate,
+        "check",
+        lambda remote, current=None, **kw: UpdateInfo(current="2.0.0", latest="2.1.0"),  # noqa: ARG005
+    )
+    monkeypatch.setattr(selfupdate, "in_container", lambda: False)
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+
+    code = main(["-c", str(tmp_path / "srv" / "b3.yaml"), "update", "-y"])
+
+    assert code == 2
+    assert selfupdate.RELEASES_URL in capsys.readouterr().out

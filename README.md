@@ -105,25 +105,39 @@ over several servers at once.
 
 ## Install
 
-**2.0 is in beta.** The current build is `v2.0.0b1`: everything above is in it, but so far it has
+**2.0 is in beta.** The current build is `v2.0.0b2`: everything above is in it, but so far it has
 been run against real Call of Duty and Battlefield servers only. If you run another title, you are
 exactly who this beta is for — see [testing the beta](#testing-the-beta).
 
 Install it straight from this repository, pinned to the release tag:
 
 ```bash
-python -m pip install "git+https://github.com/SirReaDy/BigBrotherBot@v2.0.0b1"
+python -m pip install "git+https://github.com/SirReaDy/BigBrotherBot@v2.0.0b2"
 b3 --version
 ```
 
 With extras, name them in front of the URL — `mysql`, `postgres`, `sftp` and `completion`:
 
 ```bash
-python -m pip install "b3ng[mysql] @ git+https://github.com/SirReaDy/BigBrotherBot@v2.0.0b1"
+python -m pip install "b3ng[mysql] @ git+https://github.com/SirReaDy/BigBrotherBot@v2.0.0b2"
 ```
 
 No `git` on the machine? Every [release](https://github.com/SirReaDy/BigBrotherBot/releases) has a
-wheel attached; download it and `python -m pip install b3ng-2.0.0b1-py3-none-any.whl`.
+wheel attached; download it and `python -m pip install b3ng-2.0.0b2-py3-none-any.whl`.
+
+**No Python either?** Each release also has standalone builds, with every extra included:
+
+| Platform | Single file | Bundle (starts faster, suits a service) |
+|---|---|---|
+| Windows x64 | `b3-<version>-windows-x64.exe` | `b3-<version>-windows-x64-bundle.zip` |
+| Linux x64 / arm64 | `b3-<version>-linux-x64` / `-linux-arm64` | `…-bundle.tar.gz` |
+| macOS Apple silicon / Intel | `b3-<version>-macos-arm64` / `-macos-x64` | `…-bundle.tar.gz` |
+
+They take the same commands as `b3` (`b3-…-windows-x64.exe init`, and so on). On Linux and macOS,
+`chmod +x` the single file first. These builds are not code-signed, so Windows SmartScreen and
+macOS Gatekeeper will warn; on macOS, `xattr -d com.apple.quarantine <file>` clears it. To update a
+standalone build, download the new one: `b3 update` only works for a pip install. Check a download
+against `SHA256SUMS` on the same release.
 
 Then `b3 init` sets a server up, and `b3 doctor` checks it before the first run. Coming from the
 classic bot, start with [Migrating](docs/migrating.md).
