@@ -106,7 +106,7 @@ What it does with `b3.xml`, for the settings most installs actually set:
 | `messages/*` | `messages:` | Same keys, same `$variable` placeholders |
 
 Each plugin's `plugin_x.ini` becomes a `plugin_x.yaml` written beside `b3.yaml`, and listed against
-that plugin in `plugins:`. Read what came out against `examples/`, which has an annotated config for
+that plugin in `plugins:`. Read what came out against `src/b3/examples/`, which has an annotated config for
 every bundled plugin and is the fastest way to see what a section is called now — then run
 `b3 doctor`, which checks the file, the database, the log and the RCON connection before you start.
 

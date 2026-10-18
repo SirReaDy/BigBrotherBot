@@ -55,6 +55,8 @@ import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from b3.core.instance import EXAMPLES_DIR
+
 log = logging.getLogger(__name__)
 
 #: `b3.xml` -> `b3.yaml`. Small enough to write out, unlike the plugin settings, and the only place
@@ -242,7 +244,9 @@ class ConvertReport:
 #: Where the annotated example configs live. They are the closest thing this project has to a
 #: machine-readable schema for a plugin's *sections*: `DEFAULTS` describes `settings:` and nothing
 #: else, and a classic `[warn]` or `[warn_reasons]` block has a destination `DEFAULTS` cannot see.
-EXAMPLES = Path(__file__).resolve().parents[3] / "examples"
+#: The same directory `b3 init` copies them from - inside the package, so `b3 import-config` can read
+#: it from a wheel or the Windows build as well as from a source checkout.
+EXAMPLES = EXAMPLES_DIR
 
 
 def _plugin_schema(name: str) -> dict[str, set[str]] | None:

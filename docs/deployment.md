@@ -182,8 +182,27 @@ task or service per instance directory, each with its own `-c`.
 
 ## In a container
 
-There is a `Dockerfile` in the repository. It builds one image that runs any of the 38 titles — the
-image carries the code, the instance directory carries everything about a server:
+Every release from `v2.0.0b2` on publishes an image to the GitHub container registry,
+`ghcr.io/sirready/b3ng`, for amd64 and arm64. It runs any of the 38 titles - the image carries the
+code, the instance directory carries everything about a server:
+
+```bash
+docker pull ghcr.io/sirready/b3ng:2.0.0b2
+docker run -d --name cod4_1 --restart unless-stopped   -v /srv/cod4_1/b3:/data   ghcr.io/sirready/b3ng:2.0.0b2
+```
+
+Each release is tagged with its exact version. `latest`, and the `2.0` / `2` series tags, move on
+**final releases only**, so pulling `latest` never hands you a beta. Pin a version in anything you
+deploy, and upgrading is changing that one tag. The MySQL, PostgreSQL and `sftp://` backends are
+installed in the image, because nothing can be `pip install`ed into it afterwards.
+
+So is the geolocation data. Each image carries DB-IP's country and network databases as they were
+the month it was built - the download `b3 init` does on a host, which a container never runs. A
+newer image brings newer data; on an image you keep for months, players' countries drift out of
+date with it, which is one more reason to move to each release.
+
+To build it yourself instead, the `Dockerfile` is in the repository (`--build-arg EXTRAS=` leaves the
+optional backends out):
 
 ```bash
 docker build -t b3ng .
@@ -208,6 +227,61 @@ it: `chown -R 10001:10001 /srv/cod4_1/b3`.
 
 **`b3 update` does not work in a container, and says so.** The image is the version: a `pip install`
 inside a container is thrown away with the container. Build or pull a new image instead.
+
+## On Windows, without Python
+
+Every release from `v2.0.0b2` on attaches a Windows build to its
+[release page](https://github.com/SirReaDy/BigBrotherBot/releases): `b3.exe` with its own Python
+inside, so nothing else needs installing. It comes two ways:
+
+| File | What it is |
+|---|---|
+| `b3ng-<version>-windows-x64.zip` | A folder: `b3.exe` and its `_internal` folder. **Prefer this one** - it starts quickly. |
+| `b3ng-<version>-windows-x64.exe` | The same program as one file. It unpacks itself to a temporary folder on every start, so it is slower to start. |
+
+**Double-click `b3.exe`** and it sets a server up: it asks the `b3 init` questions - which game, the
+server's address, port and RCON password, where its log is - writes the server to
+`%USERPROFILE%\b3\<name>`, and offers to start the bot in that window. Double-click it again later
+and it offers to start that server, or to set up another. The window always waits for Enter before
+it closes, so an error stays on screen long enough to read. Servers live in your profile rather than
+beside the exe so that replacing the folder with a newer release keeps them.
+
+Each server's folder holds everything you edit: `b3.yaml`, and a `plugin_<name>.yaml` beside it for
+every plugin that has settings. Change them in any text editor while the bot is stopped, or type
+`!restart` in game after saving. The `plugins\` folder there is for extra plugins you install with
+`b3 plugin install`; it starts empty.
+
+From cmd or PowerShell it is exactly the `b3` command - `b3.exe init C:\b3\cod4_1`, then
+`b3.exe -c C:\b3\cod4_1\b3.yaml run --supervise` - and asks nothing it was not asked to. MySQL,
+PostgreSQL and `sftp://` are built in.
+
+Three things differ from a pip install:
+
+* **The files are not code-signed**, so Windows SmartScreen warns the first time you run one ("More
+  info", then "Run anyway"), and some antivirus products flag PyInstaller builds in general. The
+  wheel and the container image are the same code without that problem.
+* **`b3 update` cannot update it** - there is no pip inside. It tells you so, and names the release
+  to download; replace the folder (or the file) with the new one. Instance directories live
+  elsewhere and are untouched.
+* **A plugin that needs a package not already in the build cannot be installed.** Plugins written
+  in plain Python, using what the bot itself uses, work.
+
+## On Linux or macOS, without Python
+
+The same build exists for Linux (x64 and arm64) and macOS (Apple silicon and Intel), named
+`b3ng-<version>-<platform>` for the single file and `….tar.gz` for the folder. Everything above
+applies except double-clicking: it is the `b3` command, run from a terminal.
+
+```bash
+tar xzf b3ng-2.0.0b2-linux-x64.tar.gz
+./b3ng-2.0.0b2-linux-x64/b3 init ~/b3/cod4_1
+```
+
+The single file needs `chmod +x` after downloading. On macOS, Gatekeeper blocks an unsigned
+download until its quarantine flag is cleared: `xattr -dr com.apple.quarantine <file or folder>`.
+The Linux build is made on Ubuntu 22.04 and needs a glibc at least that new (Debian 12, RHEL 9 and
+their contemporaries); Alpine's musl is not supported, so use the container image there.
+`b3 init --service` writes a unit that runs the executable directly.
 
 ## Tailing a hosted server's log
 

@@ -5,6 +5,11 @@
 # is not publishing — it is proving, on every tag, that the package builds at all, and leaving a
 # wheel and an sdist attached to the release so an install needs no git checkout and no build step.
 #
+# Each tag also attaches standalone builds for Windows, Linux and macOS - `b3` with its own Python
+# inside, as one file and as an archived folder - plus `SHA256SUMS`, and publishes a container image, `ghcr.io/sirready/b3ng`, built from the `Dockerfile`.
+# It is the one artefact here that is a release channel and not only a file: `docker pull` is how an
+# operator running in a container upgrades, because `b3 update` refuses to pip-install inside one.
+#
 # The version check is the first job on purpose. `b3 update` compares the running `b3.__version__`
 # against the highest tag on this remote, so a tag whose name disagrees with the version inside it
 # would make the bot either miss an update or offer one that installs the same code.
@@ -25,15 +30,19 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.11"
       - name: Compare
         shell: bash
+        # A manual run on a branch has no tag to compare, and comparing the branch's name instead
+        # failed every such run here - so the build it exists to exercise never ran.
         run: |
-          # A manual run is on a branch, whose name is not a version; there is nothing to compare.
-          if [ "${GITHUB_REF_TYPE}" != "tag" ]; then echo "not a tag; skipped"; exit 0; fi
+          if [[ "$GITHUB_REF" != refs/tags/v* ]]; then
+            echo "not a release tag ($GITHUB_REF); nothing to compare"
+            exit 0
+          fi
           tag="${GITHUB_REF_NAME#v}"
           pkg=$(python -c "import tomllib,pathlib;print(tomllib.loads(pathlib.Path('pyproject.toml').read_text())['project']['version'])")
           mod=$(python -c "import pathlib,re;print(re.search(r'__version__\s*=\s*\"([^\"]+)\"', pathlib.Path('src/b3/__init__.py').read_text()).group(1))")
@@ -49,8 +58,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.11"
       - run: python -m pip install --upgrade build
@@ -65,45 +74,103 @@ jobs:
           /tmp/smoke/bin/python -m pip install --quiet dist/*.whl
           /tmp/smoke/bin/b3 games | head -5
           /tmp/smoke/bin/python -c "import b3; print('installed', b3.__version__)"
-      - uses: actions/upload-artifact@v4
+          # The plugin configs `b3 init` copies for the operator to edit, which a wheel left out
+          # while they lived outside the package.
+          /tmp/smoke/bin/b3 init /tmp/smoke-srv --game cod4x --rcon-password pw --no-geoip
+          test -f /tmp/smoke-srv/plugin_admin.yaml
+      - uses: actions/upload-artifact@v7
         with:
           name: dist
           path: dist/*
 
-  binaries:
-    # Standalone executables, for an operator with no Python: one file that runs, and a bundle
-    # directory (zipped) that starts faster and suits a service. PyInstaller does not cross-compile,
-    # so each platform builds its own. Ubuntu 22.04 rather than latest: a Linux build runs on glibc
-    # as old as the one it was built against, and no older.
-    name: standalone ${{ matrix.os }}
-    needs: version
+  standalone:
+    name: standalone ${{ matrix.target }}
+    # For an operator who has never installed Python: `b3` carries its own. Built from
+    # `packaging/b3.spec`, which says what PyInstaller cannot work out by itself. PyInstaller does
+    # not cross-compile, so each platform builds on its own runner. Ubuntu 22.04 rather than latest:
+    # a Linux build runs on a glibc as old as the one it was built against, and no older.
+    needs: [version, build]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
-        os: [windows-latest, ubuntu-22.04, ubuntu-22.04-arm, macos-14, macos-15-intel]
+        include:
+          - { os: windows-latest, target: windows-x64 }
+          - { os: ubuntu-22.04, target: linux-x64 }
+          - { os: ubuntu-22.04-arm, target: linux-arm64 }
+          - { os: macos-14, target: macos-arm64 }
+          - { os: macos-15-intel, target: macos-x64 }
+    defaults:
+      run:
+        shell: bash
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
-          python-version: "3.12"
-      - run: python -m pip install ".[api,mysql,postgres,sftp,completion]" "pyinstaller>=6.10,<7"
-      # Builds both layouts and runs each one before it is kept.
-      - run: python tools/build_binary.py --out release
-      - uses: actions/upload-artifact@v4
+          python-version: "3.13"
+      - name: Version
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            version="${GITHUB_REF_NAME#v}"
+          else
+            version="dev-${GITHUB_SHA::7}"
+          fi
+          echo "NAME=b3ng-$version-${{ matrix.target }}" >> "$GITHUB_ENV"
+          if [[ "$RUNNER_OS" == Windows ]]; then echo "EXE=.exe" >> "$GITHUB_ENV"; fi
+      # The extras the container image carries, for the same reason: nothing can be pip-installed
+      # into a frozen build afterwards. PyInstaller is capped like every other tool here.
+      - run: python -m pip install ".[mysql,postgres,sftp]" "pyinstaller>=6.10,<7"
+      - name: Build
+        run: |
+          python -m PyInstaller packaging/b3.spec --noconfirm
+          python -m PyInstaller packaging/b3.spec --noconfirm -- --onefile
+      # The folder goes out as a zip on Windows and a tar.gz elsewhere, which keeps the executable
+      # bit; the directory inside carries the version, so two releases unpack side by side.
+      - name: Package
+        run: |
+          mkdir out
+          cp README.md LICENSE dist/b3/
+          mv dist/b3 "dist/$NAME"
+          if [[ "$RUNNER_OS" == Windows ]]; then
+            pwsh -NoProfile -Command "Compress-Archive -Path 'dist/$NAME' -DestinationPath 'out/$NAME.zip'"
+          else
+            tar -C dist -czf "out/$NAME.tar.gz" "$NAME"
+          fi
+          mv "dist/b3$EXE" "out/$NAME$EXE"
+      # Run, not only built: a module PyInstaller missed is an ImportError at run time and nothing
+      # before it. `init` and `db upgrade` reach the bundled plugins, the migration scripts Alembic
+      # reads from disk, and the database layer - the three things the spec exists for.
+      - name: Run them
+        run: |
+          for exe in "dist/$NAME/b3$EXE" "out/$NAME$EXE"; do
+            echo "== $exe"
+            work=$(mktemp -d)
+            "$exe" --version
+            "$exe" games | head -3
+            "$exe" init "$work/srv" --game cod4x --rcon-password pw --no-geoip
+            # The plugin configs an operator edits, written into the server's folder - from inside
+            # the build, which is the only place a single-file exe has to keep them.
+            test -f "$work/srv/plugin_admin.yaml"
+            "$exe" -c "$work/srv/b3.yaml" db upgrade
+            "$exe" -c "$work/srv/b3.yaml" plugins | head -2
+          done
+      - uses: actions/upload-artifact@v7
         with:
-          name: standalone-${{ matrix.os }}
-          path: release/*
+          name: ${{ env.NAME }}
+          path: out/*
 
   publish:
     name: attach to the release
-    needs: [build, binaries]
+    # Once, after everything is built and has run, so a release never carries half its files - and
+    # a tag pushed without a release gets one: marked pre-release for a/b/rc, the same rule
+    # `b3 update` applies, with GitHub's generated notes to edit afterwards.
+    needs: [build, standalone]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v7
         with:
           path: assets
           merge-multiple: true
@@ -114,9 +181,8 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-        # A tag pushed without a release gets one: marked pre-release when the version is (a, b, rc),
-        # with GitHub's generated notes to edit afterwards. `--clobber` so re-running this workflow on
-        # the same tag replaces the files rather than failing.
+        # `--clobber` so re-running this workflow on the same tag replaces the files rather than
+        # failing, which is what happens when a release is edited by hand first.
         run: |
           tag="${GITHUB_REF_NAME}"
           if ! gh release view "$tag" >/dev/null 2>&1; then
@@ -125,3 +191,92 @@ jobs:
             gh release create "$tag" --verify-tag --generate-notes --title "$tag" $pre
           fi
           gh release upload "$tag" assets/* --clobber
+
+  image:
+    name: container image
+    # After `build`, not beside it: an image of a package whose wheel would not install is not a
+    # release anybody should be able to pull.
+    needs: [version, build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write # to push to ghcr.io; nothing else in this workflow needs it
+    steps:
+      - uses: actions/checkout@v7
+      # Which tags this image gets. Every release gets its exact version. `latest`, `2.0` and `2` move
+      # only on a final release - the same rule `b3 update` applies (`RELEASE_TAG_RE` in
+      # `b3.core.selfupdate`) - so a beta never becomes what somebody pulling `latest` runs.
+      # Computed here rather than by docker/metadata-action because that action reads tags as semver,
+      # and a PEP 440 pre-release like `2.0.0b1` is not one: it would be skipped.
+      - name: Tags
+        id: tags
+        shell: bash
+        run: |
+          image="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/b3ng"
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            version="${GITHUB_REF_NAME#v}"
+          else
+            version="dev-${GITHUB_SHA::7}"
+          fi
+          tags="$image:$version"
+          if [[ "$version" =~ ^([0-9]+)\.([0-9]+)(\.[0-9]+)*$ ]]; then
+            tags+=",$image:${BASH_REMATCH[1]}.${BASH_REMATCH[2]},$image:${BASH_REMATCH[1]},$image:latest"
+          fi
+          echo "image=$image" >> "$GITHUB_OUTPUT"
+          # The Dockerfile bakes in the current month's geolocation data; this makes the month part of
+          # the build's cache key, so a cached layer from last month is not reused.
+          echo "geoip_month=$(date -u +%Y-%m)" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tags=$tags" >> "$GITHUB_OUTPUT"
+          echo "tags: $tags"
+      - uses: docker/setup-qemu-action@v4
+      - uses: docker/setup-buildx-action@v4
+      # Built once for this runner and loaded, so it can be run before anything is pushed: the same
+      # reasoning as installing the wheel above. The push below reuses its layers from the cache.
+      - name: Build for the smoke test
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          load: true
+          tags: b3ng:smoke
+          build-args: GEOIP_MONTH=${{ steps.tags.outputs.geoip_month }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Run it
+        shell: bash
+        # `--entrypoint b3`, because the image's own entry point names a config at /data/b3.yaml
+        # that a smoke test has no reason to provide. The import lines are the extras the image
+        # promises, which an install that silently dropped them would not have.
+        run: |
+          docker run --rm --entrypoint b3 b3ng:smoke games | head -5
+          docker run --rm --entrypoint python b3ng:smoke -c "import b3, pymysql, psycopg, paramiko; print('image', b3.__version__)"
+          # The databases the build downloaded, and how old they are. A build that could not reach
+          # DB-IP still passes - the bundled copy is the floor - but says so here.
+          docker run --rm --entrypoint python b3ng:smoke -c "from pathlib import Path; from b3.core.geoipdata import SHARED_DIR, build_date; [print(p.name, build_date(p)) for p in sorted(Path(SHARED_DIR).glob('*.mmdb'))] or print('no current geolocation data: using the bundled copy')"
+      - name: Log in to ghcr.io
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      # amd64 for nearly every game host, arm64 for the ARM VPSes and single-board machines a bot
+      # for one small server tends to end up on. A manual run builds both and pushes neither.
+      - name: Build and push
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          build-args: GEOIP_MONTH=${{ steps.tags.outputs.geoip_month }}
+          push: ${{ startsWith(github.ref, 'refs/tags/v') }}
+          tags: ${{ steps.tags.outputs.tags }}
+          # `source` is what attaches the package to this repository on GitHub, and with it the
+          # repository's visibility and its README.
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.version=${{ steps.tags.outputs.version }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.licenses=GPL-2.0-or-later
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

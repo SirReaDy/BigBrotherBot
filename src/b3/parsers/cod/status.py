@@ -31,16 +31,34 @@ from b3.parsers.status import (
 )
 
 
-#: CoD4X 1.8 reports an extra **Steam64** column and drops the stock table's `lastmsg`, so it needs
-#: its own row pattern (transplanted from leiizko/b3_cod4x, the reference CoD4X parser). Both the
-#: `lastmsg` and the trailing `qport`/`rate` are optional here: CoD4X builds disagree about them,
-#: and a row that is one column off should still yield the player rather than nothing.
+#: Where a CoD4X player is connecting from, as `NET_AdrToString` writes it: `192.0.2.44:28960`, or
+#: for an IPv6 player `[2001:db8::1]:28960`. The second is the server's own format (its source sizes
+#: the column for `[0000:1111:...:8888]:65535`), and without it a player on IPv6 was a row this bot
+#: could not read - invisible to `!status`, to authentication by address and to geolocation.
+_COD4X_ADDRESS = (
+    r"(?:(?P<ip>(?:(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])\.){3}"
+    r"(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])):?"
+    r"|\[(?P<ip6>[0-9a-f:.]+)\]:)"
+    r"(?P<port>-?[0-9]{1,5})"
+)
+
+#: One id column of the CoD4X table: a decimal Steam64 with `sv_usesteam64id 1`, and a Steam3 id -
+#: `[U:1:12345]`, or `[I:0:0]` for no id at all - with it off. The cvar is archived, so a server
+#: that once had it off keeps it off across restarts; this bot asks for it on at startup, but a
+#: table read before that, or on a server that refuses the change, is printed in the Steam3 form.
+_COD4X_ID = r"(?:[0-9]+|\[[a-z]:[0-9]+:[0-9]+\])"
+
+#: CoD4X 1.8's own table: a per-session **playerid** and a **steamid** column, then the name,
+#: `lastmsg`, the address, `qport` and `rate` (`SV_Status_f` in callofduty4x/CoD4x_Server's
+#: `src/sv_cmds.c`). The `lastmsg` and the trailing `qport`/`rate` are optional here: forks
+#: disagree about them, and a row that is one column off should still yield the player rather than
+#: nothing.
 COD4X_PLAYER_LINE_RE = re.compile(
     r"^\s*(?P<slot>[0-9]+)\s+"
     r"(?P<score>-?[0-9]+)\s+"
     r"(?P<ping>[0-9]+)\s+"
-    r"(?P<guid>[0-9]+)\s+"
-    r"(?P<steam>[0-9]+)\s+"
+    rf"(?P<guid>{_COD4X_ID})\s+"
+    rf"(?P<steam>{_COD4X_ID})\s+"
     r"(?P<name>.*?)\s+"
     r"(?:(?P<lastmsg>[0-9]+)\s+)?"
     # An address, or the literal word `bot` — what CoD4X writes for an AI player, and the only
@@ -48,9 +66,7 @@ COD4X_PLAYER_LINE_RE = re.compile(
     # people yielded only the people (the first pattern that matches any row wins), so every bot
     # was dropped from the roster a second after the log put it there — and `!kick botd` could not
     # find a player who was plainly on the server.
-    r"(?:(?P<ip>(?:(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])\.){3}"
-    r"(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])):?"
-    r"(?P<port>-?[0-9]{1,5})|bot)"
+    rf"(?:{_COD4X_ADDRESS}|bot)"
     r"(?:\s+(?P<qport>-?[0-9]+))?(?:\s+(?P<rate>[0-9]+))?\s*$",
     re.IGNORECASE,
 )
@@ -84,28 +100,51 @@ COD4X_NO_STEAM_PLAYER_LINE_RE = re.compile(
     r"(?P<guid>[0-9]+)\s+"
     r"(?P<name>.*?)\s+"
     r"(?:(?P<lastmsg>[0-9]+)\s+)?"
-    r"(?P<ip>(?:(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])\.){3}"
-    r"(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])):?"
-    r"(?P<port>-?[0-9]{1,5})"
+    rf"{_COD4X_ADDRESS}"
     r"(?:\s+(?P<qport>-?[0-9]+))?(?:\s+(?P<rate>[0-9]+))?\s*$",
     re.IGNORECASE,
 )
 
-#: The shapes a CoD4X server can print, most specific first: with a Steam64 column, then without one.
+#: CoD4X with `sv_legacymode 1`, which prints the **stock CoD4 table** so that a classic B3 can read
+#: it: a 32-character hex PunkBuster-style guid where the playerid and steamid would be, and no
+#: Steam column at all. It is what a server that used to run classic B3 is likely still set to, and
+#: every row of it was unreadable here - the whole roster, at once.
+#:
+#: The guid is matched at exactly 32 hex characters, never looser. That is what keeps this shape off
+#: the other two: neither of their id columns is 32 characters of hex, so no row can be read by this
+#: one with an id swallowed into the name.
+COD4X_LEGACY_PLAYER_LINE_RE = re.compile(
+    r"^\s*(?P<slot>[0-9]+)\s+"
+    r"(?P<score>-?[0-9]+)\s+"
+    r"(?P<ping>[0-9]+)\s+"
+    r"(?P<guid>[0-9a-f]{32})\s+"
+    r"(?P<name>.*?)\s+"
+    r"(?:(?P<lastmsg>[0-9]+)\s+)?"
+    rf"(?:{_COD4X_ADDRESS}|bot)"
+    r"(?:\s+(?P<qport>-?[0-9]+))?(?:\s+(?P<rate>[0-9]+))?\s*$",
+    re.IGNORECASE,
+)
+
+#: The shapes a CoD4X server can print, most specific first: with a Steam column, then without one,
+#: then the stock table `sv_legacymode` asks for.
 #:
 #: **There is deliberately no loose "unknown shape" candidate.** There used to be, to cover a table
 #: the `b3hide` mod had stripped, and it was inferred rather than captured — which is the whole
 #: problem with it: a guess that is *almost* right reads the id column as part of the name and puts
 #: the result in the database. The real mechanism for a b3hide server is to ask a different question
-#: (`b3status`, see `GameProfile.status_commands`), and a shape neither pattern fits is now reported
-#: as such — see `b3.parsers.status.unparsed_rows` and `Bot._read_status`.
+#: (`b3status`, see `GameProfile.status_commands`), and a shape none of them fits is now reported
+#: as such - see `b3.parsers.status.unparsed_rows` and `Bot._read_status`.
 #:
 #: The `lastmsg` column stays an *optional group* inside each pattern rather than becoming another
 #: candidate: both variants match the same rows, so splitting them would not make the choice any
 #: better defined — and the ambiguity that remains lives in the free-form name column (a player
 #: called "Sniper 2" looks exactly like "Sniper" plus a lastmsg of 2), which no amount of candidate
 #: ordering resolves.
-COD4X_PATTERNS = (COD4X_PLAYER_LINE_RE, COD4X_NO_STEAM_PLAYER_LINE_RE)
+COD4X_PATTERNS = (
+    COD4X_PLAYER_LINE_RE,
+    COD4X_NO_STEAM_PLAYER_LINE_RE,
+    COD4X_LEGACY_PLAYER_LINE_RE,
+)
 
 #: Black Ops (cod7). Two differences from the stock table, both from the classic `cod7.py` and both
 #: missed when this title was ported as data:
@@ -213,6 +252,7 @@ __all__ = [
     "PLUTO_T6_PLAYER_LINE_RE",
     "COD4X_NO_STEAM_PLAYER_LINE_RE",
     "COD4X_PATTERNS",
+    "COD4X_LEGACY_PLAYER_LINE_RE",
     "COD4X_PLAYER_LINE_RE",
     "COD6_PLAYER_LINE_RE",
     "MAP_LINE_RE",

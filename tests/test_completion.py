@@ -299,3 +299,14 @@ def test_a_migration_revision_is_completed():
     offered = _complete("b3 db upgrade --revision 000")
 
     assert {"0001", "0002", "0003"} <= set(offered)
+
+
+def test_bundled_plugins_are_found_without_a_plugins_folder_on_disk(monkeypatch):
+    """The Windows build compiles the plugins into an archive, so there is no folder to list there -
+    and reading one made `b3 init` offer its six suggestions as if they were all there was."""
+    monkeypatch.setattr(completion, "_plugin_names_in", lambda directory: [])  # noqa: ARG005
+
+    names = completion.bundled()
+
+    assert len(names) > 30
+    assert "codam" in names and "discord" in names

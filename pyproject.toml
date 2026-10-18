@@ -84,7 +84,7 @@ dev = [
     # answer is in the failure.
     "pytest-timeout>=2.3,<3.0",
     # A linter changes what it enforces between releases.
-    "ruff>=0.15,<0.17",
+    "ruff>=0.15,<0.18",
     # And a type checker changes what it can infer, which is the same thing with a longer diff.
     "mypy>=1.9,<3.0",
     # The completion extra, here as well, so CI exercises both halves of it: the tests cover what
@@ -116,9 +116,11 @@ b3 = "b3.cli:main"
 where = ["src"]
 
 # The bundled IP-to-country database, so `geolocation` works on a fresh install with nothing to
-# download. See `src/b3/data/README.md` for the licence and the attribution it asks for.
+# download. See `src/b3/data/README.md` for the licence and the attribution it asks for. And the
+# annotated plugin configs, which `b3 init` copies into a new server's folder for editing - in the
+# package so that every install has them, not only a source checkout.
 [tool.setuptools.package-data]
-b3 = ["data/*.mmdb", "data/*.md"]
+b3 = ["data/*.mmdb", "data/*.md", "examples/*.yaml"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

@@ -20,7 +20,6 @@ build
 tests
 tools
 docs
-examples
 conf
 b3.yaml
 plugin_*.yaml

@@ -304,6 +304,48 @@ def test_updating_inside_a_container_says_to_pull_an_image_instead(tmp_path, mon
     assert "pull a new image" in capsys.readouterr().out
 
 
+def test_the_windows_build_says_to_download_the_next_one(tmp_path, monkeypatch, capsys):
+    """`b3.exe` carries its own Python and no pip, and `sys.executable` is the bot itself - so the
+    pip command would run the bot with arguments it does not know. Nothing may be run at all."""
+    import subprocess
+    import sys
+
+    from b3.cli import main
+    from b3.core import selfupdate
+
+    monkeypatch.chdir(tmp_path)
+    main(["init", "srv", "--rcon-password", "pw"])
+    monkeypatch.setattr(
+        selfupdate,
+        "check",
+        lambda remote, current=None, **kw: UpdateInfo(current="2.0.0", latest="2.1.0"),  # noqa: ARG005
+    )
+    monkeypatch.setattr(selfupdate, "in_container", lambda: False)
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(
+        subprocess, "run", lambda *a, **kw: pytest.fail("ran pip in a frozen build")
+    )
+
+    code = main(["-c", str(tmp_path / "srv" / "b3.yaml"), "update", "-y"])
+
+    assert code == 2
+    assert selfupdate.RELEASES_URL in capsys.readouterr().out
+
+
+def test_the_update_notice_in_the_windows_build_names_the_download(monkeypatch):
+    import sys
+
+    from b3.core import selfupdate
+
+    info = UpdateInfo(current="2.0.0", latest="2.1.0")
+    assert "b3 update" in selfupdate.notice(info)
+
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    line = selfupdate.notice(info)
+    assert "b3 update" not in line
+    assert selfupdate.RELEASES_URL in line
+
+
 def test_an_install_runs_pip_and_says_what_to_do_next(tmp_path, monkeypatch, capsys):
     """Never in place: files change, and the change takes effect on the next start — and a new
     version may add a migration, which the bot now refuses to start without."""
@@ -408,26 +450,3 @@ def test_the_package_version_and_the_module_version_agree():
     source = root.joinpath("src", "b3", "__init__.py").read_text(encoding="utf-8")
     found = re.search(r'__version__\s*=\s*"([^"]+)"', source)
     assert found is not None and found.group(1) == b3.__version__
-
-
-def test_a_standalone_build_is_told_to_download_rather_than_pip(tmp_path, monkeypatch, capsys):
-    """A PyInstaller build has no pip and no site-packages; the new version is a new file."""
-    import sys
-
-    from b3.cli import main
-    from b3.core import selfupdate
-
-    monkeypatch.chdir(tmp_path)
-    main(["init", "srv", "--rcon-password", "pw"])
-    monkeypatch.setattr(
-        selfupdate,
-        "check",
-        lambda remote, current=None, **kw: UpdateInfo(current="2.0.0", latest="2.1.0"),  # noqa: ARG005
-    )
-    monkeypatch.setattr(selfupdate, "in_container", lambda: False)
-    monkeypatch.setattr(sys, "frozen", True, raising=False)
-
-    code = main(["-c", str(tmp_path / "srv" / "b3.yaml"), "update", "-y"])
-
-    assert code == 2
-    assert selfupdate.RELEASES_URL in capsys.readouterr().out

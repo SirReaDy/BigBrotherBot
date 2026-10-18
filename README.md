@@ -41,7 +41,7 @@ straight answers when something is misconfigured.
 **Where it stands today.** All 59 classic admin commands at the classic levels, 38 game titles across
 thirteen parser families — 34 of the classic bot's 37, plus four it never had — and every core service the
 old bot offered, plus remote log tailing, PunkBuster, per-server deployment and pre-flight checks it
-never had. 3,154 tests, `mypy --strict` clean.
+never had. 3,201 tests, `mypy --strict` clean.
 
 ## What was deleted, and what was rebuilt
 
@@ -125,19 +125,22 @@ python -m pip install "b3ng[mysql] @ git+https://github.com/SirReaDy/BigBrotherB
 No `git` on the machine? Every [release](https://github.com/SirReaDy/BigBrotherBot/releases) has a
 wheel attached; download it and `python -m pip install b3ng-2.0.0b2-py3-none-any.whl`.
 
-**No Python either?** Each release also has standalone builds, with every extra included:
+**No Python either?** Each release also has standalone builds, with their own Python inside and
+MySQL, PostgreSQL and `sftp://` built in:
 
-| Platform | Single file | Bundle (starts faster, suits a service) |
+| Platform | One file | A folder (starts faster) |
 |---|---|---|
-| Windows x64 | `b3-<version>-windows-x64.exe` | `b3-<version>-windows-x64-bundle.zip` |
-| Linux x64 / arm64 | `b3-<version>-linux-x64` / `-linux-arm64` | `…-bundle.tar.gz` |
-| macOS Apple silicon / Intel | `b3-<version>-macos-arm64` / `-macos-x64` | `…-bundle.tar.gz` |
+| Windows x64 | `b3ng-<version>-windows-x64.exe` | `b3ng-<version>-windows-x64.zip` |
+| Linux x64 / arm64 | `b3ng-<version>-linux-x64` / `-linux-arm64` | `….tar.gz` |
+| macOS Apple silicon / Intel | `b3ng-<version>-macos-arm64` / `-macos-x64` | `….tar.gz` |
 
-They take the same commands as `b3` (`b3-…-windows-x64.exe init`, and so on). On Linux and macOS,
-`chmod +x` the single file first. These builds are not code-signed, so Windows SmartScreen and
-macOS Gatekeeper will warn; on macOS, `xattr -d com.apple.quarantine <file>` clears it. To update a
-standalone build, download the new one: `b3 update` only works for a pip install. Check a download
+They take the same commands as `b3`. They are not code-signed, and `b3 update` cannot update them -
+see [Deployment](docs/deployment.md#on-windows-without-python) for what that means. Check a download
 against `SHA256SUMS` on the same release.
+
+Running in Docker? From `v2.0.0b2` on every release is also an image, `ghcr.io/sirready/b3ng` - see
+[In a container](docs/deployment.md#in-a-container). On Windows with no Python installed, each
+release has a `b3.exe` build too - see [On Windows, without Python](docs/deployment.md#on-windows-without-python).
 
 Then `b3 init` sets a server up, and `b3 doctor` checks it before the first run. Coming from the
 classic bot, start with [Migrating](docs/migrating.md).

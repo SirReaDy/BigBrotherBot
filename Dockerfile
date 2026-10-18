@@ -19,6 +19,13 @@ RUN apt-get update \
     && apt-get install --no-install-recommends -y git \
     && rm -rf /var/lib/apt/lists/*
 
+# The optional backends, installed into the image rather than left to the operator: nobody can
+# `pip install` into a published image, so an extra left out here is one its users cannot have at
+# all - and sharing one MySQL database between servers is a documented deployment. `completion` and
+# `api` are absent on purpose: a container has no interactive shell to complete in, and the API is
+# not a released feature yet. `docker build --build-arg EXTRAS= .` builds the bare bot.
+ARG EXTRAS="mysql,postgres,sftp"
+
 WORKDIR /src
 COPY pyproject.toml README.md ./
 COPY src ./src
@@ -26,7 +33,7 @@ COPY src ./src
 # toolchain and the pip cache never reach it.
 RUN python -m venv /opt/b3 \
     && /opt/b3/bin/pip install --no-cache-dir --upgrade pip \
-    && /opt/b3/bin/pip install --no-cache-dir .
+    && /opt/b3/bin/pip install --no-cache-dir ".${EXTRAS:+[$EXTRAS]}"
 
 
 FROM python:3.13-slim
@@ -49,6 +56,20 @@ ENV PATH="/opt/b3/bin:$PATH" \
 WORKDIR /data
 VOLUME ["/data"]
 USER b3
+
+# The current month's IP-to-country and network databases, baked into the image. A container never
+# runs `b3 init`, which is where a pip install gets them, and `~/.b3` is not in the volume - so
+# without this every container read the copy bundled with the code, as stale as the commit it was
+# built from. Stale here is quietly wrong: a player whose address changed provider is placed in the
+# country it used to be in. Into this user's `~/.b3`, which is where the geolocation plugin looks.
+#
+# Never fatal: `refresh_all` reports a failure rather than raising, and the bundled copy is still
+# there, so an image built without network access still builds. `GEOIP_MONTH` is only a cache key:
+# the release workflow passes the month, so a cached layer from last month is not reused for this
+# one's image.
+ARG GEOIP_MONTH=unset
+RUN echo "geolocation data for ${GEOIP_MONTH}" \
+    && python -c "from b3.core.geoipdata import refresh_all; print(*refresh_all(), sep='\n')"
 
 # No healthcheck: a bot with nothing to do is indistinguishable from a bot that is stuck, from
 # outside. `b3 doctor` is the honest answer to "is this install working?", and it is a command an

@@ -62,9 +62,6 @@ RELEASE_TAG_RE = re.compile(r"^v?\d+(\.\d+)*$")
 #: the image *is* the version.
 DOCKER_MARKER = Path("/.dockerenv")
 
-#: Where a standalone build is replaced from. There is no Python environment inside one to `pip` into.
-RELEASES_URL = "https://github.com/SirReaDy/BigBrotherBot/releases"
-
 #: How stale the remembered answer may get before a *command* asks again. A week, not a day: the bot
 #: has its own `bot.update_check_interval` while it runs, and this is the path for a machine where no
 #: bot is running at the moment — somebody at a terminal, who does not need to pay for a network
@@ -171,9 +168,18 @@ def install_command(remote: str, tag: str) -> list[str]:
     return [sys.executable, "-m", "pip", "install", "--upgrade", f"git+{remote}@{ref}"]
 
 
-def frozen() -> bool:
-    """Whether this is a standalone build (PyInstaller), which is updated by replacing the file."""
+def is_frozen() -> bool:
+    """Whether this is a standalone build - one `b3` executable with its own Python inside, and no pip.
+
+    `install_command` would be wrong there twice over: `sys.executable` is the bot itself, not an
+    interpreter, so `-m pip` is an argument it does not know; and there is no environment to install
+    into. Upgrading that build is downloading the next one, as upgrading an image is pulling it.
+    """
     return bool(getattr(sys, "frozen", False))
+
+
+#: Where a frozen build is told to get the next one.
+RELEASES_URL = "https://github.com/SirReaDy/BigBrotherBot/releases"
 
 
 def in_container() -> bool:
@@ -291,6 +297,11 @@ def notice(info: UpdateInfo | None) -> str:
     """
     if info is None or not info.available:
         return ""
+    if is_frozen():
+        return (
+            f"b3 {info.latest} is available (running {info.current}) - download it from "
+            f"{RELEASES_URL}"
+        )
     return f"b3 {info.latest} is available (running {info.current}) — run `b3 update` to install it"
 
 
@@ -340,6 +351,7 @@ __all__ = [
     "NOTICE_INTERVAL",
     "NOTICE_TIMEOUT",
     "QUIET_ENV",
+    "RELEASES_URL",
     "RELEASE_TAG_RE",
     "TOKEN_ENV",
     "UpdateChecker",
@@ -348,6 +360,7 @@ __all__ = [
     "cached_check",
     "check",
     "in_container",
+    "is_frozen",
     "install_command",
     "notice",
     "notices_wanted",

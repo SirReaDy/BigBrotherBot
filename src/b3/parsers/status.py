@@ -14,6 +14,7 @@ from __future__ import annotations
 import re
 from collections.abc import Sequence
 
+from b3.core import steamid
 from b3.core.game import PlayerInfo
 
 #: Header line of a status reply: ``map: mp_crash``.
@@ -155,7 +156,11 @@ def _parse_rows(text: str, row_re: re.Pattern[str], identity: str) -> list[Playe
         if match is None:
             continue
         groups = match.groupdict()
-        steam = (groups.get("steam") or "").strip()
+        # Both id columns go through the Steam3 reading, not only `steam`: on a CoD4X server with
+        # `sv_usesteam64id` off the playerid column is printed the same way, and its "no id" -
+        # `[I:0:0]` - taken as written would give every unidentified player one shared identity.
+        groups["steam"] = steam = _steam64(groups.get("steam"))
+        groups["guid"] = _steam64(groups.get("guid"))
         # "0" means the engine has no id for them yet; fall back rather than merging every
         # unidentified player onto one record.
         chosen = (groups.get(identity) or "").strip()
@@ -191,7 +196,9 @@ def _parse_rows(text: str, row_re: re.Pattern[str], identity: str) -> list[Playe
             guid=chosen,
             steam_id=steam if steam not in ("", "0") else "",
             alt_guid=alt_guid,
-            ip=groups.get("ip") or "",
+            # `ip6` is an IPv6 address a pattern found inside brackets - `[2001:db8::1]:28960` -
+            # and is stored bare, the way `ipaddress` and the geolocation database expect it.
+            ip=groups.get("ip") or groups.get("ip6") or "",
             # Every one of these is read defensively, because a row can legitimately omit them:
             # a Plutonium table prints `localhost` with no port for a listen server, and an
             # empty ping column for a bot. `int("")` would raise, and one such row would take
@@ -203,6 +210,25 @@ def _parse_rows(text: str, row_re: re.Pattern[str], identity: str) -> list[Playe
             lobby=lobby,
         )
     return list(players.values())
+
+
+def _steam64(value: str | None) -> str:
+    """A `steam` column as a SteamID64, whichever spelling the server printed it in.
+
+    CoD4X prints Steam3 ids - `[U:1:12345]` - when `sv_usesteam64id` is off, and a decimal Steam64
+    when it is on. The player is the same either way, so the two have to arrive as the same string:
+    CoD4X stores identities as Steam64, and a Steam3 id let through as written would make every
+    player a stranger to their own record the day an operator flipped that cvar. Anything else in
+    brackets - `[I:0:0]` is what CoD4X prints for "no id" - is not an account, and comes back empty
+    so the caller falls back the way it does for the plain "0".
+    """
+    text = (value or "").strip()
+    if not text.startswith("["):
+        return text
+    if steamid.MODERN_RE.match(text) is None:
+        return ""
+    account = steamid.account_id(text)
+    return steamid.to_steam64(account) if account else ""
 
 
 def _as_int(value: str | None, default: int = 0) -> int:
