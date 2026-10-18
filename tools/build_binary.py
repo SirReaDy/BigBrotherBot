@@ -38,7 +38,9 @@ def target() -> str:
     """`windows-x64`, `linux-arm64`, `macos-arm64`: the suffix every asset name carries."""
     system = {"win32": "windows", "darwin": "macos"}.get(sys.platform, sys.platform)
     machine = platform.machine().lower()
-    arch = {"amd64": "x64", "x86_64": "x64", "aarch64": "arm64", "arm64": "arm64"}.get(machine, machine)
+    arch = {"amd64": "x64", "x86_64": "x64", "aarch64": "arm64", "arm64": "arm64"}.get(
+        machine, machine
+    )
     return f"{system}-{arch}"
 
 
@@ -52,30 +54,47 @@ def version() -> str:
 def pyinstaller(mode: str, work: Path) -> Path:
     """Run PyInstaller once; return what it produced (the file, or the bundle directory)."""
     command = [
-        sys.executable, "-m", "PyInstaller", str(ENTRY),
+        sys.executable,
+        "-m",
+        "PyInstaller",
+        str(ENTRY),
         f"--{mode}",
-        "--name", "b3",
+        "--name",
+        "b3",
         "--console",
         "--noconfirm",
         "--clean",
-        "--distpath", str(work / "dist"),
-        "--workpath", str(work / "build"),
-        "--specpath", str(work),
+        "--distpath",
+        str(work / "dist"),
+        "--workpath",
+        str(work / "build"),
+        "--specpath",
+        str(work),
         # Plugins and parsers are found by name at run time, so nothing imports them for the
         # analysis to follow; every submodule goes in.
-        "--collect-submodules", "b3",
+        "--collect-submodules",
+        "b3",
         # The bundled GeoIP database and its licence.
-        "--collect-data", "b3",
+        "--collect-data",
+        "b3",
         # Alembic reads migrations as source files from a directory, not as imported modules.
-        "--add-data", f"{ROOT / 'src' / 'b3' / 'storage' / 'migrations'}{SEP}b3/storage/migrations",
+        "--add-data",
+        f"{ROOT / 'src' / 'b3' / 'storage' / 'migrations'}{SEP}b3/storage/migrations",
         # Same reason as `b3`: optional backends are imported by URL scheme, not by name in code.
-        "--collect-submodules", "sqlalchemy.dialects",
-        "--collect-submodules", "uvicorn",
-        "--hidden-import", "pymysql",
-        "--hidden-import", "psycopg",
-        "--hidden-import", "paramiko",
-        "--hidden-import", "argcomplete",
-        "--copy-metadata", "b3ng",
+        "--collect-submodules",
+        "sqlalchemy.dialects",
+        "--collect-submodules",
+        "uvicorn",
+        "--hidden-import",
+        "pymysql",
+        "--hidden-import",
+        "psycopg",
+        "--hidden-import",
+        "paramiko",
+        "--hidden-import",
+        "argcomplete",
+        "--copy-metadata",
+        "b3ng",
     ]
     subprocess.run(command, check=True, cwd=ROOT)
     name = "b3.exe" if sys.platform == "win32" and mode == "onefile" else "b3"
@@ -85,9 +104,13 @@ def pyinstaller(mode: str, work: Path) -> Path:
 def smoke(executable: Path) -> None:
     """Run it: a build that cannot start is the failure worth catching before it is uploaded."""
     for args in (["--version"], ["games"]):
-        result = subprocess.run([str(executable), *args], capture_output=True, text=True, check=False)
+        result = subprocess.run(
+            [str(executable), *args], capture_output=True, text=True, check=False
+        )
         if result.returncode != 0:
-            raise SystemExit(f"{executable} {' '.join(args)} failed:\n{result.stdout}{result.stderr}")
+            raise SystemExit(
+                f"{executable} {' '.join(args)} failed:\n{result.stdout}{result.stderr}"
+            )
         print(f"{executable.name} {' '.join(args)}: {result.stdout.splitlines()[0]}")
 
 
