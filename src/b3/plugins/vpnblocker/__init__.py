@@ -242,7 +242,8 @@ class VpnblockerPlugin(Plugin):
         self.lists: dict[str, NetworkSet] = {}
         #: Lookup answers by address: (when it was asked, the verdict or None for clean).
         self.lookups: dict[str, tuple[float, Verdict | None]] = {}
-        self._pending: set[str] = set()
+        #: Lookups still out, by address, so a second player on the same one waits for the first.
+        self._pending: dict[str, asyncio.Future[Verdict | None]] = {}
 
     # -- setup ---------------------------------------------------------------
 
@@ -356,7 +357,12 @@ class VpnblockerPlugin(Plugin):
         if self.exempt(client):
             return
         verdict = await self.verdict(ip)
-        if verdict is not None and client.cid in self.console.clients:
+        if verdict is None:
+            return
+        # A lookup takes a moment, and in it the player may have left and somebody else taken the
+        # slot, or the address may have changed. Only the player who was checked is acted on.
+        current = self.console.clients.get_by_cid(client.cid or "")
+        if current is client and (client.ip or "").strip() == ip:
             self.act(client, verdict)
 
     def exempt(self, client: Client) -> bool:
@@ -372,11 +378,15 @@ class VpnblockerPlugin(Plugin):
         except ValueError:
             log.warning("vpnblocker: %r is not an address I can read", ip)
             return None
+        # A dual-stack server reports an IPv4 player as `::ffff:1.2.3.4`, which is in none of the IPv4
+        # lists as written. Read as the address it is, or every list is one spelling away from empty.
+        if isinstance(address, ipaddress.IPv6Address) and address.ipv4_mapped is not None:
+            address = address.ipv4_mapped
         if not address.is_global or address in self.allow:
             return None
         found = self.local_verdict(address)
         if found is None and self.lookup_enabled():
-            found = await self.lookup(ip)
+            found = await self.lookup(str(address))
         return found
 
     def local_verdict(
@@ -421,13 +431,17 @@ class VpnblockerPlugin(Plugin):
         remembered = self.lookups.get(ip)
         if remembered is not None and now - remembered[0] < ttl:
             return remembered[1]
-        if ip in self._pending:
-            return None  # the same address twice at once; the first lookup decides
-        self._pending.add(ip)
-        try:
-            payload = await asyncio.to_thread(self._query, ip)
-        finally:
-            self._pending.discard(ip)
+        # Two players on one address at once share one lookup and both wait for it. Answering the
+        # second with None while the first was still out would let a pair of evaders in together.
+        pending = self._pending.get(ip)
+        if pending is None:
+            pending = asyncio.ensure_future(self._ask(ip, now))
+            self._pending[ip] = pending
+            pending.add_done_callback(lambda _done: self._pending.pop(ip, None))
+        return await asyncio.shield(pending)
+
+    async def _ask(self, ip: str, now: float) -> Verdict | None:
+        payload = await asyncio.to_thread(self._query, ip)
         if payload is None:
             return None  # not remembered: a failure is not an answer, so the next join asks again
         found = verdict_from_lookup(

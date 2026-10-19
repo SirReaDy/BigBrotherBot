@@ -424,3 +424,58 @@ def test_anonymous_on_its_own_is_not_a_finding():
     answer = {"status": "ok", "8.8.8.8": {"detections": {"proxy": False, "anonymous": True}}}
 
     assert verdict_from_lookup(answer, "8.8.8.8") is None
+
+
+@pytest.mark.asyncio
+async def test_two_players_on_one_address_share_one_lookup_and_both_go(console, tmp_path):
+    """The second used to be answered None while the first lookup was still out, and got in."""
+    import asyncio
+    import threading
+
+    release = threading.Event()
+    plugin = _plugin(console, tmp_path, lookup=True)
+
+    def slow_query(ip):  # noqa: ANN001, ANN202
+        plugin.queries.append(ip)  # type: ignore[attr-defined]
+        release.wait(5)
+        return TOR_ANSWER
+
+    plugin._query = slow_query  # type: ignore[method-assign]
+    joe = _join(console, "Joe", ip="185.220.101.1")
+    ann = _join(console, "Ann", ip="185.220.101.1")
+
+    both = asyncio.gather(_auth(console, joe), _auth(console, ann))
+    await asyncio.sleep(0.05)
+    release.set()
+    await both
+
+    assert sorted(_kicked(console)) == ["Ann", "Joe"]
+    assert plugin.queries == ["185.220.101.1"]
+
+
+@pytest.mark.asyncio
+async def test_a_slot_taken_over_during_a_lookup_is_not_acted_on(console, tmp_path):
+    """Joe leaves while his lookup is out and Ann takes slot 1; Ann is not kicked for Joe."""
+    plugin = _plugin(console, tmp_path, lookup=True)
+    joe = _join(console, "Joe", ip="185.220.101.1", cid="1")
+
+    def query(ip):  # noqa: ANN001, ANN202
+        console.clients.remove("1")
+        _join(console, "Ann", ip="8.8.4.4", cid="1")
+        return TOR_ANSWER
+
+    plugin._query = query  # type: ignore[method-assign]
+    await _auth(console, joe)
+
+    assert console.kicked == []
+
+
+@pytest.mark.asyncio
+async def test_an_ipv4_address_written_as_ipv6_is_still_on_the_list(console, tmp_path):
+    """A dual-stack server reports `::ffff:45.1.2.3`; the IPv4 block must still catch it."""
+    _plugin(console, tmp_path, blocks=["45.0.0.0/8"])
+    joe = _join(console, "Joe", ip="::ffff:45.1.2.3")
+
+    await _auth(console, joe)
+
+    assert _kicked(console) == ["Joe"]
