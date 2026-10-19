@@ -1,0 +1,73 @@
+# vpnblocker — keeps players on VPNs, proxies and Tor off the server.
+#
+# Point at it from the main config (after geolocation, if you use `asns`):
+#
+#   plugins:
+#     - name: vpnblocker
+#       config: "@conf/plugin_vpnblocker.yaml"
+#
+# For the ban evader who switches a VPN on and is back a minute later on a new address. Two layers:
+#
+#   1. Lists, checked on this machine: public VPN ranges and Tor exits, downloaded once a day and kept
+#      on disk, plus any networks and providers you list yourself. Instant, and no address leaves the
+#      machine.
+#   2. An online lookup (proxycheck.io), OFF by default. It catches residential proxies and new VPN
+#      ranges no list has yet, but it sends each unknown player's address to a third party — so it is
+#      your call. A lookup that fails lets the player in.
+#
+# Everybody behind a flagged address is refused, so start with `action: watch` for a few days: the
+# admins in game are told who would have been kicked, and nobody is.
+
+settings:
+  # kick: remove a flagged player.  watch: only tell the admins who would have been.
+  action: kick
+
+  # At or below this level a player is checked. 1 (`user`) exempts everybody who has registered —
+  # which also makes registering the way a regular who needs a VPN gets past it.
+  max_level: 1
+
+  # The lists to download. These are the defaults; X4BNet's datacenter list catches far more and is
+  # left out on purpose, because cloud gaming and office networks arrive from datacenters too:
+  #   - https://raw.githubusercontent.com/X4BNet/lists_vpn/main/output/datacenter/ipv4.txt
+  lists:
+    - https://raw.githubusercontent.com/X4BNet/lists_vpn/main/output/vpn/ipv4.txt
+    - https://raw.githubusercontent.com/X4BNet/lists_vpn/main/output/vpn/ipv6.txt
+    - https://check.torproject.org/torbulkexitlist
+
+  # How often they are downloaded again. 24 or more means once a day, at 04:00.
+  refresh_hours: 24
+
+  # Where the downloaded lists are kept between restarts. `@home` is ~/.b3, shared by every server
+  # on this machine.
+  cache_dir: "@home/vpnblocker"
+
+  # Networks of your own, spelt as netblocker takes them: 1.2.3.0/24, 1.2.3.4, 1.2.3.5 - 1.2.3.9, IPv6.
+  blocks: []
+
+  # Whole providers by AS number. Needs the geolocation plugin, whose ASN database `b3 init`
+  # downloads. `!isp <player>` names somebody's provider; bgp.he.net finds its number.
+  asns: []
+    # - AS9009     # M247, behind a great many VPN brands
+
+  # Never flagged, whatever the lists say: networks, and players by guid.
+  allow: []
+  allow_guids: []
+
+  # The online lookup. Without a key proxycheck.io allows 100 lookups a day; a free account's key
+  # allows 1,000. Each answer is remembered for `cache_hours`, so a regular costs one every few days.
+  lookup: no
+  api_key: ""
+  cache_hours: 72
+  # Also refuse addresses the lookup says belong to a hosting provider. Off for the datacenter reason.
+  block_hosting: no
+
+  # Tell the admins in game whenever somebody is flagged, at or above this level.
+  tell_admins: yes
+  admin_level: 20
+
+# The lines players and admins see can be reworded in the main config's `messages:` block:
+#
+#   vpnblocker_kicked    "VPN and proxy connections are not accepted here"
+#   vpnblocker_admins    "{name} is connecting through {source} ({action})"
+#
+# `!vpncheck <player>` (level 20) says whether somebody is flagged, and by which list.

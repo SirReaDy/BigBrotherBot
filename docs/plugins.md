@@ -30,6 +30,7 @@ list, each with an optional config of its own (see `src/b3/examples/`):
 | `spree` | announces killing and losing streaks | `!spree [player]` |
 | `firstkill` | announces first blood, first headshot and the first team kill | `!firstkill` `!firsttk` `!firsths` |
 | `netblocker` | refuses players connecting from a listed network | — |
+| `vpnblocker` | refuses players connecting through a VPN, a proxy or Tor | `!vpncheck` |
 | `duel` | keeps score between two players who agreed to a duel | `!duel` `!duelreset` `!duelcancel` |
 | `spawnkill` | warns, kicks or bans players who shoot somebody who just spawned | — |
 | `geolocation` | resolves where a player is connecting from, for the plugins that need it | — |
@@ -350,6 +351,21 @@ everybody behind a listed address is refused whether they have done anything or 
 Checked at authentication *and* when an address first becomes known, since on Call of Duty and Quake 3
 the line that authenticates somebody carries no address at all. A bad entry in the list is refused at
 startup by name and the rest still load. Config: `src/b3/examples/plugin_netblocker.yaml`.
+
+### vpnblocker — VPNs, proxies and Tor
+
+For the ban evader who switches a VPN on and is back a minute later on a new address. Two layers,
+cheapest first. **Lists on this machine**: X4BNet's VPN ranges and the Tor Project's exit list are
+downloaded once a day and kept on disk, so a restart needs no network and a check is a binary search,
+plus your own `blocks` and whole providers by AS number (`asns`, read from `geolocation`'s ASN
+database). **An online lookup**, proxycheck.io, catches residential proxies and ranges no list has yet;
+it is **off by default** because it sends each unknown player's address to a third party. Answers are
+remembered for `cache_hours`, and a lookup that fails lets the player in.
+
+Registered players are exempt by default (`max_level`), `allow` and `allow_guids` cover the rest, and
+`action: watch` tells the admins in game who would have been kicked without kicking anybody — the way
+to see what the lists catch on your server before trusting them. `!vpncheck <player>` says which list
+flagged somebody. Config: `src/b3/examples/plugin_vpnblocker.yaml`.
 
 ### duel — two players settling something
 
