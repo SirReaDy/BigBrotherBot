@@ -172,8 +172,15 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
+      # By name, never "everything": the image job's build leaves `.dockerbuild` records among the
+      # run's artifacts, and those do not download - which failed this job on the v2.0.0b2 tag.
       - uses: actions/download-artifact@v7
         with:
+          name: dist
+          path: assets
+      - uses: actions/download-artifact@v7
+        with:
+          pattern: b3ng-*
           path: assets
           merge-multiple: true
       - name: Checksums
