@@ -32,7 +32,7 @@ exactly as it was. Run them side by side until you are satisfied.
 ## 1. Install, and check before you start
 
 ```bash
-python -m pip install "git+https://github.com/SirReaDy/BigBrotherBot@v2.0.0b1"
+python -m pip install "git+https://github.com/SirReaDy/BigBrotherBot@v2.0.0b2"
 b3 --version
 ```
 
@@ -143,7 +143,7 @@ Client ids are preserved throughout, which is what keeps every surviving referen
 
 !!! note "If your old database is MySQL"
     The classic wrote `mysql://user:pw@host/b3`. SQLAlchemy needs a driver in the URL:
-    `mysql+pymysql://user:pw@host/b3`, with `pip install "b3ng[mysql] @ git+https://github.com/SirReaDy/BigBrotherBot@v2.0.0b1"`. The same applies to
+    `mysql+pymysql://user:pw@host/b3`, with `pip install "b3ng[mysql] @ git+https://github.com/SirReaDy/BigBrotherBot@v2.0.0b2"`. The same applies to
     `bot.database` in the new config.
 
 The import is idempotent — rows merge by primary key — so running it twice is safe, and you can

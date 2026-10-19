@@ -1108,8 +1108,8 @@ def _run_update(config: Config, check_only: bool, to: str, yes: bool) -> int:
         print("this is a container — pull a new image rather than updating in place")
         return 2
     if selfupdate.is_frozen():
-        # The Windows build carries its own Python and no pip, and `sys.executable` is the bot.
-        print(f"this is the Windows build - download {tag} from {selfupdate.RELEASES_URL}")
+        # A standalone build carries its own Python and no pip, and `sys.executable` is the bot.
+        print(f"this is a standalone build - download {tag} from {selfupdate.RELEASES_URL}")
         return 2
     command = selfupdate.install_command(remote, tag)
     print(f"installing {tag}: {' '.join(command)}")

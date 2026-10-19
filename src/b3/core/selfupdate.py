@@ -169,7 +169,7 @@ def install_command(remote: str, tag: str) -> list[str]:
 
 
 def is_frozen() -> bool:
-    """Whether this is the Windows build - one `b3.exe` with its own Python inside, and no pip.
+    """Whether this is a standalone build - one `b3` executable with its own Python inside, and no pip.
 
     `install_command` would be wrong there twice over: `sys.executable` is the bot itself, not an
     interpreter, so `-m pip` is an argument it does not know; and there is no environment to install

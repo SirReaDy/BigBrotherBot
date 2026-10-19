@@ -25,7 +25,7 @@ process you can start, stop and read the logs of on its own.
 
 ```bash
 python3 -m venv /opt/b3/venv
-/opt/b3/venv/bin/pip install "git+https://github.com/SirReaDy/BigBrotherBot@v2.0.0b1"
+/opt/b3/venv/bin/pip install "git+https://github.com/SirReaDy/BigBrotherBot@v2.0.0b2"
 ln -s /opt/b3/venv/bin/b3 /usr/local/bin/b3
 
 b3 init /srv/cod4_1/b3 \
@@ -46,7 +46,7 @@ sudo systemctl enable --now b3-cod4_1
 
 This is also the layout tab completion is written for: the symlink above means `b3` on `PATH` is a
 console script inside a virtualenv, and `b3 completion <shell>` prints a registration that runs `b3`
-itself to ask what comes next, so it works there. `pip install "b3ng[completion] @ git+https://github.com/SirReaDy/BigBrotherBot@v2.0.0b1"`, then
+itself to ask what comes next, so it works there. `pip install "b3ng[completion] @ git+https://github.com/SirReaDy/BigBrotherBot@v2.0.0b2"`, then
 [the CLI page](cli.md#tab-completion).
 
 ## Several game servers on one machine
@@ -148,7 +148,7 @@ explicit rather than implied by a path.
 Point several instances at one MySQL/Postgres `database:` URL and they share one identity namespace: a
 ban on any server applies everywhere, your admins are admins everywhere, and alias/IP history is merged
 — because `guid` is the natural key. Keep the URLs separate to keep the servers independent. (Shared
-means MySQL or Postgres — `pip install "b3ng[mysql] @ git+https://github.com/SirReaDy/BigBrotherBot@v2.0.0b1"` — not SQLite on a file share.)
+means MySQL or Postgres — `pip install "b3ng[mysql] @ git+https://github.com/SirReaDy/BigBrotherBot@v2.0.0b2"` — not SQLite on a file share.)
 
 When you do share one, set **`bot.server_id`** in each instance so the table records *which* server
 issued each penalty:
@@ -266,6 +266,23 @@ Three things differ from a pip install:
 * **A plugin that needs a package not already in the build cannot be installed.** Plugins written
   in plain Python, using what the bot itself uses, work.
 
+## On Linux or macOS, without Python
+
+The same build exists for Linux (x64 and arm64) and macOS (Apple silicon and Intel), named
+`b3ng-<version>-<platform>` for the single file and `….tar.gz` for the folder. Everything above
+applies except double-clicking: it is the `b3` command, run from a terminal.
+
+```bash
+tar xzf b3ng-2.0.0b2-linux-x64.tar.gz
+./b3ng-2.0.0b2-linux-x64/b3 init ~/b3/cod4_1
+```
+
+The single file needs `chmod +x` after downloading. On macOS, Gatekeeper blocks an unsigned
+download until its quarantine flag is cleared: `xattr -dr com.apple.quarantine <file or folder>`.
+The Linux build is made on Ubuntu 22.04 and needs a glibc at least that new (Debian 12, RHEL 9 and
+their contemporaries); Alpine's musl is not supported, so use the container image there.
+`b3 init --service` writes a unit that runs the executable directly.
+
 ## Tailing a hosted server's log
 
 `server.game_log` is normally a path, which means the bot runs on the game server's own box. Point it
@@ -277,7 +294,7 @@ server you have no shell on (the classic bot's `ftpytail` / `sftpytail` / `httpy
 | *(a path)* | Local file. No polling delay, no extra dependencies. |
 | `ftp://user:pass@host[:port]/path/games_mp.log` | Resumes with `REST`, binary mode, passive (game hosts are behind NAT). |
 | `ftps://…` | Same, over implicit TLS, with the data connection encrypted too. |
-| `sftp://user:pass@host[:port]/path/games_mp.log` | Needs `paramiko`: `pip install "b3ng[sftp] @ git+https://github.com/SirReaDy/BigBrotherBot@v2.0.0b1"`. With no password in the URL it uses your agent and `~/.ssh` keys. An unknown host key is accepted with a warning. |
+| `sftp://user:pass@host[:port]/path/games_mp.log` | Needs `paramiko`: `pip install "b3ng[sftp] @ git+https://github.com/SirReaDy/BigBrotherBot@v2.0.0b2"`. With no password in the URL it uses your agent and `~/.ssh` keys. An unknown host key is accepted with a warning. |
 | `http://…`, `https://…` | Polls `HEAD` for the size, then a ranged `GET`. Credentials in the URL become a basic-auth header. Servers that ignore `Range` still work. Asks for **no compression** — see below. |
 
 All of them tail by **byte offset**, so:

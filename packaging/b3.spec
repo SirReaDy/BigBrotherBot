@@ -1,7 +1,10 @@
-# PyInstaller spec for the Windows build: `b3.exe`, with its own Python inside.
+# PyInstaller spec for the standalone builds: `b3` (`b3.exe` on Windows), with its own Python inside.
 #
-#   pyinstaller packaging/windows/b3.spec              -> dist/b3/b3.exe and its _internal folder
-#   pyinstaller packaging/windows/b3.spec -- --onefile -> dist/b3.exe, one file
+#   pyinstaller packaging/b3.spec              -> dist/b3/b3 and its _internal folder
+#   pyinstaller packaging/b3.spec --distpath onefile -- --onefile -> onefile/b3, one file
+#
+# The same spec on Windows, Linux and macOS. PyInstaller does not cross-compile, so the release
+# workflow runs it once on each.
 #
 # The folder build is what the release zips. The one-file build is the same program unpacked into a
 # temporary directory at every start, which is slower to start and what antivirus software is most
@@ -46,7 +49,7 @@ datas = [
     *collect_data_files("b3", includes=["data/*"]),
     # The plugin configs `b3 init` copies into a new server's folder for the operator to edit.
     *collect_data_files("b3", includes=["examples/*.yaml"]),
-    # Windows ships no time zone database; `zoneinfo` reads this package's files instead.
+    # Windows (and many slim Linux installs) ship no time zone database; `zoneinfo` reads this package's files instead.
     *collect_data_files("tzdata"),
 ]
 

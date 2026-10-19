@@ -15,6 +15,7 @@ after a reboot.
 from __future__ import annotations
 
 import logging
+import sys
 from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
@@ -101,7 +102,7 @@ After=network.target
 Type=simple
 User={user}
 WorkingDirectory={directory}
-ExecStart={python} -m b3.cli -c {config_path} run
+ExecStart={command} -c {config_path} run
 Restart=always
 RestartSec=5
 # `!restart` exits {restart_code}; treat that as "start me again", not as a crash.
@@ -265,7 +266,8 @@ def create_instance(
                 name=spec.name,
                 directory=directory,
                 config_path=config_path,
-                python=python,
+                # A standalone build is its own interpreter and has no `-m` to take.
+                command=python if getattr(sys, "frozen", False) else f"{python} -m b3.cli",
                 user=user,
                 service_name=service_name,
                 restart_code=RESTART_EXIT_CODE,
